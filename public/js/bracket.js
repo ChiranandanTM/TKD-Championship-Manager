@@ -12,6 +12,8 @@ const BRACKET = {
   pendingCategoryData: null,
   bracketListener: null,
   historyListener: null,
+  currentFilter: 'all',
+  categoryStatuses: {},
 
   // Category images mapping
   categoryImages: {
@@ -104,17 +106,38 @@ const BRACKET = {
     }
   },
 
+  // Filter brackets by status
+  async filterByStatus(status) {
+    this.currentFilter = status;
+    
+    // Update tab UI
+    document.querySelectorAll('.status-tab').forEach(tab => {
+      tab.classList.remove('active');
+    });
+    document.querySelector(`[data-filter="${status}"]`).classList.add('active');
+    
+    // Re-render categories with filter
+    await this.renderCategories();
+  },
+
   // Render category list
   renderCategories() {
     const container = document.getElementById('categoriesList');
     if (!container) return;
 
-    let html = '<div class="categories-grid">';
-
     const categoryPromises = Object.keys(this.categories).map(async (key) => {
       const cat = this.categories[key];
       const playerCount = cat.players.length;
       const status = await this.getBracketStatus(key);
+      
+      // Store status for later filtering
+      this.categoryStatuses[key] = status;
+
+      // Check if category should be displayed based on filter
+      const statusLower = status.toLowerCase();
+      if (this.currentFilter !== 'all' && this.currentFilter !== statusLower) {
+        return null;
+      }
 
       // Determine status styling
       let statusColor = 'var(--text-gray)';
@@ -145,7 +168,7 @@ const BRACKET = {
 
     Promise.all(categoryPromises).then((categoryCards) => {
       let finalHtml = '<div class="categories-grid">';
-      finalHtml += categoryCards.join('');
+      finalHtml += categoryCards.filter(card => card !== null).join('');
       finalHtml += '</div>';
       container.innerHTML = finalHtml;
     }).catch(error => {

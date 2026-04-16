@@ -815,6 +815,52 @@ button:disabled,
 }
 
 /* ============================================
+   STATUS FILTER TABS
+   ============================================ */
+
+.status-filter-tabs {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-md);
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.7) 0%, rgba(22, 33, 62, 0.7) 100%);
+  border: 2px solid var(--accent-cyan);
+  border-radius: var(--border-radius);
+  flex-wrap: wrap;
+  justify-content: center;
+  box-shadow: 0 4px 15px rgba(0, 229, 255, 0.2);
+}
+
+.status-tab {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 215, 0, 0.1);
+  color: var(--text-gray);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.status-tab:hover {
+  background: rgba(255, 215, 0, 0.2);
+  border-color: var(--border-gold);
+  color: var(--border-gold);
+  transform: translateY(-2px);
+}
+
+.status-tab.active {
+  background: linear-gradient(135deg, var(--border-gold) 0%, rgba(255, 215, 0, 0.8) 100%);
+  color: var(--primary-black);
+  border-color: var(--border-gold);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+  transform: translateY(-4px);
+}
+
+/* ============================================
    CATEGORY CARDS
    ============================================ */
 

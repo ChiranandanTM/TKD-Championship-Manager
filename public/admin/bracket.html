@@ -27,6 +27,22 @@
     </div>
 
     <div class="container">
+        <!-- Status Filter Tabs -->
+        <div class="status-filter-tabs">
+            <button class="status-tab active" data-filter="all" onclick="BRACKET.filterByStatus('all')">
+                All Brackets
+            </button>
+            <button class="status-tab" data-filter="live" onclick="BRACKET.filterByStatus('live')">
+                🔴 Live
+            </button>
+            <button class="status-tab" data-filter="pending" onclick="BRACKET.filterByStatus('pending')">
+                ⏳ Pending
+            </button>
+            <button class="status-tab" data-filter="completed" onclick="BRACKET.filterByStatus('completed')">
+                ✅ Completed
+            </button>
+        </div>
+
         <!-- Categories List -->
         <div id="categoriesList"></div>
 
