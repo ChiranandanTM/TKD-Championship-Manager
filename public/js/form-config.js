@@ -21,7 +21,7 @@ const FORM_CONFIG = {
       { id: 'age', label: 'Age', type: 'number', required: true, readonly: true, order: 6 },
       { id: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female'], required: true, order: 7 },
       { id: 'centerName', label: 'Center Name', type: 'text', required: true, order: 8 },
-      { id: 'weight', label: 'Weight (kg)', type: 'number', required: true, order: 9 },
+      { id: 'weight', label: 'Weight (kg)', type: 'text', required: true, order: 9, info: 'Enter exact weight (e.g., 60 or 61.5)' },
       { id: 'weightCategory', label: 'Weight Category', type: 'text', required: true, readonly: true, order: 10 },
       { id: 'district', label: 'District', type: 'text', required: true, order: 11 },
       { id: 'taluk', label: 'Taluk', type: 'text', required: true, order: 12 },

@@ -1026,6 +1026,19 @@ button:disabled,
   padding: var(--spacing-xs) 0;
 }
 
+/* Player side colors - chest guard distinction */
+.player-blue {
+  background: linear-gradient(135deg, rgba(0, 51, 102, 0.6) 0%, rgba(0, 25, 51, 0.4) 100%) !important;
+  border: 2px solid #003DA5 !important;
+  box-shadow: 0 0 20px rgba(0, 61, 165, 0.5) inset, 0 0 10px rgba(0, 61, 165, 0.4);
+}
+
+.player-red {
+  background: linear-gradient(135deg, rgba(102, 0, 0, 0.6) 0%, rgba(51, 0, 0, 0.4) 100%) !important;
+  border: 2px solid #8B0000 !important;
+  box-shadow: 0 0 20px rgba(139, 0, 0, 0.5) inset, 0 0 10px rgba(139, 0, 0, 0.4);
+}
+
 .btn-start-match {
   width: 100%;
   margin-top: var(--spacing-md);

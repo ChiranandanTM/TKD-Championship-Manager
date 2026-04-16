@@ -107,6 +107,19 @@
             text-align: center;
         }
 
+        /* Player side colors - chest guard distinction */
+        .player-box.player-blue {
+            background: linear-gradient(135deg, rgba(0, 51, 102, 0.8) 0%, rgba(0, 25, 51, 0.6) 100%) !important;
+            border: 2px solid #003DA5 !important;
+            box-shadow: 0 0 20px rgba(0, 61, 165, 0.6) inset, 0 0 12px rgba(0, 61, 165, 0.5) !important;
+        }
+
+        .player-box.player-red {
+            background: linear-gradient(135deg, rgba(102, 0, 0, 0.8) 0%, rgba(51, 0, 0, 0.6) 100%) !important;
+            border: 2px solid #8B0000 !important;
+            box-shadow: 0 0 20px rgba(139, 0, 0, 0.6) inset, 0 0 12px rgba(139, 0, 0, 0.5) !important;
+        }
+
         .player-box .p-name {
             font-size: 1.1rem;
             font-weight: 700;
@@ -262,9 +275,9 @@
                     '<div class="live-badge"><span class="live-dot"></span> LIVE</div>' +
                     '<div class="match-category">' + formatCategoryKey(item.categoryKey) + '</div>' +
                     '<div class="match-vs-row">' +
-                        '<div class="player-box"><div class="p-name">' + p1.playerName + '</div><div class="p-center">' + (p1.centerName || '') + '</div></div>' +
+                        '<div class="player-box player-blue"><div class="p-name">' + p1.playerName + '</div><div class="p-center">' + (p1.centerName || '') + '</div></div>' +
                         '<div class="vs-col">VS</div>' +
-                        '<div class="player-box"><div class="p-name">' + p2.playerName + '</div><div class="p-center">' + (p2.centerName || '') + '</div></div>' +
+                        '<div class="player-box player-red"><div class="p-name">' + p2.playerName + '</div><div class="p-center">' + (p2.centerName || '') + '</div></div>' +
                     '</div>' +
                     '<div class="match-meta">📍 ' + item.roundName + (startTime ? ' &nbsp;|&nbsp; ⏱️ Started ' + startTime : '') + '</div>' +
                 '</div>';
@@ -273,9 +286,9 @@
                     '<div class="next-badge">⏭️ UP NEXT</div>' +
                     '<div class="match-category">' + formatCategoryKey(item.categoryKey) + '</div>' +
                     '<div class="match-vs-row">' +
-                        '<div class="player-box"><div class="p-name">' + p1.playerName + '</div><div class="p-center">' + (p1.centerName || '') + '</div></div>' +
+                        '<div class="player-box player-blue"><div class="p-name">' + p1.playerName + '</div><div class="p-center">' + (p1.centerName || '') + '</div></div>' +
                         '<div class="vs-col">VS</div>' +
-                        '<div class="player-box"><div class="p-name">' + p2.playerName + '</div><div class="p-center">' + (p2.centerName || '') + '</div></div>' +
+                        '<div class="player-box player-red"><div class="p-name">' + p2.playerName + '</div><div class="p-center">' + (p2.centerName || '') + '</div></div>' +
                     '</div>' +
                     '<div class="match-meta">📍 ' + item.roundName + '</div>' +
                 '</div>';

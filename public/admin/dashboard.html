@@ -48,8 +48,8 @@
                 </div>
             </div>
 
-            <!-- Recent Registrations -->
-            <h3 style="margin-top: 40px;">Recent Player Registrations</h3>
+            <!-- Players Registered -->
+            <h3 style="margin-top: 40px;">Players Registered</h3>
             <div id="recentPlayersList"></div>
         </div>
 
@@ -223,8 +223,11 @@
                         players.push({ id: child.key, ...child.val() });
                     });
                     
+                    console.log('📊 Total players fetched from Firebase:', players.length);
+                    
                     players.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-                    const recent = players.slice(0, 10);
+                    // Display all players, not just a limited subset
+                    const allPlayers = players;
                     
                     const teamsSnapshotForMap = await dbGet(dbRef(database, 'teams'));
                     const teamsMap = {};
@@ -236,6 +239,7 @@
                     
                     let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 20px;">';
                     html += '<thead><tr style="background: #1a1a1a; border-bottom: 2px solid #FFD700;">';
+                    html += '<th style="padding: 15px; text-align: center; width: 60px;">Sl.No</th>';
                     html += '<th style="padding: 15px; text-align: left;">Name</th>';
                     html += '<th style="padding: 15px; text-align: left;">Team</th>';
                     html += '<th style="padding: 15px; text-align: left;">Gender</th>';
@@ -244,20 +248,36 @@
                     html += '<th style="padding: 15px; text-align: left;">Submitted</th>';
                     html += '</tr></thead><tbody>';
                     
-                    recent.forEach(player => {
+                    let displayedCount = 0;
+                    allPlayers.forEach((player, index) => {
+                        const slNo = index + 1;
                         const teamName = teamsMap[player.teamId] || 'N/A';
+                        const playerName = player.playerName || '(Unknown Player)';
+                        const gender = player.gender || 'N/A';
+                        const categories = player.categories ? player.categories.join(', ') : 'N/A';
+                        const weightCategory = player.weightCategory || 'N/A';
+                        const submittedTime = UI.formatTimestamp(player.submittedAt) || 'N/A';
+                        
                         html += '<tr style="border-bottom: 1px solid #333;">';
-                        html += `<td style="padding: 12px;">${player.playerName}</td>`;
+                        html += `<td style="padding: 12px; text-align: center; font-weight: 600; color: var(--border-gold);">${slNo})</td>`;
+                        html += `<td style="padding: 12px;">${playerName}</td>`;
                         html += `<td style="padding: 12px;">${teamName}</td>`;
-                        html += `<td style="padding: 12px;">${player.gender}</td>`;
-                        html += `<td style="padding: 12px;">${player.categories ? player.categories.join(', ') : 'N/A'}</td>`;
-                        html += `<td style="padding: 12px;">${player.weightCategory || 'N/A'}</td>`;
-                        html += `<td style="padding: 12px;">${UI.formatTimestamp(player.submittedAt)}</td>`;
+                        html += `<td style="padding: 12px;">${gender}</td>`;
+                        html += `<td style="padding: 12px;">${categories}</td>`;
+                        html += `<td style="padding: 12px;">${weightCategory}</td>`;
+                        html += `<td style="padding: 12px;">${submittedTime}</td>`;
                         html += '</tr>';
+                        displayedCount++;
                     });
                     
+                    console.log('📊 Players displayed in table:', displayedCount);
+                    
                     html += '</tbody></table>';
-                    document.getElementById('recentPlayersList').innerHTML = html;
+                    // Add player count summary before the table
+                    const summaryHtml = `<div style="margin-bottom: 15px; color: var(--text-gray); font-size: 1rem;">
+                        <strong>Total Players: ${displayedCount}</strong>
+                    </div>`;
+                    document.getElementById('recentPlayersList').innerHTML = summaryHtml + html;
                 } else {
                     document.getElementById('recentPlayersList').innerHTML = '<p style="color: #888;">No players registered yet.</p>';
                 }

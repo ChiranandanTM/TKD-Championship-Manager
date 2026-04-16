@@ -78,6 +78,32 @@ const BRACKET = {
     });
   },
 
+  // Get bracket status: "Completed", "Live", or "Pending"
+  async getBracketStatus(categoryKey) {
+    try {
+      const bracketRef = dbRef(database, `brackets/${categoryKey}`);
+      const snapshot = await dbGet(bracketRef);
+
+      if (!snapshot.exists()) {
+        return 'Pending'; // No bracket yet
+      }
+
+      let bracket = snapshot.val();
+
+      // Return status based on bracket.status field
+      if (bracket.status === 'complete') {
+        return 'Completed';
+      } else if (bracket.status === 'live') {
+        return 'Live';
+      } else {
+        return 'Pending';
+      }
+    } catch (error) {
+      console.error("❌ Error getting bracket status:", error);
+      return 'Pending';
+    }
+  },
+
   // Render category list
   renderCategories() {
     const container = document.getElementById('categoriesList');
@@ -85,22 +111,46 @@ const BRACKET = {
 
     let html = '<div class="categories-grid">';
 
-    Object.keys(this.categories).forEach(key => {
+    const categoryPromises = Object.keys(this.categories).map(async (key) => {
       const cat = this.categories[key];
       const playerCount = cat.players.length;
+      const status = await this.getBracketStatus(key);
 
-      html += `
+      // Determine status styling
+      let statusColor = 'var(--text-gray)';
+      let statusText = status;
+
+      if (status === 'Completed') {
+        statusColor = 'var(--success-green)';
+      } else if (status === 'Live') {
+        statusColor = 'var(--warning-orange)';
+      } else if (status === 'Pending') {
+        statusColor = 'var(--accent-cyan)';
+      }
+
+      return `
         <div class="category-card" onclick="BRACKET.openCategory('${key}')">
           <h3>${cat.gender} ${cat.ageCategory}</h3>
           <p class="weight-label">${cat.weightCategory}</p>
           <p class="player-count">${playerCount} Player${playerCount !== 1 ? 's' : ''}</p>
+          <div style="margin: 12px 0; padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; text-align: center;">
+            <span style="color: ${statusColor}; font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px;">
+              ${statusText === 'Live' ? '🔴 ' : ''}${statusText === 'Completed' ? '✅ ' : ''}${statusText === 'Pending' ? '⏳ ' : ''}${statusText}
+            </span>
+          </div>
           <button class="btn-primary">View Bracket</button>
         </div>
       `;
     });
 
-    html += '</div>';
-    container.innerHTML = html;
+    Promise.all(categoryPromises).then((categoryCards) => {
+      let finalHtml = '<div class="categories-grid">';
+      finalHtml += categoryCards.join('');
+      finalHtml += '</div>';
+      container.innerHTML = finalHtml;
+    }).catch(error => {
+      console.error("❌ Error rendering categories:", error);
+    });
   },
 
   // Open category bracket directly
@@ -135,6 +185,15 @@ const BRACKET = {
       console.log(`Creating new bracket with players:`, category.players);
       this.currentBracket = this.createBracket(category.players);
       await this.saveBracket(categoryKey, this.currentBracket);
+    }
+
+    // Mark bracket as "Live" when opening (only if not already completed)
+    if (!this.isCategoryComplete()) {
+      this.currentBracket.status = 'live';
+      await this.saveBracket(categoryKey, this.currentBracket);
+      console.log(`📍 Bracket ${categoryKey} marked as LIVE`);
+    } else {
+      console.log(`✅ Bracket ${categoryKey} is already COMPLETED, status unchanged`);
     }
 
     await this.loadMatchHistory(categoryKey);
@@ -201,6 +260,15 @@ const BRACKET = {
       console.log(`Creating new bracket with players:`, category.players);
       this.currentBracket = this.createBracket(category.players);
       await this.saveBracket(categoryKey, this.currentBracket);
+    }
+
+    // Mark bracket as "Live" when opening (only if not already completed)
+    if (!this.isCategoryComplete()) {
+      this.currentBracket.status = 'live';
+      await this.saveBracket(categoryKey, this.currentBracket);
+      console.log(`📍 Bracket ${categoryKey} marked as LIVE`);
+    } else {
+      console.log(`✅ Bracket ${categoryKey} is already COMPLETED, status unchanged`);
     }
 
     await this.loadMatchHistory(categoryKey);
@@ -674,14 +742,14 @@ const BRACKET = {
     let html = `
       <div class="match ${match.status}" data-match-id="${match.matchId}">
         <div class="match-players">
-          <div class="player ${match.winner === player1?.id ? 'winner' : ''} ${match.eliminated === player1?.id ? 'eliminated' : ''}">
+          <div class="player player-blue ${match.winner === player1?.id ? 'winner' : ''} ${match.eliminated === player1?.id ? 'eliminated' : ''}">
             <span class="player-name">${player1 ? player1.playerName : '<span class="bye">BYE</span>'}</span>
             <span class="player-center">${player1 ? (player1.centerName || '') : ''}</span>
           </div>
 
           <div class="vs">VS</div>
 
-          <div class="player ${match.winner === player2?.id ? 'winner' : ''} ${match.eliminated === player2?.id ? 'eliminated' : ''}">
+          <div class="player player-red ${match.winner === player2?.id ? 'winner' : ''} ${match.eliminated === player2?.id ? 'eliminated' : ''}">
             <span class="player-name">${player2 ? player2.playerName : '<span class="bye">BYE</span>'}</span>
             <span class="player-center">${player2 ? (player2.centerName || '') : ''}</span>
           </div>
@@ -774,6 +842,11 @@ const BRACKET = {
 
     await this.saveBracket(this.currentCategory, this.currentBracket);
     this.renderBracket();
+    
+    // Update category list to show "Live" status
+    if (!document.getElementById('bracketContainer').style.display || document.getElementById('bracketContainer').style.display === 'none') {
+      this.renderCategories();
+    }
   },
 
   // Set winner (when radio button selected)
@@ -808,6 +881,9 @@ const BRACKET = {
 
     await this.saveBracket(this.currentCategory, this.currentBracket);
     this.renderBracket();
+    
+    // Update category list to show status change (from "Live" to potentially "Completed" or "Pending")
+    this.renderCategories();
 
     const winnerName = match.player1.id === match.winner ? match.player1.playerName : match.player2.playerName;
     if (typeof MODAL !== 'undefined') {
@@ -933,15 +1009,35 @@ const BRACKET = {
   },
 
   // Close category view
-  closeCategory() {
+  async closeCategory() {
     // Stop real-time listeners when leaving the bracket
     this.stopBracketListeners();
+
+    // Update bracket status before closing
+    if (this.currentCategory && this.currentBracket) {
+      const isBracketComplete = this.isCategoryComplete();
+      
+      if (isBracketComplete) {
+        // Keep as "Complete" if all matches are done
+        this.currentBracket.status = 'complete';
+        console.log(`✅ Bracket ${this.currentCategory} marked as COMPLETE`);
+      } else {
+        // Revert to "Pending" if matches remain
+        this.currentBracket.status = 'pending';
+        console.log(`⏳ Bracket ${this.currentCategory} reverted to PENDING`);
+      }
+      
+      await this.saveBracket(this.currentCategory, this.currentBracket);
+    }
 
     document.getElementById('bracketContainer').style.display = 'none';
     document.getElementById('categoriesList').style.display = 'block';
     this.currentCategory = null;
     this.currentBracket = null;
     this.matchHistory = [];
+    
+    // Refresh category list to update status display
+    this.renderCategories();
   },
 
   // Check if every round has been built and every match is completed

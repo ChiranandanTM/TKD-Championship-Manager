@@ -419,6 +419,9 @@ const REGISTRATION = {
               </div>
               <input type="hidden" id="${field.id}" name="${field.id}" value="">
             `;
+          } else if (field.id === 'weight') {
+            // Weight field: use text input with numeric pattern to preserve exact user input
+            fieldHTML += `<input type="text" id="${field.id}" name="${field.id}" pattern="^\\d+(\\.\\d+)?$" placeholder="Enter weight (e.g., 60 or 61.5)" title="Please enter a valid weight (numbers and one decimal point only)" ${requiredAttr} ${readonlyAttr}>`;
           } else {
             fieldHTML += `<input type="text" id="${field.id}" name="${field.id}" ${requiredAttr} ${readonlyAttr}>`;
           }
