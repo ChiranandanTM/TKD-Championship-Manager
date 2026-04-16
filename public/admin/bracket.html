@@ -1,0 +1,69 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tier List - Bracket Management</title>
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/js/modal.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="page-header">
+        <h1 class="page-title">🏆 TOURNAMENT BRACKET</h1>
+        <button class="btn-secondary" onclick="
+            if (typeof BRACKET !== 'undefined' && BRACKET.currentCategory) {
+                BRACKET.closeCategory();
+            } else {
+                window.history.back();
+            }
+        ">
+            ← Back
+        </button>
+        <button class="btn-danger" onclick="UI.logout()">Logout</button>
+    </div>
+
+    <div class="container">
+        <!-- Categories List -->
+        <div id="categoriesList"></div>
+
+        <!-- Bracket Display -->
+        <div id="bracketContainer" style="display: none;"></div>
+    </div>
+
+    <!-- Firebase SDK v9 -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+    <script type="module" src="/js/bracket.js"></script>
+
+    <script type="module">
+        // ES modules are deferred and run after DOM is ready.
+        // DOMContentLoaded has already fired by the time this executes,
+        // so we call init() directly — no listener needed.
+        if (typeof UI !== 'undefined') {
+            UI.initPageProtection(['admin', 'judge']);
+        }
+        if (typeof BRACKET !== 'undefined') {
+            BRACKET.init();
+        }
+    </script>
+
+    <!-- Override native alert/confirm with custom modals -->
+    <script>
+        window.alert = function (message) {
+            return MODAL.showAlert(message);
+        };
+
+        window.confirm = function (message) {
+            return MODAL.showConfirm(message);
+        };
+    </script>
+</body>
+
+</html>

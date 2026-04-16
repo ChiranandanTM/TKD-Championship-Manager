@@ -1,0 +1,60 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Registration - Taekwondo Championship</title>
+
+    <!-- PAGE PROTECTION: Must run FIRST before anything else -->
+    <script>
+        (function() {
+            var role = sessionStorage.getItem('userRole');
+            if (role !== 'team') {
+                window.location.replace('/index.html');
+            }
+        })();
+    </script>
+
+        <link rel="preconnect" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="dns-prefetch" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/js/modal.js"></script>
+</head>
+<body>
+    <div class="page-header">
+        <div class="container">
+            <button class="btn-secondary" onclick="window.location.href='/team/dashboard.html'" style="float: left;">
+                ← Back to Dashboard
+            </button>
+            <button class="btn-danger" onclick="UI.logout()" style="float: right;">
+                Logout
+            </button>
+            <div style="clear: both;"></div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Championship Header (Dynamic) -->
+        <div id="championshipHeader"></div>
+
+        <!-- Registration Form -->
+        <div class="section">
+            <h2 style="text-align: center; margin-bottom: 30px;">Player Registration Form</h2>
+            <form id="registrationForm">
+                <!-- Form fields will be dynamically generated here -->
+            </form>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/form-config.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+    <script type="module" src="/js/registration.js"></script>
+    <script src="/js/custom-select.js"></script>
+</body>
+</html>

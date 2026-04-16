@@ -1,0 +1,101 @@
+// FIREBASE v11 - Modular SDK with persistence + performance optimizations
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child, goOnline, goOffline, connectDatabaseEmulator } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyC7NfS7RMv8C78KGJsPkQCeV9fzmJ86lDU",
+  authDomain: "taekowndo-championship.firebaseapp.com",
+  databaseURL: "https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "taekowndo-championship",
+  storageBucket: "taekowndo-championship.firebasestorage.app",
+  messagingSenderId: "747830683087",
+  appId: "1:747830683087:web:3a7461d1a54d475f1cdeba"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const database = getDatabase(app);
+const storage = getStorage(app);
+
+// ── Keep connection alive on visibility change ────────────────────────────────
+// When tab becomes hidden, Firebase may drop the connection.
+// Re-connect when user comes back to avoid stale reads.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    goOnline(database);
+  }
+});
+
+// ── Monitor connection state and show user feedback ───────────────────────────
+const connectedRef = ref(database, '.info/connected');
+let connectionBanner = null;
+onValue(connectedRef, (snap) => {
+  const isConnected = snap.val() === true;
+  if (!isConnected) {
+    // Show offline banner after 3s delay (avoid flashing on brief drops)
+    if (!connectionBanner) {
+      connectionBanner = setTimeout(() => {
+        const banner = document.createElement('div');
+        banner.id = 'offline-banner';
+        banner.textContent = '⚠️ No internet connection — changes will sync when reconnected';
+        banner.style.cssText = `
+          position:fixed;bottom:0;left:0;right:0;
+          background:#FF6B35;color:#fff;
+          text-align:center;padding:10px;
+          font-size:14px;z-index:99999;
+          font-family:sans-serif;
+        `;
+        document.body && document.body.appendChild(banner);
+      }, 3000);
+    }
+  } else {
+    if (connectionBanner) {
+      clearTimeout(connectionBanner);
+      connectionBanner = null;
+    }
+    const banner = document.getElementById('offline-banner');
+    if (banner) banner.remove();
+  }
+});
+
+// ── Register service worker for offline + fast load ──────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/js/service-worker.js')
+      .then(reg => {
+        // Check for updates every 60 seconds
+        setInterval(() => reg.update(), 60000);
+      })
+      .catch(() => {});
+  });
+}
+
+// ── Export everything globally ────────────────────────────────────────────────
+window.firebaseApp = app;
+window.auth = auth;
+window.database = database;
+window.storage = storage;
+window.dbRef = ref;
+window.dbSet = set;
+window.dbGet = get;
+window.dbUpdate = update;
+window.dbRemove = remove;
+window.dbOnValue = onValue;
+window.dbPush = push;
+window.dbQuery = query;
+window.dbOrderByChild = orderByChild;
+window.dbEqualTo = equalTo;
+window.dbChild = child;
+window.storageRef = storageRef;
+window.uploadBytes = uploadBytes;
+window.getDownloadURL = getDownloadURL;
+window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+window.signOut = signOut;
+window.onAuthStateChanged = onAuthStateChanged;
+window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+window.dbGoOnline = goOnline;
+window.dbGoOffline = goOffline;
+
+console.log("✅ Firebase v11 initialized");

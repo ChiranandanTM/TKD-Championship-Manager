@@ -1,0 +1,464 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Preview - Taekwondo Championship</title>
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/js/modal.js"></script>
+    <style>
+        .preview-header {
+            background: linear-gradient(135deg, #1a3a52 0%, #2d5a7b 100%);
+            padding: 40px;
+            text-align: center;
+            margin-bottom: 40px;
+            border-radius: var(--border-radius);
+            border: 3px solid var(--border-gold);
+        }
+
+        .preview-header h1 {
+            color: var(--border-gold);
+            font-size: 2.2rem;
+            margin: 0 0 10px 0;
+        }
+
+        .preview-header p {
+            color: var(--text-white);
+            font-size: 1.1rem;
+            margin: 0;
+        }
+
+        .championship-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: var(--spacing-md);
+            margin-bottom: 30px;
+            background: var(--secondary-black);
+            padding: var(--spacing-lg);
+            border-radius: var(--border-radius);
+            border: 2px solid var(--border-gold);
+        }
+
+        .detail-item {
+            text-align: center;
+        }
+
+        .detail-label {
+            color: var(--text-gray);
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+
+        .detail-value {
+            color: var(--border-gold);
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .form-preview {
+            background: var(--secondary-black);
+            padding: var(--spacing-lg);
+            border-radius: var(--border-radius);
+            border: 2px solid var(--border-gold);
+        }
+
+        .form-title {
+            text-align: center;
+            color: var(--border-gold);
+            font-size: 1.8rem;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid var(--border-gold);
+        }
+
+        .form-fields {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-lg);
+        }
+
+        .form-field {
+            background: var(--primary-black);
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius);
+            border: 2px solid var(--text-gray);
+        }
+
+        .field-label {
+            display: block;
+            color: var(--border-gold);
+            font-weight: 700;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .field-label .required {
+            color: #ff4444;
+            margin-left: 5px;
+        }
+
+        .field-type {
+            color: var(--text-gray);
+            font-size: 0.85rem;
+            font-style: italic;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+            width: 100%;
+            padding: 12px;
+            background: var(--card-black);
+            border: 1px solid var(--text-gray);
+            color: var(--text-white);
+            border-radius: 4px;
+            font-size: 1rem;
+            font-family: inherit;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--border-gold);
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            margin-right: 10px;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+
+        .checkbox-item label {
+            color: var(--text-white);
+            cursor: pointer;
+        }
+
+        .info-badge {
+            background: var(--warning-orange);
+            color: var(--primary-black);
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            margin-left: 10px;
+        }
+
+        .info-badge.readonly {
+            background: #666;
+            color: var(--text-white);
+        }
+
+        .preview-actions {
+            display: flex;
+            gap: var(--spacing-md);
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 2px solid var(--border-gold);
+        }
+
+        .preview-actions button {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .disabled-notice {
+            background: var(--warning-orange);
+            color: var(--primary-black);
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius);
+            text-align: center;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        <h1 class="page-title">👁️ FORM PREVIEW</h1>
+        <button class="btn-secondary" onclick="window.location.href='dashboard.html'">
+            ← Back to Dashboard
+        </button>
+        <button class="btn-danger" onclick="UI.logout()">Logout</button>
+    </div>
+
+    <div class="container">
+        <div class="disabled-notice">
+            This is a PREVIEW of the form that will be presented to teams. Form submission is disabled.
+        </div>
+
+        <!-- Championship Header -->
+        <div class="preview-header">
+            <h1 id="previewTitle">TAEKWONDO CHAMPIONSHIP</h1>
+            <p id="previewSubtitle">Karnataka State Championship</p>
+        </div>
+
+        <!-- Championship Details -->
+        <div class="championship-details">
+            <div class="detail-item">
+                <div class="detail-label">Venue</div>
+                <div class="detail-value" id="detailVenue">National Sports Complex</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Location</div>
+                <div class="detail-value" id="detailAddress">Bengaluru, Karnataka</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Date</div>
+                <div class="detail-value" id="detailDate">March 15, 2026</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">Organizer</div>
+                <div class="detail-value" id="detailOrganizer">Karnataka Taekwondo Association</div>
+            </div>
+        </div>
+
+        <!-- Form Preview -->
+        <div class="form-preview">
+            <h2 class="form-title">Player Registration Form</h2>
+            <div class="form-fields" id="previewFormFields"></div>
+
+            <div class="preview-actions">
+                <button class="btn-secondary" onclick="window.location.href='dashboard.html'">
+                    ← Back to Dashboard
+                </button>
+                <button class="btn-primary" onclick="if (typeof MODAL !== 'undefined') { MODAL.info('Form submission is disabled in preview mode.'); } else { alert('Form submission is disabled in preview mode.'); }">
+                    📝 Submit (Preview Only)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK v9 -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/form-config.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+
+    <script type="module">
+        const FORM_PREVIEW = {
+            async init() {
+                try {
+                    console.log("🔄 Initializing form preview...");
+                    
+                    // Page protection - only admin/judge can access
+                    if (typeof UI !== 'undefined') {
+                        UI.initPageProtection(['admin', 'judge']);
+                    }
+
+                    console.log("📥 Loading form config...");
+                    const config = await FORM_CONFIG.loadConfig();
+                    console.log("✅ Config loaded, rendering preview...");
+                    this.renderPreview(config);
+                    console.log("✅ Form preview ready");
+                } catch (error) {
+                    console.error("❌ Error initializing form preview:", error);
+                    const previewFormFields = document.getElementById('previewFormFields');
+                    if (previewFormFields) {
+                        previewFormFields.innerHTML = `<div class="error" style="padding: 20px; background: #ff6b6b; color: white; border-radius: 5px;">
+                            ❌ Error loading form preview: ${error.message}
+                            <br><br>
+                            <button onclick="location.reload()">🔄 Reload Page</button>
+                        </div>`;
+                    }
+                }
+            },
+
+            renderPreview(config) {
+                try {
+                    // Validate config structure
+                    if (!config) {
+                        console.error("❌ Config is null/undefined");
+                        document.getElementById('previewFormFields').innerHTML = '<div class="error">Configuration not loaded</div>';
+                        return;
+                    }
+
+                    // Validate championship
+                    if (!config.championship) {
+                        console.error("❌ Championship data missing");
+                        config.championship = {
+                            title: 'TAEKWONDO CHAMPIONSHIP',
+                            venue: 'National Sports Complex',
+                            address: 'Location TBD',
+                            date: '2026-03-15',
+                            organizer: 'Karnataka Taekwondo Association'
+                        };
+                    }
+
+                    // Log the actual championship data for debugging
+                    console.log("📊 Championship data (form-preview):", config.championship);
+
+                    // Get values with defaults and validation
+                    let title = config.championship?.title || 'TAEKWONDO CHAMPIONSHIP';
+                    let venue = config.championship?.venue || 'National Sports Complex';
+                    let address = config.championship?.address || 'Location TBD';
+                    let organizer = config.championship?.organizer || 'Karnataka Taekwondo Association';
+                    let date = config.championship?.date || '2026-03-15';
+                    
+                    // Clean up string values
+                    venue = (venue && venue !== 'TBD' && venue.trim()) || 'Venue TBD';
+                    address = (address && address !== 'TBD' && address.trim()) || 'Location TBD';
+                    organizer = (organizer && organizer !== 'TBD' && organizer.trim()) || 'Karnataka Taekwondo Association';
+                    
+                    // If organizer looks like a location, swap with address
+                    const locationKeywords = ['tiptur', 'bangalore', 'bengaluru', 'karnataka', 'district', 'taluk', 'city', 'state', 'india'];
+                    const organizerLower = organizer.toLowerCase();
+                    const addressLower = address.toLowerCase();
+                    
+                    if (locationKeywords.some(keyword => organizerLower.includes(keyword)) && 
+                        !locationKeywords.some(keyword => addressLower.includes(keyword))) {
+                        console.warn("⚠️ Detected location in organizer field (form-preview), swapping with address");
+                        const temp = organizer;
+                        organizer = address;
+                        address = temp;
+                    }
+
+                    // Update championship details
+                    document.getElementById('previewTitle').textContent = title;
+                    document.getElementById('previewSubtitle').textContent = `2026 ${organizer}`;
+                    document.getElementById('detailVenue').textContent = venue;
+                    document.getElementById('detailAddress').textContent = address;
+                    document.getElementById('detailDate').textContent = this.formatDate(date);
+                    document.getElementById('detailOrganizer').textContent = organizer;
+
+                    // Validate fields - must be array
+                    if (!config.fields || !Array.isArray(config.fields)) {
+                        console.warn("⚠️ Fields not available or not an array, using defaults");
+                        if (typeof FORM_CONFIG !== 'undefined' && FORM_CONFIG.defaultConfig) {
+                            config.fields = FORM_CONFIG.defaultConfig.fields;
+                        } else {
+                            config.fields = [];
+                        }
+                    }
+
+                    if (config.fields.length === 0) {
+                        console.warn("⚠️ No fields in config");
+                        document.getElementById('previewFormFields').innerHTML = '<div class="info">No form fields configured</div>';
+                        return;
+                    }
+
+                    // Sort fields by order - safe spread
+                    const fieldsArray = Array.isArray(config.fields) ? config.fields : [];
+                    const sortedFields = [...fieldsArray].sort((a, b) => (a.order || 0) - (b.order || 0));
+
+                    // Render form fields
+                    let html = '';
+                    sortedFields.forEach(field => {
+                        html += this.renderField(field);
+                    });
+
+                    document.getElementById('previewFormFields').innerHTML = html;
+                } catch (error) {
+                    console.error("❌ Error rendering preview:", error);
+                    document.getElementById('previewFormFields').innerHTML = `<div class="error">Error rendering form: ${error.message}</div>`;
+                }
+            },
+
+            renderField(field) {
+                const isRequired = field.required ? '<span class="required">*</span>' : '';
+                const isReadonly = field.readonly ? '<span class="info-badge readonly">Read-only</span>' : '';
+
+                let fieldHtml = `
+                    <div class="form-field">
+                        <label class="field-label">
+                            ${field.label}
+                            ${isRequired}
+                            ${isReadonly}
+                        </label>
+                `;
+
+                switch (field.type) {
+                    case 'text':
+                        fieldHtml += `<input type="text" class="form-input" placeholder="Enter ${field.label.toLowerCase()}" disabled>`;
+                        break;
+
+                    case 'number':
+                        fieldHtml += `<input type="number" class="form-input" placeholder="Enter ${field.label.toLowerCase()}" disabled>`;
+                        break;
+
+                    case 'date':
+                        fieldHtml += `<input type="date" class="form-input" disabled>`;
+                        break;
+
+                    case 'image':
+                        fieldHtml += `
+                            <div style="background: var(--card-black); padding: 20px; border-radius: 4px; text-align: center; color: var(--text-gray);">
+                                📷 Image upload field
+                            </div>
+                        `;
+                        break;
+
+                    case 'select':
+                        fieldHtml += `
+                            <select class="form-select" disabled>
+                                <option>Select ${field.label.toLowerCase()}...</option>
+                                ${field.options ? field.options.map(opt => `<option>${opt}</option>`).join('') : ''}
+                            </select>
+                        `;
+                        break;
+
+                    case 'checkbox':
+                        fieldHtml += `
+                            <div class="checkbox-group">
+                                ${field.options ? field.options.map(opt => `
+                                    <div class="checkbox-item">
+                                        <input type="checkbox" id="opt_${opt}" disabled>
+                                        <label for="opt_${opt}">${opt}</label>
+                                    </div>
+                                `).join('') : ''}
+                            </div>
+                        `;
+                        break;
+
+                    case 'checkbox-single':
+                        fieldHtml += `
+                            <div class="checkbox-group">
+                                ${field.options ? field.options.map(opt => `
+                                    <div class="checkbox-item">
+                                        <input type="checkbox" id="single_${opt}" disabled>
+                                        <label for="single_${opt}">${opt}</label>
+                                    </div>
+                                `).join('') : ''}
+                            </div>
+                        `;
+                        break;
+
+                    default:
+                        fieldHtml += `<input type="text" class="form-input" disabled>`;
+                }
+
+                fieldHtml += '</div>';
+                return fieldHtml;
+            },
+
+            formatDate(dateStr) {
+                if (!dateStr) return 'N/A';
+                const date = new Date(dateStr + 'T00:00:00');
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+            }
+        };
+
+        window.FORM_PREVIEW = FORM_PREVIEW;
+
+        // Initialize when page loads
+        window.addEventListener('DOMContentLoaded', async () => {
+            await FORM_PREVIEW.init();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,347 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weight Categories Editor - Taekwondo Championship</title>
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <style>
+        .weight-editor {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: var(--spacing-lg);
+            margin: var(--spacing-lg) 0;
+        }
+
+        .category-group {
+            background: var(--secondary-black);
+            border: 2px solid var(--border-gold);
+            border-radius: var(--border-radius);
+            padding: var(--spacing-md);
+        }
+
+        .category-group h3 {
+            color: var(--border-gold);
+            margin-bottom: var(--spacing-md);
+            border-bottom: 2px solid var(--border-gold);
+            padding-bottom: var(--spacing-sm);
+        }
+
+        .weight-ranges {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-sm);
+        }
+
+        .weight-range {
+            background: var(--primary-black);
+            padding: var(--spacing-sm);
+            border-radius: var(--border-radius);
+            border: 1px solid var(--text-gray);
+        }
+
+        .weight-range input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            background: var(--card-black);
+            border: 1px solid var(--text-gray);
+            color: var(--text-white);
+            border-radius: 4px;
+        }
+
+        .weight-range label {
+            display: block;
+            color: var(--text-gray);
+            font-size: 0.9rem;
+            margin-bottom: 3px;
+        }
+
+        .range-values {
+            display: flex;
+            gap: var(--spacing-sm);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .range-values input {
+            flex: 1;
+        }
+
+        .btn-remove-range {
+            background: #cc3333;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            margin-top: var(--spacing-sm);
+        }
+
+        .btn-remove-range:hover {
+            background: #990000;
+        }
+
+        .btn-add-range {
+            background: var(--border-gold);
+            color: var(--primary-black);
+            border: none;
+            padding: 10px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            font-weight: 700;
+            width: 100%;
+            margin-top: var(--spacing-sm);
+        }
+
+        .btn-add-range:hover {
+            transform: scale(1.02);
+        }
+
+        .editor-actions {
+            display: flex;
+            gap: var(--spacing-md);
+            margin-top: var(--spacing-lg);
+            flex-wrap: wrap;
+        }
+
+        .editor-actions button {
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .success-message {
+            background: var(--success-green);
+            color: var(--primary-black);
+            padding: var(--spacing-md);
+            border-radius: var(--border-radius);
+            margin-bottom: var(--spacing-lg);
+            display: none;
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .success-message.show {
+            display: block;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        <h1 class="page-title">⚖️ WEIGHT CATEGORIES EDITOR</h1>
+        <button class="btn-secondary" onclick="window.history.back()">
+            ← Back
+        </button>
+        <button class="btn-danger" onclick="UI.logout()">Logout</button>
+    </div>
+
+    <div class="container">
+        <div class="success-message" id="successMsg">✅ Weight categories saved successfully!</div>
+
+        <div id="weightEditor"></div>
+
+        <div class="editor-actions">
+            <button class="btn-primary" onclick="WEIGHT_EDITOR.saveCategories()">
+                💾 Save Categories
+            </button>
+            <button class="btn-secondary" onclick="window.history.back()">
+                ← Back to Dashboard
+            </button>
+        </div>
+    </div>
+
+    <!-- Firebase SDK v9 -->
+    <script src="/js/modal.js"></script>
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+
+    <script type="module">
+        const WEIGHT_EDITOR = {
+            categories: {}, // Will be populated from CATEGORY_LOGIC
+
+            async init() {
+                // Wait for Firebase globals
+                await new Promise(resolve => {
+                    const check = () => {
+                        if (typeof dbRef !== 'undefined' && typeof dbGet !== 'undefined' && typeof database !== 'undefined') resolve();
+                        else setTimeout(check, 50);
+                    };
+                    check();
+                });
+
+                // Load from Firebase first, fall back to defaults
+                try {
+                    const snap = await dbGet(dbRef(database, 'weightCategories'));
+                    if (snap.exists()) {
+                        this.categories = snap.val();
+                        console.log('✅ Weight categories loaded from Firebase');
+                    } else {
+                        this.categories = JSON.parse(JSON.stringify(CATEGORY_LOGIC.defaultWeightCategories));
+                        console.log('ℹ️ Using default weight categories');
+                    }
+                } catch (e) {
+                    this.categories = JSON.parse(JSON.stringify(CATEGORY_LOGIC.defaultWeightCategories));
+                    console.warn('⚠️ Could not load from Firebase, using defaults:', e.message);
+                }
+
+                this.renderEditor();
+            },
+
+            renderEditor() {
+                const container = document.getElementById('weightEditor');
+                let html = '<div class="weight-editor">';
+
+                // Sort categories alphabetically
+                const sortedKeys = Object.keys(this.categories).sort();
+
+                sortedKeys.forEach(categoryKey => {
+                    const ranges = this.categories[categoryKey];
+                    
+                    html += `
+                        <div class="category-group">
+                            <h3>${categoryKey}</h3>
+                            <div class="weight-ranges" data-category="${categoryKey}">
+                    `;
+
+                    ranges.forEach((range, index) => {
+                        const rangeId = `range_${categoryKey}_${index}`;
+                        const minId = `min_${categoryKey}_${index}`;
+                        const maxId = `max_${categoryKey}_${index}`;
+                        const labelId = `label_${categoryKey}_${index}`;
+                        
+                        html += `
+                            <div class="weight-range">
+                                <label for="${rangeId}">Weight Range ${index + 1}: ${range.label}</label>
+                                <div id="${rangeId}" class="range-values">
+                                    <div>
+                                        <label for="${minId}" style="font-size: 0.8rem;">Min (kg)</label>
+                                        <input type="number" id="${minId}" value="${range.min}" data-index="${index}" data-field="min" 
+                                               onchange="WEIGHT_EDITOR.updateRange('${categoryKey}', ${index}, this)">
+                                    </div>
+                                    <div>
+                                        <label for="${maxId}" style="font-size: 0.8rem;">Max (kg)</label>
+                                        <input type="number" id="${maxId}" value="${range.max}" data-index="${index}" data-field="max"
+                                               onchange="WEIGHT_EDITOR.updateRange('${categoryKey}', ${index}, this)">
+                                    </div>
+                                </div>
+                                <label for="${labelId}" style="font-size: 0.8rem;">Label</label>
+                                <input type="text" id="${labelId}" placeholder="Label (e.g., Light Weight)" value="${range.label}" 
+                                       data-index="${index}" data-field="label"
+                                       onchange="WEIGHT_EDITOR.updateRange('${categoryKey}', ${index}, this)">
+                                <button class="btn-remove-range" onclick="WEIGHT_EDITOR.removeRange('${categoryKey}', ${index})">
+                                    🗑️ Remove
+                                </button>
+                            </div>
+                        `;
+                    });
+
+                    html += `
+                                <button class="btn-add-range" onclick="WEIGHT_EDITOR.addRange('${categoryKey}')">
+                                    ➕ Add Weight Range
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += '</div>';
+                container.innerHTML = html;
+            },
+
+            updateRange(categoryKey, index, element) {
+                const field = element.getAttribute('data-field');
+                const value = field === 'label' ? element.value : parseFloat(element.value);
+                
+                if (this.categories[categoryKey] && this.categories[categoryKey][index]) {
+                    this.categories[categoryKey][index][field] = value;
+                }
+            },
+
+            addRange(categoryKey) {
+                if (!this.categories[categoryKey]) return;
+
+                const newRange = {
+                    min: 0,
+                    max: 999,
+                    label: 'New Weight Category'
+                };
+
+                this.categories[categoryKey].push(newRange);
+                this.renderEditor();
+            },
+
+            async removeRange(categoryKey, index) {
+                const confirmed = await MODAL.showConfirm('Are you sure you want to remove this weight range?');
+                if (!confirmed) return;
+
+                if (this.categories[categoryKey]) {
+                    this.categories[categoryKey].splice(index, 1);
+                    this.renderEditor();
+                }
+            },
+
+            async saveCategories() {
+                try {
+                    // Wait for Firebase globals if not ready yet
+                    await new Promise(resolve => {
+                        const check = () => {
+                            if (typeof dbRef !== 'undefined' && typeof dbSet !== 'undefined' && typeof database !== 'undefined') resolve();
+                            else setTimeout(check, 50);
+                        };
+                        check();
+                    });
+
+                    // Save to Firebase (source of truth)
+                    await dbSet(dbRef(database, 'weightCategories'), this.categories);
+
+                    // Also update CATEGORY_LOGIC in memory so current session uses new values
+                    if (typeof CATEGORY_LOGIC !== 'undefined') {
+                        CATEGORY_LOGIC.defaultWeightCategories = this.categories;
+                    }
+
+                    // Clear performance cache so next load fetches fresh data
+                    if (typeof PERFORMANCE_CACHE !== 'undefined') {
+                        PERFORMANCE_CACHE.clear('weightCategories');
+                    }
+
+                    // Show success message
+                    const msg = document.getElementById('successMsg');
+                    msg.classList.add('show');
+                    setTimeout(() => { msg.classList.remove('show'); }, 3000);
+
+                    console.log('✅ Weight categories saved to Firebase!');
+
+                } catch (error) {
+                    MODAL.error('❌ Error saving weight categories: ' + error.message);
+                    console.error('Error:', error);
+                }
+            }
+        };
+
+        window.WEIGHT_EDITOR = WEIGHT_EDITOR;
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (typeof UI !== 'undefined') {
+                UI.initPageProtection(['admin', 'judge']);
+            }
+            await WEIGHT_EDITOR.init();
+        });
+    </script>
+</body>
+</html>

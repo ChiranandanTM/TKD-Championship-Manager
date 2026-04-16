@@ -1,0 +1,1442 @@
+// ============================================
+// BRACKET & TOURNAMENT LOGIC (SINGLE ELIMINATION)
+// With Smart Opponent Matching & Match Management
+// ============================================
+
+const BRACKET = {
+  players: [],
+  categories: {},
+  currentCategory: null,
+  currentBracket: null,
+  matchHistory: [],
+  pendingCategoryData: null,
+  bracketListener: null,
+  historyListener: null,
+
+  // Category images mapping
+  categoryImages: {
+    'dobok': '/assets/images/dobok-silhouette.png',
+    'logo': '/assets/images/logo-taekwondo.png',
+    'background': '/assets/images/background-dark.jpg'
+  },
+
+  // Initialize bracket system
+  async init() {
+    await this.loadPlayers();
+    this.categorizePlayers();
+    this.renderCategories();
+    console.log('✅ Bracket initialized with categories:', Object.keys(this.categories).length);
+  },
+
+  // Load all registered players
+  async loadPlayers() {
+    try {
+      const playersRef = dbRef(database, 'players');
+      const snapshot = await dbGet(playersRef);
+
+      if (snapshot.exists()) {
+        this.players = [];
+        snapshot.forEach(childSnapshot => {
+          const player = {
+            id: childSnapshot.key,
+            ...childSnapshot.val()
+          };
+          this.players.push(player);
+        });
+      }
+    } catch (error) {
+      console.error("❌ Error loading players:", error);
+    }
+  },
+
+  // Categorize players by gender, age category (auto-determined), and weight
+  categorizePlayers() {
+    this.categories = {};
+
+    this.players.forEach(player => {
+      // Use ageCategory field (auto-calculated from DOB) instead of manual categories
+      const ageCategory = player.ageCategory || player.categories?.[0]; // Fallback for legacy data
+
+      if (!ageCategory || !player.gender || !player.weightCategory) {
+        console.warn(`⚠️ Skipping player ${player.id}: missing ageCategory, gender, or weightCategory`, player);
+        return;
+      }
+
+      const categoryKey = `${player.gender}-${ageCategory}-${player.weightCategory}`;
+
+      if (!this.categories[categoryKey]) {
+        this.categories[categoryKey] = {
+          gender: player.gender,
+          ageCategory: ageCategory,
+          weightCategory: player.weightCategory,
+          players: []
+        };
+      }
+
+      this.categories[categoryKey].players.push(player);
+      console.log(`✅ Player ${player.playerName} categorized under ${categoryKey}`);
+    });
+  },
+
+  // Render category list
+  renderCategories() {
+    const container = document.getElementById('categoriesList');
+    if (!container) return;
+
+    let html = '<div class="categories-grid">';
+
+    Object.keys(this.categories).forEach(key => {
+      const cat = this.categories[key];
+      const playerCount = cat.players.length;
+
+      html += `
+        <div class="category-card" onclick="BRACKET.openCategory('${key}')">
+          <h3>${cat.gender} ${cat.ageCategory}</h3>
+          <p class="weight-label">${cat.weightCategory}</p>
+          <p class="player-count">${playerCount} Player${playerCount !== 1 ? 's' : ''}</p>
+          <button class="btn-primary">View Bracket</button>
+        </div>
+      `;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+  },
+
+  // Open category bracket directly
+  async openCategory(categoryKey) {
+    this.currentCategory = categoryKey;
+    const category = this.categories[categoryKey];
+
+    if (!category) {
+      if (typeof MODAL !== 'undefined') {
+        MODAL.error('Category not found');
+      } else {
+        alert('Category not found');
+      }
+      return;
+    }
+
+    await this.loadPlayers();
+    this.categorizePlayers();
+
+    console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
+
+    await this.loadBracket(categoryKey);
+    if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
+      console.log(`Player count mismatch: deleting old bracket`);
+      await dbSet(dbRef(database, `brackets/${categoryKey}`), null);
+      this.currentBracket = null;
+    }
+
+    await this.loadBracket(categoryKey);
+
+    if (!this.currentBracket) {
+      console.log(`Creating new bracket with players:`, category.players);
+      this.currentBracket = this.createBracket(category.players);
+      await this.saveBracket(categoryKey, this.currentBracket);
+    }
+
+    await this.loadMatchHistory(categoryKey);
+
+    // Start real-time listeners for multi-court synchronization
+    this.setupBracketListeners(categoryKey);
+
+    this.renderBracket();
+  },
+
+  // Show category modal with image and details
+  showCategoryModal(categoryKey) {
+    const category = this.categories[categoryKey];
+    if (!category) return;
+
+    this.pendingCategoryData = { key: categoryKey, data: category };
+
+    const modal = document.getElementById('categoryModal');
+    const categoryImage = document.getElementById('categoryImage');
+    const categoryTitle = document.getElementById('categoryTitle');
+    const categoryPlayers = document.getElementById('categoryPlayers');
+
+    const imageUrl = this.categoryImages.dobok;
+
+    categoryImage.src = imageUrl;
+    categoryTitle.textContent = `${category.gender} ${category.ageCategory} - ${category.weightCategory}`;
+    categoryPlayers.textContent = `${category.players.length} Players registered`;
+
+    modal.classList.add('active');
+  },
+
+  // Close category modal
+  closeCategoryModal() {
+    const modal = document.getElementById('categoryModal');
+    modal.classList.remove('active');
+    this.pendingCategoryData = null;
+  },
+
+  // Start bracket when user confirms from modal
+  async startBracket() {
+    if (!this.pendingCategoryData) return;
+
+    const categoryKey = this.pendingCategoryData.key;
+    const category = this.pendingCategoryData.data;
+
+    this.closeCategoryModal();
+    this.currentCategory = categoryKey;
+
+    await this.loadPlayers();
+    this.categorizePlayers();
+
+    console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
+
+    await this.loadBracket(categoryKey);
+    if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
+      console.log(`Player count mismatch: deleting old bracket`);
+      await dbSet(dbRef(database, `brackets/${categoryKey}`), null);
+      this.currentBracket = null;
+    }
+
+    await this.loadBracket(categoryKey);
+
+    if (!this.currentBracket) {
+      console.log(`Creating new bracket with players:`, category.players);
+      this.currentBracket = this.createBracket(category.players);
+      await this.saveBracket(categoryKey, this.currentBracket);
+    }
+
+    await this.loadMatchHistory(categoryKey);
+
+    // Start real-time listeners for multi-court synchronization
+    this.setupBracketListeners(categoryKey);
+
+    this.renderBracket();
+  },
+
+  // Helper: Store only essential player info to reduce Firebase write size
+  compressPlayer(player) {
+    if (!player) return null;
+    // teamName may be stored as 'teamName' or 'centerName' depending on the
+    // registration form version — fall back to centerName so the PDF always
+    // has something to display.
+    return {
+      id: player.id,
+      playerName: player.playerName || '',
+      centerName: player.centerName || '',
+      teamName: player.teamName || player.centerName || ''
+    };
+  },
+
+  // Create new bracket using standard Taekwondo bye-distribution rules.
+  // Rounds are built one at a time — Round 1 is created upfront; later rounds
+  // are constructed dynamically by buildNextRound() once the previous round
+  // is fully complete.  This guarantees:
+  //   • Exact match counts per round (floor(n/2), no power-of-2 padding)
+  //   • Bye players wait in their round until all real matches finish
+  //   • No player ever receives two consecutive byes
+  createBracket(players) {
+    // ── SMART SEEDING: spread same-team players as far apart as possible ──
+    const teamGroups = {};
+    [...players].forEach(p => {
+      const t = p.teamName || 'unknown';
+      if (!teamGroups[t]) teamGroups[t] = [];
+      teamGroups[t].push(p);
+    });
+    Object.values(teamGroups).forEach(g => g.sort(() => Math.random() - 0.5));
+    const groups = Object.values(teamGroups).sort((a, b) => b.length - a.length);
+    const shuffled = [];
+    let remaining = groups.filter(g => g.length > 0);
+    while (remaining.length > 0) {
+      remaining.forEach(g => { if (g.length > 0) shuffled.push(g.shift()); });
+      remaining = remaining.filter(g => g.length > 0);
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
+    const n = shuffled.length;
+
+    // Pre-compute expected match counts per round (used by PDF and UI to show
+    // future-round structure before those rounds are actually built).
+    // Formula: matches = floor(cur), then cur = ceil(cur) for next round.
+    const expectedRoundMatchCounts = [];
+    let cur = n;
+    while (cur > 1) {
+      expectedRoundMatchCounts.push(Math.floor(cur / 2));
+      cur = Math.ceil(cur / 2);
+    }
+
+    const bracket = {
+      playerCount: n,
+      rounds: [],
+      byePlayers: {},   // { "roundIndex": playerObj } — bye player awaiting each round
+      byeHistory: {},   // { playerId: count }         — total byes received per player
+      expectedRoundMatchCounts,
+      currentRound: 0,
+      status: 'active',
+      createdAt: new Date().toISOString()
+    };
+
+    // ── ROUND 1 ───────────────────────────────────────────────────────────
+    // If n is odd: the last player in the seeded list receives a bye.
+    //   → floor(n/2) real matches + 1 bye player
+    // If n is even: all players are paired normally; no bye.
+    //   → n/2 real matches
+    const round1ByePlayer = (n % 2 === 1) ? this.compressPlayer(shuffled[n - 1]) : null;
+    const round1MatchCount = Math.floor(n / 2);
+    const round1 = [];
+
+    for (let i = 0; i < round1MatchCount; i++) {
+      round1.push({
+        matchId: `R1_M${i + 1}`,
+        round: 1,
+        player1: this.compressPlayer(shuffled[i * 2]),
+        player2: this.compressPlayer(shuffled[i * 2 + 1]),
+        winner: null,
+        eliminated: null,
+        status: 'pending',
+        startTime: null,
+        endTime: null
+      });
+    }
+
+    bracket.rounds.push(round1);
+
+    if (round1ByePlayer) {
+      bracket.byePlayers['0'] = round1ByePlayer;
+      bracket.byeHistory[round1ByePlayer.id] = 1;
+    }
+
+    // Subsequent rounds are built dynamically by buildNextRound() —
+    // do NOT pre-build them here.
+    return bracket;
+  },
+
+  // Build the next round after every match in `roundIndex` is completed.
+  // Collects all match winners from that round plus the round's bye player
+  // (if any), pairs them into new matches, and assigns a fresh bye to the
+  // player with the fewest byes so far (never the same player twice in a row
+  // unless there is no alternative).
+  buildNextRound(roundIndex) {
+    const completedRound = this.currentBracket.rounds[roundIndex];
+
+    // Collect the winner of every match in the completed round
+    const winners = completedRound.map(m =>
+      (m.player1 && m.player1.id === m.winner) ? m.player1 : m.player2
+    );
+
+    // Retrieve the bye player who was waiting in this round (may be null)
+    const byePlayers = this.currentBracket.byePlayers || {};
+    const roundByePlayer = byePlayers[String(roundIndex)] || null;
+
+    // All players advancing: match-winners first, then the bye holder
+    const advancing = [...winners];
+    if (roundByePlayer) advancing.push(roundByePlayer);
+
+    if (advancing.length <= 1) {
+      // Only one player remains — tournament is complete
+      this.currentBracket.status = 'complete';
+      console.log('🏆 Tournament complete');
+      return;
+    }
+
+    const nextRoundIndex = roundIndex + 1;
+    const nextRoundNum   = nextRoundIndex + 1;  // 1-based label for matchId
+
+    // ── ASSIGN BYE FOR NEXT ROUND (only if advancing count is odd) ───────
+    let nextByePlayer = null;
+    if (advancing.length % 2 === 1) {
+      const byeHistory = this.currentBracket.byeHistory || {};
+      const prevByeId  = roundByePlayer ? roundByePlayer.id : null;
+
+      // Sort by: fewest byes first; break ties by pushing the previous-round
+      // bye holder to the back (prevents consecutive byes).
+      const sorted = [...advancing].sort((a, b) => {
+        const diff = (byeHistory[a.id] || 0) - (byeHistory[b.id] || 0);
+        if (diff !== 0) return diff;
+        return (a.id === prevByeId ? 1 : 0) - (b.id === prevByeId ? 1 : 0);
+      });
+      nextByePlayer = sorted[0];
+    }
+
+    // ── BUILD NEXT ROUND MATCHES ──────────────────────────────────────────
+    const matchPlayers = advancing.filter(p => !nextByePlayer || p.id !== nextByePlayer.id);
+    const nextRound = [];
+
+    for (let i = 0; i < matchPlayers.length; i += 2) {
+      nextRound.push({
+        matchId: `R${nextRoundNum}_M${Math.floor(i / 2) + 1}`,
+        round: nextRoundNum,
+        player1: matchPlayers[i],
+        player2: matchPlayers[i + 1],
+        winner: null,
+        eliminated: null,
+        status: 'pending',
+        startTime: null,
+        endTime: null
+      });
+    }
+
+    this.currentBracket.rounds.push(nextRound);
+
+    if (nextByePlayer) {
+      if (!this.currentBracket.byePlayers) this.currentBracket.byePlayers = {};
+      this.currentBracket.byePlayers[String(nextRoundIndex)] = nextByePlayer;
+      if (!this.currentBracket.byeHistory) this.currentBracket.byeHistory = {};
+      this.currentBracket.byeHistory[nextByePlayer.id] =
+        (this.currentBracket.byeHistory[nextByePlayer.id] || 0) + 1;
+    }
+
+    console.log(`✅ Round ${nextRoundNum} built: ${nextRound.length} match(es)` +
+      (nextByePlayer ? `, bye → ${nextByePlayer.playerName}` : ''));
+  },
+
+  // Load bracket from Firebase
+  async loadBracket(categoryKey) {
+    try {
+      const bracketRef = dbRef(database, `brackets/${categoryKey}`);
+      const snapshot = await dbGet(bracketRef);
+
+      if (snapshot.exists()) {
+        let bracket = snapshot.val();
+
+        // Restore missing fields for consistency
+        // Firebase converts JS arrays to objects with numeric keys — convert back safely
+        if (bracket.rounds) {
+          const toArray = (obj) => Array.isArray(obj)
+            ? obj
+            : Object.keys(obj).sort((a, b) => Number(a) - Number(b)).map(k => obj[k]);
+
+          // Restore array fields Firebase may have converted to numeric-key objects
+          if (bracket.expectedRoundMatchCounts) {
+            bracket.expectedRoundMatchCounts = toArray(bracket.expectedRoundMatchCounts);
+          }
+
+          bracket.rounds = toArray(bracket.rounds).map(round =>
+            toArray(round).map(match => ({
+              matchId: match.matchId,
+              round: match.round,
+              player1: match.player1 || null,
+              player2: match.player2 || null,
+              winner: match.winner !== undefined ? match.winner : null,
+              eliminated: match.eliminated !== undefined ? match.eliminated : null,
+              status: match.status || 'pending',
+              startTime: match.startTime || null,
+              endTime: match.endTime || null,
+              courtNumber: match.courtNumber || null
+            }))
+          );
+        }
+
+        this.currentBracket = bracket;
+      } else {
+        this.currentBracket = null;
+      }
+    } catch (error) {
+      console.error("❌ Error loading bracket:", error);
+      this.currentBracket = null;
+    }
+  },
+
+  // Load match history
+  async loadMatchHistory(categoryKey) {
+    try {
+      const historyRef = dbRef(database, `matchHistory/${categoryKey}`);
+      const snapshot = await dbGet(historyRef);
+
+      if (snapshot.exists()) {
+        this.matchHistory = snapshot.val();
+      } else {
+        this.matchHistory = [];
+      }
+    } catch (error) {
+      console.error("❌ Error loading match history:", error);
+      this.matchHistory = [];
+    }
+  },
+
+  // Setup real-time listeners for bracket & match history (MULTI-COURT SYNC)
+  setupBracketListeners(categoryKey) {
+    // Stop any existing listeners first
+    this.stopBracketListeners();
+
+    // Real-time listener for bracket changes
+    const bracketRef = dbRef(database, `brackets/${categoryKey}`);
+    this.bracketListener = dbOnValue(bracketRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const rawBracket = snapshot.val();
+        // Convert Firebase numeric-key objects back to real arrays
+        const toArray = (obj) => Array.isArray(obj)
+          ? obj
+          : Object.keys(obj).sort((a, b) => Number(a) - Number(b)).map(k => obj[k]);
+        if (rawBracket.rounds) {
+          if (rawBracket.expectedRoundMatchCounts) {
+            rawBracket.expectedRoundMatchCounts = toArray(rawBracket.expectedRoundMatchCounts);
+          }
+          rawBracket.rounds = toArray(rawBracket.rounds).map(round =>
+            toArray(round).map(match => ({
+              matchId: match.matchId,
+              round: match.round,
+              player1: match.player1 || null,
+              player2: match.player2 || null,
+              winner: match.winner !== undefined ? match.winner : null,
+              eliminated: match.eliminated !== undefined ? match.eliminated : null,
+              status: match.status || 'pending',
+              startTime: match.startTime || null,
+              endTime: match.endTime || null,
+              courtNumber: match.courtNumber || null
+            }))
+          );
+        }
+        // Only re-render if bracket actually changed
+        if (JSON.stringify(this.currentBracket) !== JSON.stringify(rawBracket)) {
+          this.currentBracket = rawBracket;
+          console.log('🔄 Bracket updated from Firebase - re-rendering');
+          this.renderBracket();
+        }
+      }
+    });
+
+    // Real-time listener for match history changes
+    const historyRef = dbRef(database, `matchHistory/${categoryKey}`);
+    this.historyListener = dbOnValue(historyRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const newHistory = snapshot.val();
+        // Update match history for display
+        this.matchHistory = newHistory;
+        console.log('🔄 Match history updated from Firebase');
+      }
+    });
+
+    console.log('✅ Real-time listeners setup for multi-court sync');
+  },
+
+  // Stop all real-time listeners
+  stopBracketListeners() {
+    if (this.bracketListener) {
+      this.bracketListener();
+      this.bracketListener = null;
+      console.log('✅ Bracket listener stopped');
+    }
+    if (this.historyListener) {
+      this.historyListener();
+      this.historyListener = null;
+      console.log('✅ History listener stopped');
+    }
+  },
+
+  // Save bracket to Firebase
+  async saveBracket(categoryKey, bracket) {
+    try {
+      // Optimize: create a lean version for Firebase storage by removing null fields
+      const leanBracket = {
+        playerCount: bracket.playerCount,
+        currentRound: bracket.currentRound,
+        status: bracket.status,
+        createdAt: bracket.createdAt,
+        byePlayers: bracket.byePlayers || {},
+        byeHistory: bracket.byeHistory || {},
+        expectedRoundMatchCounts: bracket.expectedRoundMatchCounts || [],
+        rounds: bracket.rounds.map(round =>
+          round.map(match => {
+            const leanMatch = {
+              matchId: match.matchId,
+              round: match.round,
+              status: match.status
+            };
+            // Only include fields that have values
+            if (match.player1) leanMatch.player1 = match.player1;
+            if (match.player2) leanMatch.player2 = match.player2;
+            if (match.winner !== null) leanMatch.winner = match.winner;
+            if (match.eliminated !== null) leanMatch.eliminated = match.eliminated;
+            if (match.startTime) leanMatch.startTime = match.startTime;
+            if (match.endTime) leanMatch.endTime = match.endTime;
+            if (match.courtNumber) leanMatch.courtNumber = match.courtNumber;
+            return leanMatch;
+          })
+        )
+      };
+
+      const bracketRef = dbRef(database, `brackets/${categoryKey}`);
+      await dbSet(bracketRef, leanBracket);
+      console.log("✅ Bracket saved (optimized)");
+    } catch (error) {
+      console.error("❌ Error saving bracket:", error);
+      if (error.message.includes('too large')) {
+        console.warn("⚠️ Warning: Bracket data is large. Archive old matches to reduce size.");
+      }
+    }
+  },
+
+  // Save match to history (Firebase)
+  async saveMatchToHistory(categoryKey, match) {
+    try {
+      const matchId = match.matchId;
+      // Store only essential match data in history
+      const historyEntry = {
+        matchId: match.matchId,
+        round: match.round,
+        player1: match.player1,
+        player2: match.player2,
+        winner: match.winner,
+        eliminated: match.eliminated,
+        status: match.status,
+        startTime: match.startTime,
+        endTime: match.endTime,
+        savedAt: new Date().toISOString()
+      };
+      const historyRef = dbRef(database, `matchHistory/${categoryKey}/${matchId}`);
+      await dbSet(historyRef, historyEntry);
+      console.log("✅ Match saved to history (Firebase)");
+    } catch (error) {
+      console.error("❌ Error saving to history:", error);
+    }
+  },
+
+  // Render bracket
+  renderBracket() {
+    const container = document.getElementById('bracketContainer');
+    if (!container) return;
+
+    const isComplete = this.isCategoryComplete();
+
+    let html = `
+      <div class="bracket-header">
+        <button class="btn-back" onclick="BRACKET.closeCategory()">← Back to Categories</button>
+        <h2>${this.categories[this.currentCategory].gender} ${this.categories[this.currentCategory].ageCategory} - ${this.categories[this.currentCategory].weightCategory}</h2>
+        <div style="display:flex;gap:10px;align-items:center;">
+          ${isComplete ? `<button class="btn-success" onclick="BRACKET.exportToExcel()" style="background:var(--success-green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.95rem;">📥 Export Results</button>` : ''}
+          <button class="btn-secondary" onclick="BRACKET.downloadFixturePDF()" style="padding:8px 18px;font-size:0.95rem;">📄 Download Fixture PDF</button>
+          <button class="btn-secondary" onclick="BRACKET.showMatchHistory()">📋 Previous Matches</button>
+        </div>
+      </div>
+      <div class="bracket-rounds">
+    `;
+
+    this.currentBracket.rounds.forEach((round, roundIndex) => {
+      const roundName = this.getRoundName(roundIndex, this.currentBracket.rounds.length);
+
+      html += `
+        <div class="round">
+          <h3 class="round-title">${roundName}</h3>
+          <div class="matches">
+      `;
+
+      round.forEach(match => {
+        html += this.renderMatch(match, roundIndex);
+      });
+
+      // Render the bye-player card for this round (if any)
+      const byePlayers = this.currentBracket.byePlayers || {};
+      const roundBye = byePlayers[String(roundIndex)];
+      if (roundBye) {
+        const roundComplete = round.every(m => m.status === 'completed');
+        html += this.renderByeCard(roundBye, roundComplete);
+      }
+
+      html += `
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+
+    document.getElementById('categoriesList').style.display = 'none';
+    container.style.display = 'block';
+  },
+
+  // Render a bye-player card for the given round
+  renderByeCard(player, roundIsComplete) {
+    const label = roundIsComplete
+      ? '\u2705 Advanced via BYE to next round'
+      : '\u23f3 BYE \u2014 waiting for all matches in this round to finish';
+    return `
+      <div class="match bye-card">
+        <div class="match-players">
+          <div class="player">
+            <span class="player-name">${player.playerName}</span>
+            <span class="player-center">${player.centerName || ''}</span>
+          </div>
+        </div>
+        <div class="match-completed-info">
+          <span class="winner-badge" style="background:rgba(255,165,0,0.15);color:#ffa500;border:1px solid #ffa500;">${label}</span>
+        </div>
+      </div>
+    `;
+  },
+
+  // Render individual match
+  renderMatch(match, roundIndex) {
+    const player1 = match.player1;
+    const player2 = match.player2;
+    const isPending = match.status === 'pending' && player1 && player2;
+    const isInProgress = match.status === 'in-progress';
+    const isCompleted = match.status === 'completed';
+
+    let html = `
+      <div class="match ${match.status}" data-match-id="${match.matchId}">
+        <div class="match-players">
+          <div class="player ${match.winner === player1?.id ? 'winner' : ''} ${match.eliminated === player1?.id ? 'eliminated' : ''}">
+            <span class="player-name">${player1 ? player1.playerName : '<span class="bye">BYE</span>'}</span>
+            <span class="player-center">${player1 ? (player1.centerName || '') : ''}</span>
+          </div>
+
+          <div class="vs">VS</div>
+
+          <div class="player ${match.winner === player2?.id ? 'winner' : ''} ${match.eliminated === player2?.id ? 'eliminated' : ''}">
+            <span class="player-name">${player2 ? player2.playerName : '<span class="bye">BYE</span>'}</span>
+            <span class="player-center">${player2 ? (player2.centerName || '') : ''}</span>
+          </div>
+        </div>
+
+        ${isPending ? `
+          <div style="margin-top: 12px;">
+            <label style="display: block; font-size: 0.9rem; color: var(--accent-cyan); margin-bottom: 6px; font-weight: 700;">🏟️ Court Number</label>
+            <select id="court_${match.matchId}" style="width: 100%; padding: 8px 12px; background: var(--secondary-black); border: 1px solid var(--accent-cyan); color: var(--text-white); border-radius: 6px; font-size: 1rem; margin-bottom: 10px;">
+              <option value="">Select Court</option>
+              <option value="1">Court 1</option>
+              <option value="2">Court 2</option>
+              <option value="3">Court 3</option>
+              <option value="4">Court 4</option>
+              <option value="5">Court 5</option>
+            </select>
+            <button class="btn-start-match" onclick="BRACKET.startMatch('${match.matchId}')">
+              ▶️ Start Match
+            </button>
+          </div>
+        ` : ''}
+
+        ${isInProgress ? this.renderMatchControls(match) : ''}
+
+        ${isCompleted ? `
+          <div class="match-completed-info">
+            <span class="winner-badge">✅ Winner: ${match.winner === player1?.id ? player1.playerName : player2.playerName}</span>
+            ${match.eliminated ? `<span class="eliminated-badge">❌ Eliminated: ${match.eliminated === player1?.id ? player1.playerName : player2.playerName}</span>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    return html;
+  },
+
+  // Render match control UI when match is in progress
+  renderMatchControls(match) {
+    const player1 = match.player1;
+    const player2 = match.player2;
+
+    return `
+      <div class="match-controls">
+        <div class="match-in-progress">
+          ⏱️ Match in Progress...${match.courtNumber ? ` &nbsp;|&nbsp; 🏟️ Court ${match.courtNumber}` : ''}
+        </div>
+
+        <div class="match-actions">
+          <div class="winner-selection">
+            <label class="selection-label">Select Winner:</label>
+            <div class="selection-group">
+              <label class="radio-label">
+                <input type="radio" name="winner_${match.matchId}" value="${player1.id}" onchange="BRACKET.setWinner('${match.matchId}', '${player1.id}')">
+                ${player1.playerName}
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="winner_${match.matchId}" value="${player2.id}" onchange="BRACKET.setWinner('${match.matchId}', '${player2.id}')">
+                ${player2.playerName}
+              </label>
+            </div>
+          </div>
+
+          <button class="btn-stop-match" onclick="BRACKET.stopAndDeclareWinner('${match.matchId}')">
+            🛑 Stop Match & Declare Winner
+          </button>
+        </div>
+      </div>
+    `;
+  },
+
+  // Start match
+  async startMatch(matchId) {
+    const match = this.findMatch(matchId);
+    if (!match || !match.player1 || !match.player2) {
+      console.log("❌ Match not found or missing players");
+      return;
+    }
+
+    console.log("🎮 Starting match:", matchId);
+
+    // Read court number from selector if present
+    const courtSelect = document.getElementById(`court_${matchId}`);
+    const courtNumber = courtSelect ? courtSelect.value : '';
+
+    match.status = 'in-progress';
+    match.startTime = new Date().toISOString();
+    match.courtNumber = courtNumber || null;
+    match.winner = null;
+    match.eliminated = null;
+
+    await this.saveBracket(this.currentCategory, this.currentBracket);
+    this.renderBracket();
+  },
+
+  // Set winner (when radio button selected)
+  setWinner(matchId, playerId) {
+    const match = this.findMatch(matchId);
+    if (!match) return;
+
+    match.winner = playerId;
+    match.eliminated = match.player1.id === playerId ? match.player2.id : match.player1.id;
+  },
+
+  // Stop match and declare winner
+  async stopAndDeclareWinner(matchId) {
+    const match = this.findMatch(matchId);
+    if (!match || !match.winner) {
+      MODAL.warning('Please select the winner first!');
+      return;
+    }
+
+    const confirmed = await MODAL.showConfirm('Are you sure? This action cannot be undone.');
+
+    if (!confirmed) {
+      return;
+    }
+
+    match.status = 'completed';
+    match.endTime = new Date().toISOString();
+
+    await this.saveMatchToHistory(this.currentCategory, match);
+
+    this.advanceWinner(match);
+
+    await this.saveBracket(this.currentCategory, this.currentBracket);
+    this.renderBracket();
+
+    const winnerName = match.player1.id === match.winner ? match.player1.playerName : match.player2.playerName;
+    if (typeof MODAL !== 'undefined') {
+      MODAL.success(`Match completed! ${winnerName} advances to the next round.`);
+    } else {
+      alert(`✅ Match completed! ${winnerName} advances to the next round.`);
+    }
+
+    // If entire category is now complete, auto-prompt Excel export
+    if (this.isCategoryComplete()) {
+      setTimeout(async () => {
+        const doExport = await MODAL.showConfirm('🏆 All matches complete! Download the results Excel sheet?');
+        if (doExport) this.exportToExcel();
+      }, 600);
+    }
+  },
+
+  // Advance winner: when every match in the current round is complete,
+  // build the next round dynamically (including correct bye assignment).
+  advanceWinner(match) {
+    const roundNum   = parseInt(match.matchId.split('_')[0].substring(1)); // 1-based
+    const roundIndex = roundNum - 1;                                        // 0-based
+
+    const currentRound = this.currentBracket.rounds[roundIndex];
+
+    // The real-time bracketListener can fire during any awaited async call
+    // (e.g. saveMatchToHistory) and replace this.currentBracket with the
+    // Firebase copy — which still has this match as 'in-progress' because
+    // saveBracket hasn't run yet.  Re-apply the completed match's fields into
+    // the current bracket so the allDone check is accurate.
+    const bracketMatch = currentRound.find(m => m.matchId === match.matchId);
+    if (bracketMatch) {
+      bracketMatch.status    = match.status;
+      bracketMatch.winner    = match.winner;
+      bracketMatch.eliminated = match.eliminated;
+      bracketMatch.endTime   = match.endTime;
+    }
+
+    const allDone = currentRound.every(m => m.status === 'completed');
+
+    if (allDone) {
+      this.buildNextRound(roundIndex);
+    }
+  },
+
+  // Show match history
+  showMatchHistory() {
+    let html = '<div class="match-history-modal">';
+    html += '<h2>📋 Previous Matches</h2>';
+
+    if (!this.matchHistory || Object.keys(this.matchHistory).length === 0) {
+      html += '<p class="no-matches">No completed matches yet</p>';
+    } else {
+      html += '<div class="history-list">';
+
+      Object.keys(this.matchHistory).forEach(matchId => {
+        const match = this.matchHistory[matchId];
+        const player1 = match.player1;
+        const player2 = match.player2;
+        const winner = match.winner === player1.id ? player1 : player2;
+        const eliminated = match.winner === player1.id ? player2 : player1;
+
+        const time = match.endTime ? new Date(match.endTime).toLocaleString() : 'In Progress';
+
+        html += `
+          <div class="history-item">
+            <div class="history-match">
+              <span class="winner-name">${winner.playerName}</span>
+              <span class="vs-text">defeated</span>
+              <span class="eliminated-name">${eliminated.playerName}</span>
+            </div>
+            <div class="history-meta">
+              <span class="round">${match.matchId}</span>
+              <span class="time">${time}</span>
+            </div>
+          </div>
+        `;
+      });
+
+      html += '</div>';
+    }
+
+    html += '<button class="btn-close-history" onclick="BRACKET.closeMatchHistory()">Close</button>';
+    html += '</div>';
+
+    let modal = document.getElementById('matchHistoryModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'matchHistoryModal';
+      modal.className = 'modal-overlay';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = html;
+    modal.style.display = 'flex';
+  },
+
+  // Close match history
+  closeMatchHistory() {
+    const modal = document.getElementById('matchHistoryModal');
+    if (modal) {
+      modal.style.display = 'none';
+    }
+  },
+
+  // Find match by ID
+  findMatch(matchId) {
+    for (let round of this.currentBracket.rounds) {
+      const match = round.find(m => m.matchId === matchId);
+      if (match) return match;
+    }
+    return null;
+  },
+
+  // Get round name
+  getRoundName(roundIndex, totalRounds) {
+    const fromEnd = totalRounds - roundIndex - 1;
+
+    if (fromEnd === 0) return 'Final';
+    if (fromEnd === 1) return 'Semi-Final';
+    if (fromEnd === 2) return 'Quarter-Final';
+    return `Round ${roundIndex + 1}`;
+  },
+
+  // Close category view
+  closeCategory() {
+    // Stop real-time listeners when leaving the bracket
+    this.stopBracketListeners();
+
+    document.getElementById('bracketContainer').style.display = 'none';
+    document.getElementById('categoriesList').style.display = 'block';
+    this.currentCategory = null;
+    this.currentBracket = null;
+    this.matchHistory = [];
+  },
+
+  // Check if every round has been built and every match is completed
+  isCategoryComplete() {
+    if (!this.currentBracket) return false;
+    if (this.currentBracket.status === 'complete') return true;
+    const rounds = this.currentBracket.rounds;
+    if (!rounds || rounds.length === 0) return false;
+    const expectedTotal = (this.currentBracket.expectedRoundMatchCounts || []).length;
+    if (rounds.length < expectedTotal) return false;
+    for (const round of rounds) {
+      for (const match of round) {
+        if (match.status !== 'completed') return false;
+      }
+    }
+    return true;
+  },
+
+  // Derive final rankings from bracket structure
+  // 1st = winner of final, 2nd = loser of final, 3rd = both semi-final losers
+  buildRankings() {
+    const rounds = this.currentBracket.rounds;
+    const totalRounds = rounds.length;
+    const rankings = [];
+
+    // Final is last round, index totalRounds-1
+    const finalRound = rounds[totalRounds - 1];
+    if (!finalRound || finalRound.length === 0) return rankings;
+
+    const finalMatch = finalRound[0];
+    if (!finalMatch || !finalMatch.winner) return rankings;
+
+    const champion = finalMatch.player1.id === finalMatch.winner ? finalMatch.player1 : finalMatch.player2;
+    const runnerUp = finalMatch.player1.id === finalMatch.winner ? finalMatch.player2 : finalMatch.player1;
+
+    rankings.push({ rank: 1, player: champion, note: 'Champion' });
+    rankings.push({ rank: 2, player: runnerUp, note: 'Runner-up' });
+
+    // Semi-final losers get 3rd (if semi-final exists)
+    if (totalRounds >= 2) {
+      const semiRound = rounds[totalRounds - 2];
+      semiRound.forEach(match => {
+        if (match.player1 && match.player2 && match.winner && match.eliminated) {
+          const loser = match.player1.id === match.eliminated ? match.player1 : match.player2;
+          rankings.push({ rank: 3, player: loser, note: '3rd Place' });
+        }
+      });
+    }
+
+    // All other eliminated players in round order (earliest eliminated = lowest rank)
+    const addedIds = new Set(rankings.map(r => r.player.id));
+    let rankNum = rankings.length + 1;
+
+    for (let ri = totalRounds - 3; ri >= 0; ri--) {
+      const round = rounds[ri];
+      round.forEach(match => {
+        if (match.eliminated) {
+          const loser = match.player1 && match.player1.id === match.eliminated ? match.player1 : match.player2;
+          if (loser && !addedIds.has(loser.id)) {
+            rankings.push({ rank: rankNum++, player: loser, note: `Eliminated in ${this.getRoundName(ri, totalRounds)}` });
+            addedIds.add(loser.id);
+          }
+        }
+      });
+    }
+
+    return rankings;
+  },
+
+  // Download fixture bracket as PDF (portrait, left-to-right bracket like image)
+  downloadFixturePDF() {
+    if (typeof window.jspdf === 'undefined' && typeof jsPDF === 'undefined') {
+      MODAL.error('PDF library not loaded. Please refresh and try again.');
+      return;
+    }
+    if (!this.currentBracket) {
+      MODAL.warning('No bracket loaded.');
+      return;
+    }
+
+    try {
+      const cat = this.categories[this.currentCategory];
+      const champTitle = document.title.replace(' - Bracket Management', '').trim() || 'Tournament';
+      const categoryLabel = cat.gender + ' | ' + cat.ageCategory + ' | ' + cat.weightCategory;
+
+      // Firebase-safe array conversion
+      const toArr = (o) => Array.isArray(o) ? o : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
+      const rounds = toArr(this.currentBracket.rounds).map(r => toArr(r));
+      const expectedCounts = toArr(this.currentBracket.expectedRoundMatchCounts || []);
+      const totalRounds = Math.max(rounds.length, expectedCounts.length);
+      const r1Matches = rounds[0] || [];
+      const byePlayers = this.currentBracket.byePlayers || {};
+
+      // ── TOTAL SLOTS = R1 match player rows + 1 bye row if there is a R1 bye ──
+      // Each R1 match occupies 2 rows; the bye player occupies 1 extra row.
+      const r1ByePlayer  = byePlayers['0'] || null;
+      const r1MatchSlots = r1Matches.length * 2;
+      const totalSlots   = r1MatchSlots + (r1ByePlayer ? 1 : 0);
+
+      const { jsPDF } = window.jspdf || window;
+
+      // ── PAGE SETUP ───────────────────────────────────────────────────
+      const PW = 595.28, PH = 841.89;
+      const ML = 48, MR = 24, MT = 60, MB = 30;
+
+      const BW = 108, BH = 26;
+      const LW = 1.2;
+
+      const drawW = PW - ML - MR;
+      const GAP = Math.max(16, (drawW - totalRounds * BW) / Math.max(totalRounds, 1));
+      const colStep = BW + GAP;
+
+      const drawH = PH - MT - MB;
+      const rowH  = drawH / totalSlots;
+
+      // Y position of the bye player box — one row below the last R1 match slot
+      const byeSlotY = r1ByePlayer ? MT + r1MatchSlots * rowH + BH / 2 : null;
+
+      // ── COMPUTE midY FOR EVERY ROUND ─────────────────────────────────
+      // midY[ri][mi] = vertical centre (y) of match mi in round ri.
+      // For round 0, each match mid is the average of its two player slot rows.
+      // The bye player in round 0 is appended as an extra "single-slot" entry
+      // at the end so that round-1 mids can pair correctly (the bye mid pairs
+      // with the last real match mid to produce the last R2 match mid).
+      const midY = [];
+      const r0mids = r1Matches.map((m, mi) => {
+        const cy1 = MT + (mi * 2) * rowH + BH / 2;
+        const cy2 = MT + (mi * 2 + 1) * rowH + BH / 2;
+        return (cy1 + cy2) / 2;
+      });
+      // Append the bye player's Y as the last entry in round-0 mids
+      if (r1ByePlayer && byeSlotY !== null) {
+        r0mids.push(byeSlotY);
+      }
+      midY.push(r0mids);
+
+      for (let ri = 1; ri < totalRounds; ri++) {
+        const prev  = midY[ri - 1];
+        const count = (expectedCounts[ri] !== undefined)
+          ? expectedCounts[ri]
+          : Math.ceil(prev.length / 2);
+        const mids = [];
+        for (let mi = 0; mi < count; mi++) {
+          const a = prev[mi * 2];
+          const b = prev[mi * 2 + 1];
+          mids.push(b !== undefined ? (a + b) / 2 : a);
+        }
+        midY.push(mids);
+      }
+
+      // ── BUILD FLAT SLOT LIST FROM R1 ────────────────────────────────
+      const slots = [];
+      r1Matches.forEach(m => {
+        slots.push(m.player1 || null);
+        slots.push(m.player2 || null);
+      });
+
+      // ── CREATE DOC ───────────────────────────────────────────────────
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+      doc.setFillColor(255, 255, 255);
+      doc.rect(0, 0, PW, PH, 'F');
+
+      function trunc(str, maxPx) {
+        if (!str) return '';
+        let t = String(str);
+        while (t.length > 1 && doc.getTextWidth(t) > maxPx - 5) t = t.slice(0, -1);
+        return t.length < String(str).length ? t + '.' : t;
+      }
+
+      function drawBox(x, cy, label, bold, dashed, teamName) {
+        doc.setLineWidth(LW);
+        if (dashed) {
+          doc.setLineDashPattern([3, 3], 0);
+          doc.setDrawColor(160, 100, 0);
+          doc.setFillColor(255, 245, 220);
+        } else {
+          doc.setLineDashPattern([], 0);
+          doc.setDrawColor(0, 0, 0);
+          doc.setFillColor(255, 255, 255);
+        }
+        doc.rect(x, cy - BH / 2, BW, BH, 'FD');
+        doc.setLineDashPattern([], 0);
+        if (label) {
+          doc.setFont('helvetica', bold ? 'bold' : 'normal');
+          doc.setTextColor(dashed ? 130 : 0, dashed ? 70 : 0, 0);
+          doc.setFontSize(8);
+          const nameY = teamName ? cy - 2 : cy + 3;
+          doc.text(trunc(label, BW), x + 4, nameY);
+          if (teamName) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6.5);
+            doc.setTextColor(dashed ? 160 : 90, dashed ? 100 : 90, dashed ? 0 : 90);
+            doc.text(trunc(teamName, BW), x + 4, cy + 7);
+          }
+        }
+      }
+
+      // ── HEADER ───────────────────────────────────────────────────────
+      let title = champTitle;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.setTextColor(0, 0, 0);
+      doc.text(title, ML, 18);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(20, 20, 20);
+      doc.text(categoryLabel, ML, 31);
+
+      doc.setFontSize(8);
+      doc.setTextColor(50, 50, 50);
+      doc.text('Single Elimination  |  ' + (this.currentBracket.playerCount || totalSlots) + ' Players', ML, 42);
+      doc.text(new Date().toLocaleDateString('en-IN'), PW - MR, 18, { align: 'right' });
+
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(1.0);
+      doc.line(ML, MT - 7, PW - MR, MT - 7);
+
+      // ── ROUND LABELS ─────────────────────────────────────────────────
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(0, 0, 0);
+      for (let ri = 0; ri < totalRounds; ri++) {
+        const cx = ML + ri * colStep + BW / 2;
+        doc.text(this.getRoundName(ri, totalRounds), cx, MT - 10, { align: 'center' });
+      }
+
+      // ── DRAW R1 PLAYER BOXES (normal slots) ──────────────────────────
+      slots.forEach((player, si) => {
+        const cy = MT + si * rowH + BH / 2;
+        drawBox(ML, cy, player ? player.playerName : null, false, false, player ? player.teamName : null);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(80, 80, 80);
+        doc.text(String(si + 1), ML - 4, cy + 3, { align: 'right' });
+      });
+
+      // ── DRAW BYE PLAYER BOX (Round 1 column, below all match slots) ──
+      if (r1ByePlayer && byeSlotY !== null) {
+        drawBox(ML, byeSlotY, r1ByePlayer.playerName, false, true, r1ByePlayer.teamName);
+        // Label "BYE" tag to the right of the slot number
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(80, 80, 80);
+        doc.text(String(slots.length + 1), ML - 4, byeSlotY + 3, { align: 'right' });
+
+        // Draw dashed bye-flow line: straight across from bye box to the
+        // corresponding slot in Round 2 (the last slot of R2 match that
+        // receives this bye player).
+        // byePlayers['0'] advances into round index 1 (R2).
+        // After buildNextRound the bye player ends up as the last advancing
+        // player, so they fill the last slot of the last R2 match.
+        if (midY[1] && midY[1].length > 0) {
+          // The bye player's mid was appended as the last entry in r0mids.
+          // midY[1] is computed by pairing adjacent r0mids entries, so the
+          // last R2 match mid = average(r0mids[last-1], r0mids[last]) which
+          // already accounts for the bye slot.  We use that as the destination.
+          const r2LastMatchIdx = midY[1].length - 1;
+          const destY          = midY[1][r2LastMatchIdx];
+
+          const bxX2 = ML + colStep;
+          const fromX = ML + BW;
+          const midX  = fromX + GAP / 2;
+          const endX  = bxX2;
+
+          doc.setLineDashPattern([4, 3], 0);
+          doc.setDrawColor(180, 110, 0);
+          doc.setLineWidth(1.0);
+          doc.line(fromX, byeSlotY, midX, byeSlotY);    // out of bye box
+          doc.line(midX, byeSlotY, midX, destY);         // vertical drop to R2 row
+          doc.line(midX, destY, endX, destY);            // horizontal into R2 box
+          doc.setLineDashPattern([], 0);
+
+          // Arrow tip
+          doc.setFillColor(180, 110, 0);
+          doc.triangle(endX, destY, endX - 5, destY - 3, endX - 5, destY + 3, 'F');
+
+          // "BYE" label alongside the dashed line
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(6.5);
+          doc.setTextColor(160, 100, 0);
+          doc.text('BYE', midX + 3, Math.min(byeSlotY, destY) + Math.abs(byeSlotY - destY) / 2 - 1);
+        }
+      }
+
+      // ── DRAW R1 → R2 CONNECTORS (normal matches only) ────────────────
+      doc.setLineDashPattern([], 0);
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(LW);
+      const r2MatchCount = (midY[1] || []).length;
+      r1Matches.forEach((m, mi) => {
+        const cy1 = MT + (mi * 2) * rowH + BH / 2;
+        const cy2 = MT + (mi * 2 + 1) * rowH + BH / 2;
+        const fromX = ML + BW;
+        const spineX = fromX + GAP / 2;
+        const nextY  = midY[0][mi];
+        const nextX  = ML + colStep;
+
+        doc.line(fromX, cy1, spineX, cy1);
+        doc.line(spineX, cy1, spineX, cy2);
+        doc.line(fromX, cy2, spineX, cy2);
+        if (totalRounds > 1 && mi < r2MatchCount * 2) {
+          doc.line(spineX, nextY, nextX, nextY);
+        }
+      });
+
+      // ── DRAW ROUNDS 2+ BOXES + CONNECTORS ────────────────────────────
+      for (let ri = 1; ri < totalRounds; ri++) {
+        const bxX     = ML + ri * colStep;
+        const prevMids = midY[ri - 1];
+        const curMids  = midY[ri];
+
+        curMids.forEach((cy, mi) => {
+          const match  = (rounds[ri] || [])[mi] || {};
+          const p1     = match.player1 || null;
+          const p2     = match.player2 || null;
+          const winner = match.winner  || null;
+
+          const feedA = prevMids[mi * 2];
+          const feedB = prevMids[mi * 2 + 1];
+          const topY  = feedA !== undefined ? feedA : cy - rowH / 2;
+          const botY  = feedB !== undefined ? feedB : cy + rowH / 2;
+
+          const isWin1 = p1 && winner === p1.id;
+          const isWin2 = p2 && winner === p2.id;
+
+          // Check if either slot belongs to a bye player in this round
+          const roundByePlayer = byePlayers[String(ri)] || null;
+          const topIsBye  = roundByePlayer && p1 && p1.id === roundByePlayer.id;
+          const botIsBye  = roundByePlayer && p2 && p2.id === roundByePlayer.id;
+
+          // ── Final round: one winner box centred at cy, not two slots ──
+          if (ri === totalRounds - 1) {
+            const champPlayer = winner
+              ? (p1 && p1.id === winner ? p1 : p2)
+              : null;
+            drawBox(bxX, cy, champPlayer ? champPlayer.playerName : null, !!champPlayer, false, champPlayer ? champPlayer.teamName : null);
+            if (champPlayer) {
+              doc.setLineDashPattern([], 0);
+              doc.setFillColor(210, 245, 210);
+              doc.setDrawColor(0, 0, 0);
+              doc.setLineWidth(LW);
+              doc.rect(bxX, cy - BH / 2, BW, BH, 'FD');
+              doc.setFont('helvetica', 'bold');
+              doc.setTextColor(0, 100, 0);
+              doc.setFontSize(8);
+              const champNameY = champPlayer.teamName ? cy - 2 : cy + 3;
+              doc.text(trunc(champPlayer.playerName, BW), bxX + 4, champNameY);
+              if (champPlayer.teamName) {
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(6.5);
+                doc.setTextColor(0, 100, 0);
+                doc.text(trunc(champPlayer.teamName, BW), bxX + 4, cy + 7);
+              }
+            }
+            return; // skip two-slot drawing for the Final
+          }
+
+          drawBox(bxX, topY, p1 ? p1.playerName : null, isWin1, topIsBye && !isWin1, p1 ? p1.teamName : null);
+          drawBox(bxX, botY, p2 ? p2.playerName : null, isWin2, botIsBye && !isWin2, p2 ? p2.teamName : null);
+
+          // Winner highlight — green fill
+          if (isWin1 || isWin2) {
+            const wy = isWin1 ? topY : botY;
+            const wp = isWin1 ? p1 : p2;
+            doc.setLineDashPattern([], 0);
+            doc.setFillColor(210, 245, 210);
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(LW);
+            doc.rect(bxX, wy - BH / 2, BW, BH, 'FD');
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(0, 100, 0);
+            doc.setFontSize(8);
+            const winNameY = wp.teamName ? wy - 2 : wy + 3;
+            doc.text(trunc(wp.playerName, BW), bxX + 4, winNameY);
+            if (wp.teamName) {
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(6.5);
+              doc.setTextColor(0, 100, 0);
+              doc.text(trunc(wp.teamName, BW), bxX + 4, wy + 7);
+            }
+          }
+
+          // Connectors to next round
+          if (ri < totalRounds - 1) {
+            doc.setLineDashPattern([], 0);
+            const spineX = bxX + BW + GAP / 2;
+            const nextX  = bxX + colStep;
+            const nextY  = curMids[mi];
+            doc.setDrawColor(0, 0, 0);
+            doc.setLineWidth(LW);
+            doc.line(bxX + BW, topY, spineX, topY);
+            doc.line(spineX, topY, spineX, botY);
+            doc.line(bxX + BW, botY, spineX, botY);
+            doc.line(spineX, nextY, nextX, nextY);
+          }
+        });
+      }
+
+      // ── CHAMPION LINE ─────────────────────────────────────────────────
+      const lastRound  = rounds[totalRounds - 1] || [];
+      const finalMatch = lastRound[0] || {};
+      if (finalMatch.status === 'completed' && finalMatch.winner) {
+        const champ = (finalMatch.player1 && finalMatch.player1.id === finalMatch.winner)
+          ? finalMatch.player1 : finalMatch.player2;
+        if (champ) {
+          const champY = midY[totalRounds - 1][0] + BH;
+          doc.setLineDashPattern([], 0);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.setTextColor(0, 100, 0);
+          doc.text('🏆 Champion: ' + champ.playerName, ML + (totalRounds - 0.5) * colStep, champY + 14, { align: 'center' });
+        }
+      }
+
+      // ── FOOTER ────────────────────────────────────────────────────────
+      doc.setLineDashPattern([], 0);
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.8);
+      doc.line(ML, PH - MB + 4, PW - MR, PH - MB + 4);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(60, 60, 60);
+      doc.text(title + '  |  ' + categoryLabel, ML, PH - MB + 13);
+      doc.text('Generated: ' + new Date().toLocaleString('en-IN'), PW - MR, PH - MB + 13, { align: 'right' });
+
+      const safeKey = this.currentCategory.replace(/[^a-zA-Z0-9]/g, '_');
+      doc.save('Fixture_' + safeKey + '.pdf');
+
+    } catch (err) {
+      console.error('PDF error:', err);
+      MODAL.error('Error generating PDF: ' + err.message);
+    }
+  },
+
+  // Export category results to Excel and trigger download
+  exportToExcel() {
+    if (typeof XLSX === 'undefined') {
+      MODAL.error('Excel library not loaded. Please refresh the page and try again.');
+      return;
+    }
+
+    const cat = this.categories[this.currentCategory];
+    const categoryLabel = `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`;
+    const wb = XLSX.utils.book_new();
+
+    // ── SHEET 1: FINAL RANKINGS ──────────────────────────────────────────
+    const rankings = this.buildRankings();
+    const rankRows = [
+      ['Rank', 'Player Name', 'Center / Club', 'Result']
+    ];
+    rankings.forEach(r => {
+      rankRows.push([r.rank, r.player.playerName, r.player.centerName || '', r.note]);
+    });
+    const wsRank = XLSX.utils.aoa_to_sheet(rankRows);
+    wsRank['!cols'] = [{ wch: 6 }, { wch: 28 }, { wch: 28 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, wsRank, 'Rankings');
+
+    // ── SHEET 2: MATCH RESULTS ───────────────────────────────────────────
+    const matchRows = [
+      ['Round', 'Match', 'Player 1', 'Player 2', 'Winner', 'Start Time', 'End Time']
+    ];
+    const totalRounds = this.currentBracket.rounds.length;
+    this.currentBracket.rounds.forEach((round, ri) => {
+      const roundName = this.getRoundName(ri, totalRounds);
+      round.forEach((match, mi) => {
+        if (!match.player1 && !match.player2) return; // skip empty slots
+        const p1 = match.player1 ? match.player1.playerName : 'BYE';
+        const p2 = match.player2 ? match.player2.playerName : 'BYE';
+        const winner = match.winner
+          ? (match.player1 && match.player1.id === match.winner ? match.player1.playerName : (match.player2 ? match.player2.playerName : ''))
+          : '';
+        const start = match.startTime ? new Date(match.startTime).toLocaleString('en-IN') : '';
+        const end = match.endTime ? new Date(match.endTime).toLocaleString('en-IN') : '';
+        matchRows.push([roundName, `Match ${mi + 1}`, p1, p2, winner, start, end]);
+      });
+    });
+    const wsMatches = XLSX.utils.aoa_to_sheet(matchRows);
+    wsMatches['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 26 }, { wch: 26 }, { wch: 26 }, { wch: 20 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsMatches, 'Match Results');
+
+    // ── SHEET 3: ALL PLAYERS ─────────────────────────────────────────────
+    const playerRows = [['Player Name', 'Center / Club', 'Team']];
+    cat.players.forEach(p => {
+      playerRows.push([p.playerName, p.centerName || '', p.teamName || '']);
+    });
+    const wsPlayers = XLSX.utils.aoa_to_sheet(playerRows);
+    wsPlayers['!cols'] = [{ wch: 28 }, { wch: 28 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, wsPlayers, 'Players');
+
+    // ── DOWNLOAD ─────────────────────────────────────────────────────────
+    const safeLabel = categoryLabel.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+    const fileName = `Results_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  }
+};
+
+window.BRACKET = BRACKET;

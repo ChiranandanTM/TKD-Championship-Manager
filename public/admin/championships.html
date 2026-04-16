@@ -1,0 +1,685 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Championship Management</title>
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <style>
+        .championships-container {
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .header h1 {
+            margin: 0;
+            color: #333;
+            flex: 1;
+        }
+
+        .championship-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .championship-selector label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .championship-selector select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 250px;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .championship-info {
+            background: #e7f3ff;
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .championship-info h3 {
+            margin: 0 0 10px 0;
+            color: #007bff;
+        }
+
+        .championship-info p {
+            margin: 5px 0;
+            color: #333;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .tab-btn {
+            padding: 10px 20px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab-btn.active {
+            color: #007bff;
+            border-bottom-color: #007bff;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #aaa;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .form-group textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .no-selection {
+            text-align: center;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            color: #666;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        .data-table thead {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .data-table th, .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .data-table tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 20px 0 15px 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="championships-container">
+        <div class="header">
+            <h1>📋 Championship Management</h1>
+            <div class="championship-selector">
+                <label for="champSelect">Select Championship:</label>
+                <select id="champSelect" onchange="handleChampionshipChange()">
+                    <option value="">-- Choose Championship --</option>
+                </select>
+            </div>
+            <button class="btn-primary" onclick="openCreateModal()">+ New Championship</button>
+        </div>
+
+        <div id="message"></div>
+
+        <div id="noSelection" class="no-selection">
+            <p>Select a championship from the dropdown to view and manage its data</p>
+            <p>Or create a new championship to get started</p>
+        </div>
+
+        <div id="champDetails" style="display: none;">
+            <div class="championship-info" id="champInfo"></div>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab(event, 'categories')">📊 Categories</button>
+                <button class="tab-btn" onclick="showTab(event, 'participants')">👥 Participants</button>
+                <button class="tab-btn" onclick="showTab(event, 'standings')">🏆 Standings</button>
+                <button class="tab-btn" onclick="showTab(event, 'matches')">⚔️ Matches</button>
+            </div>
+
+            <div id="categories" class="tab-content active">
+                <div class="section-title">Weight Categories</div>
+                <button class="btn-primary" onclick="openAddCategoryModal()">+ Add Category</button>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Weight</th>
+                            <th>Gender</th>
+                        </tr>
+                    </thead>
+                    <tbody id="categoriesBody">
+                        <tr><td colspan="3">No categories yet</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="participants" class="tab-content">
+                <div class="section-title">Participants</div>
+                <button class="btn-primary" onclick="openAddParticipantModal()">+ Add Participant</button>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Team</th>
+                            <th>Category</th>
+                        </tr>
+                    </thead>
+                    <tbody id="participantsBody">
+                        <tr><td colspan="3">No participants yet</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="standings" class="tab-content">
+                <div class="section-title">Standings</div>
+                <button class="btn-primary" onclick="openAddStandingModal()">+ Add Standing</button>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Team</th>
+                            <th>Points</th>
+                        </tr>
+                    </thead>
+                    <tbody id="standingsBody">
+                        <tr><td colspan="3">No standings yet</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="matches" class="tab-content">
+                <div class="section-title">Matches</div>
+                <button class="btn-primary" onclick="openAddMatchModal()">+ Add Match</button>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Player 1</th>
+                            <th>Player 2</th>
+                            <th>Winner</th>
+                        </tr>
+                    </thead>
+                    <tbody id="matchesBody">
+                        <tr><td colspan="4">No matches yet</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Championship Modal -->
+    <div id="createModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create New Championship</h2>
+                <button class="close-btn" onclick="closeCreateModal()">&times;</button>
+            </div>
+            <form onsubmit="handleCreate(event)">
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" id="champName" required placeholder="Championship name">
+                </div>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea id="champDesc" placeholder="Championship description"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Location</label>
+                    <input type="text" id="champLocation" placeholder="Venue/Location">
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <select id="champStatus">
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeCreateModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Create Championship</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Category Modal -->
+    <div id="categoryModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Category</h2>
+                <button class="close-btn" onclick="closeCategoryModal()">&times;</button>
+            </div>
+            <form onsubmit="handleAddCategory(event)">
+                <div class="form-group">
+                    <label>Type *</label>
+                    <input type="text" id="catType" required placeholder="e.g., Light, Heavy">
+                </div>
+                <div class="form-group">
+                    <label>Weight *</label>
+                    <input type="text" id="catWeight" required placeholder="e.g., 45kg">
+                </div>
+                <div class="form-group">
+                    <label>Gender *</label>
+                    <select id="catGender" required>
+                        <option value="">Select Gender</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeCategoryModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Add Category</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Standing Modal -->
+    <div id="standingModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Standing</h2>
+                <button class="close-btn" onclick="closeStandingModal()">&times;</button>
+            </div>
+            <form onsubmit="handleAddStanding(event)">
+                <div class="form-group">
+                    <label>Team Name *</label>
+                    <input type="text" id="standTeam" required>
+                </div>
+                <div class="form-group">
+                    <label>Rank *</label>
+                    <input type="number" id="standRank" required min="1">
+                </div>
+                <div class="form-group">
+                    <label>Points *</label>
+                    <input type="number" id="standPoints" required min="0">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" onclick="closeStandingModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Add Standing</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/championship-manager.js"></script>
+    <script src="/js/custom-select.js"></script>
+    <script type="module">
+        let currentChampionshipId = null;
+        let championships = [];
+        let currentChamp = null;
+
+        async function loadAllChampionships() {
+            try {
+                championships = await CHAMPIONSHIP_MANAGER.getAllChampionships();
+                const select = document.getElementById('champSelect');
+                select.innerHTML = '<option value="">-- Choose Championship --</option>';
+                
+                championships.forEach(c => {
+                    const option = document.createElement('option');
+                    option.value = c.id;
+                    option.textContent = `${c.name} (${c.status})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage('Error loading championships: ' + error.message, 'error');
+            }
+        }
+
+        async function handleChampionshipChange() {
+            const champId = document.getElementById('champSelect').value;
+            
+            if (!champId) {
+                document.getElementById('noSelection').style.display = 'block';
+                document.getElementById('champDetails').style.display = 'none';
+                currentChampionshipId = null;
+                return;
+            }
+
+            currentChampionshipId = champId;
+            await loadChampionshipData();
+        }
+
+        async function loadChampionshipData() {
+            try {
+                currentChamp = await CHAMPIONSHIP_MANAGER.getChampionship(currentChampionshipId);
+
+                const infoHtml = `
+                    <h3>${currentChamp.name}</h3>
+                    <p><strong>Status:</strong> ${currentChamp.status.toUpperCase()}</p>
+                    <p><strong>Created:</strong> ${new Date(currentChamp.createdAt).toLocaleDateString()}</p>
+                    ${currentChamp.location ? `<p><strong>Location:</strong> ${currentChamp.location}</p>` : ''}
+                `;
+                document.getElementById('champInfo').innerHTML = infoHtml;
+
+                loadCategoriesData();
+                loadParticipantsData();
+                loadStandingsData();
+                loadMatchesData();
+
+                document.getElementById('noSelection').style.display = 'none';
+                document.getElementById('champDetails').style.display = 'block';
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        }
+
+        function loadCategoriesData() {
+            const tbody = document.getElementById('categoriesBody');
+            const categories = currentChamp.categories || {};
+            
+            if (Object.keys(categories).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">No categories yet</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = Object.entries(categories).map(([id, cat]) => `
+                <tr>
+                    <td>${cat.type || 'N/A'}</td>
+                    <td>${cat.weight || 'N/A'}</td>
+                    <td>${cat.gender || 'N/A'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function loadParticipantsData() {
+            const tbody = document.getElementById('participantsBody');
+            const participants = currentChamp.participants || {};
+            
+            if (Object.keys(participants).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">No participants yet</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = Object.entries(participants).map(([id, part]) => `
+                <tr>
+                    <td>${part.name || 'N/A'}</td>
+                    <td>${part.teamId || 'N/A'}</td>
+                    <td>${part.division || 'N/A'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function loadStandingsData() {
+            const tbody = document.getElementById('standingsBody');
+            const standings = currentChamp.standings || {};
+            
+            if (Object.keys(standings).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3">No standings yet</td></tr>';
+                return;
+            }
+
+            const standArray = Object.entries(standings).map(([id, s]) => ({id, ...s})).sort((a, b) => (a.rank || 999) - (b.rank || 999));
+
+            tbody.innerHTML = standArray.map((s, i) => {
+                const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+                return `<tr>
+                    <td>${medal} ${s.rank || (i + 1)}</td>
+                    <td>${s.teamName || 'N/A'}</td>
+                    <td>${s.points || 0}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function loadMatchesData() {
+            const tbody = document.getElementById('matchesBody');
+            const matches = currentChamp.matches || {};
+            
+            if (Object.keys(matches).length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">No matches yet</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = Object.entries(matches).map(([id, match]) => `
+                <tr>
+                    <td>${match.categoryType || 'N/A'}</td>
+                    <td>${match.player1Id || 'N/A'}</td>
+                    <td>${match.player2Id || 'N/A'}</td>
+                    <td>${match.winner || 'N/A'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function showTab(e, tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(tabName).classList.add('active');
+            e.target.classList.add('active');
+        }
+
+        // Modal Functions
+        window.openCreateModal = () => document.getElementById('createModal').style.display = 'block';
+        window.closeCreateModal = () => {
+            document.getElementById('createModal').style.display = 'none';
+            document.getElementById('createModal').querySelector('form').reset();
+        };
+
+        window.openAddCategoryModal = () => document.getElementById('categoryModal').style.display = 'block';
+        window.closeCategoryModal = () => {
+            document.getElementById('categoryModal').style.display = 'none';
+            document.getElementById('categoryModal').querySelector('form').reset();
+        };
+
+        window.openAddStandingModal = () => document.getElementById('standingModal').style.display = 'block';
+        window.closeStandingModal = () => {
+            document.getElementById('standingModal').style.display = 'none';
+            document.getElementById('standingModal').querySelector('form').reset();
+        };
+
+        window.openAddParticipantModal = () => alert('Participant management coming soon');
+        window.openAddMatchModal = () => alert('Match management coming soon');
+
+        // Form Handlers
+        window.handleCreate = async (e) => {
+            e.preventDefault();
+            try {
+                await CHAMPIONSHIP_MANAGER.createChampionship({
+                    name: document.getElementById('champName').value,
+                    description: document.getElementById('champDesc').value,
+                    location: document.getElementById('champLocation').value,
+                    status: document.getElementById('champStatus').value
+                });
+                showMessage('Championship created! Select it from the dropdown.', 'success');
+                closeCreateModal();
+                await loadAllChampionships();
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        };
+
+        window.handleAddCategory = async (e) => {
+            e.preventDefault();
+            try {
+                await CHAMPIONSHIP_MANAGER.addCategoryToChampionship(currentChampionshipId, {
+                    type: document.getElementById('catType').value,
+                    weight: document.getElementById('catWeight').value,
+                    gender: document.getElementById('catGender').value
+                });
+                showMessage('Category added!', 'success');
+                closeCategoryModal();
+                currentChamp = await CHAMPIONSHIP_MANAGER.getChampionship(currentChampionshipId);
+                loadCategoriesData();
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        };
+
+        window.handleAddStanding = async (e) => {
+            e.preventDefault();
+            try {
+                const standingId = `standing_${Date.now()}`;
+                const standRef = dbRef(database, `championships/${currentChampionshipId}/standings/${standingId}`);
+                await dbSet(standRef, {
+                    teamName: document.getElementById('standTeam').value,
+                    rank: parseInt(document.getElementById('standRank').value),
+                    points: parseInt(document.getElementById('standPoints').value)
+                });
+                showMessage('Standing added!', 'success');
+                closeStandingModal();
+                currentChamp = await CHAMPIONSHIP_MANAGER.getChampionship(currentChampionshipId);
+                loadStandingsData();
+            } catch (error) {
+                showMessage('Error: ' + error.message, 'error');
+            }
+        };
+
+        function showMessage(message, type) {
+            const container = document.getElementById('message');
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = message;
+            container.innerHTML = '';
+            container.appendChild(div);
+            
+            setTimeout(() => div.remove(), 5000);
+        }
+
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        };
+
+        window.addEventListener('load', loadAllChampionships);
+    </script>
+</body>
+</html>

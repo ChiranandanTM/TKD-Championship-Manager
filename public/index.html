@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taekwondo Championship - Login</title>
+        <!-- Preconnect to Firebase for faster first connection -->
+    <link rel="preconnect" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://firebase.googleapis.com">
+    <link rel="dns-prefetch" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <link rel="stylesheet" href="/assets/css/main.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>🥋 TAEKWONDO<br>CHAMPIONSHIP</h1>
+            <p style="color: #00E5FF; font-size: 1.3rem; margin-top: 15px; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);">Karnataka State Championship</p>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="login-tabs">
+            <button class="tab-btn active" onclick="switchTab('admin')">Admin/Judge</button>
+            <button class="tab-btn" onclick="switchTab('team')">Team</button>
+        </div>
+
+        <!-- Admin Login Form -->
+        <div id="adminTab" class="tab-content active">
+            <form id="adminLoginForm" onsubmit="loginAdmin(event)">
+                <div class="form-group">
+                    <label for="adminEmail">Email</label>
+                    <input type="email" id="adminEmail" required placeholder="admin@tkd.com">
+                </div>
+                <div class="form-group">
+                    <label for="adminPassword">Password</label>
+                    <input type="password" id="adminPassword" required placeholder="Enter password">
+                </div>
+                <button type="submit" class="btn-primary" style="width: 100%;">Login as Admin/Judge</button>
+            </form>
+        </div>
+
+        <!-- Team Login Form -->
+        <div id="teamTab" class="tab-content">
+            <form id="teamLoginForm" onsubmit="loginTeam(event)">
+                <div class="form-group">
+                    <label for="teamUsername">Username</label>
+                    <input type="text" id="teamUsername" required placeholder="Enter team username">
+                </div>
+                <div class="form-group">
+                    <label for="teamPassword">Password</label>
+                    <input type="password" id="teamPassword" required placeholder="Enter password">
+                </div>
+                <button type="submit" class="btn-primary" style="width: 100%;">Login as Team</button>
+            </form>
+        </div>
+
+        <div style="text-align: center; margin-top: 30px; color: #888; font-size: 0.9rem;">
+            <p>© Karnataka Taekwondo Association</p>
+        </div>
+    </div>
+
+    <!-- Firebase SDK v9 -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
+        import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
+        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyC7NfS7RMv8C78KGJsPkQCeV9fzmJ86lDU",
+            authDomain: "taekowndo-championship.firebaseapp.com",
+            databaseURL: "https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "taekowndo-championship",
+            storageBucket: "taekowndo-championship.firebasestorage.app",
+            messagingSenderId: "747830683087",
+            appId: "1:747830683087:web:3a7461d1a54d475f1cdeba"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const database = getDatabase(app);
+        const storage = getStorage(app);
+
+        // Export for global use
+        window.firebaseApp = app;
+        window.auth = auth;
+        window.database = database;
+        window.storage = storage;
+        window.dbRef = ref;
+        window.dbSet = set;
+        window.dbGet = get;
+        window.dbUpdate = update;
+        window.dbRemove = remove;
+        window.dbOnValue = onValue;
+        window.dbPush = push;
+        window.dbQuery = query;
+        window.dbOrderByChild = orderByChild;
+        window.dbEqualTo = equalTo;
+        window.dbChild = child;
+        window.storageRef = storageRef;
+        window.uploadBytes = uploadBytes;
+        window.getDownloadURL = getDownloadURL;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.signOut = signOut;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+
+        console.log("✅ Firebase v9 initialized successfully");
+
+        // UI HELPER
+        window.UI = {
+            showLoading(message = 'Loading...') {
+                const existing = document.getElementById('loadingOverlay');
+                if (existing) existing.remove();
+
+                const overlay = document.createElement('div');
+                overlay.id = 'loadingOverlay';
+                overlay.className = 'loading-overlay';
+                overlay.innerHTML = `
+                    <div class="loading-spinner">
+                        <div class="spinner"></div>
+                        <p>${message}</p>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+            },
+
+            hideLoading() {
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay) overlay.remove();
+            }
+        };
+
+        // AUTH MANAGER
+        window.AUTH_MANAGER = {
+            currentUser: null,
+            currentRole: null,
+            currentTeamId: null,
+
+            init() {
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        this.currentUser = user;
+                        await this.loadUserRole(user.uid);
+                        this.redirectBasedOnRole();
+                    } else {
+                        this.currentUser = null;
+                        this.currentRole = null;
+                        this.currentTeamId = null;
+                    }
+                });
+            },
+
+            async loadUserRole(uid) {
+                try {
+                    console.log("🔍 Loading role for UID:", uid);
+                    const userRef = ref(database, `users/${uid}`);
+                    const snapshot = await get(userRef);
+                    
+                    console.log("📊 Snapshot exists?", snapshot.exists());
+                    
+                    if (snapshot.exists()) {
+                        const userData = snapshot.val();
+                        console.log("📦 User data:", userData);
+                        
+                        this.currentRole = userData.role;
+                        this.currentTeamId = userData.teamId || null;
+                        
+                        console.log("👤 Role:", this.currentRole);
+                        console.log("👤 Role type:", typeof this.currentRole);
+                        
+                        sessionStorage.setItem('userRole', this.currentRole);
+                        sessionStorage.setItem('userId', uid);
+                        if (this.currentTeamId) {
+                            sessionStorage.setItem('teamId', this.currentTeamId);
+                        }
+                        
+                        return this.currentRole;
+                    } else {
+                        console.log("⚠️ No user data found in database");
+                    }
+                    
+                    return null;
+                } catch (error) {
+                    console.error("❌ Error loading user role:", error);
+                    return null;
+                }
+            },
+
+            async loginAdmin(email, password) {
+                try {
+                    console.log("🔐 Starting admin login...");
+                    console.log("📧 Email:", email);
+                    
+                    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+                    console.log("✅ Firebase Auth successful!");
+                    console.log("🆔 UID:", userCredential.user.uid);
+                    
+                    const role = await this.loadUserRole(userCredential.user.uid);
+                    console.log("🎭 Final role:", role);
+                    console.log("🎭 Role === 'admin':", role === 'admin');
+                    console.log("🎭 Role === 'judge':", role === 'judge');
+                    
+                    if (role !== 'admin' && role !== 'judge') {
+                        console.log("❌ Role check failed!");
+                        await signOut(auth);
+                        throw new Error("Access denied. Admin or Judge credentials required.");
+                    }
+                    
+                    console.log("✅ Login successful!");
+                    return { success: true, role, uid: userCredential.user.uid };
+                } catch (error) {
+                    console.error("❌ Admin login error:", error);
+                    throw new Error(error.message);
+                }
+            },
+
+            async loginTeam(username, password) {
+                try {
+                    const trimmedUsername = (username || '').trim().toLowerCase();
+                    const trimmedPassword = (password || '').trim();
+
+                    if (!trimmedUsername || !trimmedPassword) {
+                        throw new Error("Invalid username or password");
+                    }
+
+                    // Fetch ALL teams and search locally - avoids index requirement
+                    const teamsRef = ref(database, 'teams');
+                    const allTeamsSnapshot = await get(teamsRef);
+
+                    if (!allTeamsSnapshot.exists()) {
+                        throw new Error("Invalid username or password");
+                    }
+
+                    let teamData = null;
+                    let teamId = null;
+
+                    allTeamsSnapshot.forEach((childSnapshot) => {
+                        const data = childSnapshot.val();
+                        if (data.username && data.username.trim().toLowerCase() === trimmedUsername) {
+                            teamData = data;
+                            teamId = childSnapshot.key;
+                        }
+                    });
+
+                    if (!teamData) {
+                        throw new Error("Invalid username or password");
+                    }
+
+                    if (teamData.password !== trimmedPassword) {
+                        throw new Error("Invalid username or password");
+                    }
+
+                    // Save session
+                    this.currentRole = 'team';
+                    this.currentTeamId = teamId;
+                    sessionStorage.setItem('userId', teamId);
+                    sessionStorage.setItem('userRole', 'team');
+                    sessionStorage.setItem('teamId', teamId);
+                    sessionStorage.setItem('teamName', teamData.teamName || '');
+
+                    // Write user role to DB so auth.js can find it
+                    await set(ref(database, 'users/' + teamId), {
+                        role: 'team',
+                        teamId: teamId,
+                        email: teamData.email || '',
+                        teamName: teamData.teamName || '',
+                        username: teamData.username
+                    });
+
+                    return { success: true, role: 'team', uid: teamId, teamId };
+                } catch (error) {
+                    console.error("❌ Team login error:", error);
+                    throw new Error(error.message);
+                }
+            },
+
+            redirectBasedOnRole() {
+                if (!this.currentRole) return;
+                
+                const path = window.location.pathname;
+                
+                if (path.includes('index.html') || path === '/' || path === '') {
+                    if (this.currentRole === 'admin' || this.currentRole === 'judge') {
+                        window.location.href = window.location.origin + '/admin/dashboard.html';
+                    } else if (this.currentRole === 'team') {
+                        window.location.href = window.location.origin + '/team/dashboard.html';
+                    }
+                }
+            },
+
+            getCurrentUser() {
+                return {
+                    uid: sessionStorage.getItem('userId'),
+                    role: sessionStorage.getItem('userRole'),
+                    teamId: sessionStorage.getItem('teamId')
+                };
+            }
+        };
+
+        // Make functions global
+        window.switchTab = function(tab) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            if (tab === 'admin') {
+                document.querySelector('.tab-btn:first-child').classList.add('active');
+                document.getElementById('adminTab').classList.add('active');
+            } else {
+                document.querySelector('.tab-btn:last-child').classList.add('active');
+                document.getElementById('teamTab').classList.add('active');
+            }
+        };
+
+        window.loginAdmin = async function(event) {
+            event.preventDefault();
+            
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+            
+            try {
+                UI.showLoading('Logging in...');
+                const result = await AUTH_MANAGER.loginAdmin(email, password);
+                UI.hideLoading();
+                
+                if (result.success) {
+                    window.location.href = window.location.origin + '/admin/dashboard.html';
+                }
+            } catch (error) {
+                UI.hideLoading();
+                alert('Login failed: ' + error.message);
+            }
+        };
+
+        window.loginTeam = async function(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('teamUsername').value.trim();
+            const password = document.getElementById('teamPassword').value.trim();
+            
+            if (!username || !password) {
+                alert('❌ Please enter username and password');
+                return;
+            }
+            
+            try {
+                UI.showLoading('Logging in...');
+                const result = await AUTH_MANAGER.loginTeam(username, password);
+                UI.hideLoading();
+                
+                if (result.success) {
+                    window.location.href = window.location.origin + '/team/dashboard.html';
+                }
+            } catch (error) {
+                UI.hideLoading();
+                alert('Login failed: ' + error.message);
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,575 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Taekwondo Championship</title>
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/js/modal.js"></script>
+</head>
+<body>
+    <div class="page-header">
+        <h1 class="page-title">⚙️ ADMIN DASHBOARD</h1>
+        <button class="btn-danger" onclick="UI.logout()">Logout</button>
+    </div>
+
+    <div class="container">
+        <!-- Navigation -->
+        <div class="admin-nav">
+            <button class="btn-primary" onclick="showSection('stats')">📊 Statistics</button>
+            <button class="btn-primary" onclick="showSection('formEditor')">📝 Edit Form</button>
+            <button class="btn-primary" onclick="showSection('teams')">👥 Manage Teams</button>
+            <button class="btn-primary" onclick="window.location.href='bracket.html'">🏆 Tournament Bracket</button>
+            <button class="btn-primary" onclick="window.open('Live-matches.html', '_blank')">🔴 Live Matches</button>
+            <button class="btn-primary" onclick="window.open('form-preview.html', '_blank')">👁️ Preview Form</button>
+            <button class="btn-success" onclick="showSection('newChampionship')">🆕 New Championship</button>
+            <button class="btn-info" onclick="showSection('overallChampionship')">📚 Overall Championships</button>
+        </div>
+
+        <!-- Statistics Section -->
+        <div id="statsSection" class="section">
+            <h2>Championship Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-value" id="totalPlayers">0</span>
+                    <span class="stat-label">Total Players</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="totalTeams">0</span>
+                    <span class="stat-label">Registered Teams</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="totalCategories">0</span>
+                    <span class="stat-label">Weight Categories</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="completedMatches">0</span>
+                    <span class="stat-label">Completed Matches</span>
+                </div>
+            </div>
+
+            <!-- Recent Registrations -->
+            <h3 style="margin-top: 40px;">Recent Player Registrations</h3>
+            <div id="recentPlayersList"></div>
+        </div>
+
+        <!-- Form Editor Section -->
+        <div id="formEditorSection" class="section hidden">
+            <h2>Form & Championship Editor</h2>
+            <div id="formEditorContainer"></div>
+        </div>
+
+        <!-- Team Management Section -->
+        <div id="teamsSection" class="section hidden">
+            <h2>Team Management</h2>
+            <button class="btn-primary" onclick="UI.createTeamAccount()">➕ Create New Team</button>
+            
+            <h3 style="margin-top: 30px;">Registered Teams</h3>
+            <div id="teamsTableContainer"></div>
+        </div>
+
+        <!-- New Championship Section -->
+        <div id="newChampionshipSection" class="section hidden">
+            <h2>🆕 Create New Championship</h2>
+            <div style="background: var(--warning-orange); color: var(--primary-black); padding: 15px; border-radius: 8px; margin-bottom: 30px; font-weight: 700;">
+                ⚠️ WARNING: This will archive the current championship data and clear all players, brackets, matches, and teams. Previous championship data will be saved in history.
+                <br><br>
+                ✅ When creating a new championship, you can reuse the same team names, usernames, passwords, and email addresses as the previous championship.
+            </div>
+            
+            <form id="newChampionshipForm" style="max-width: 600px;">
+                <div class="form-group">
+                    <label for="champTitle">Championship Title</label>
+                    <input type="text" id="champTitle" required placeholder="e.g., TAEKWONDO CHAMPIONSHIP">
+                </div>
+                <div class="form-group">
+                    <label for="champVenue">Venue</label>
+                    <input type="text" id="champVenue" required placeholder="e.g., National Sports Complex">
+                </div>
+                <div class="form-group">
+                    <label for="champAddress">Address/Location</label>
+                    <input type="text" id="champAddress" required placeholder="e.g., Bengaluru, Karnataka, India">
+                </div>
+                <div class="form-group">
+                    <label for="champDate">Championship Date</label>
+                    <input type="date" id="champDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="champOrganizer">Organizer</label>
+                    <input type="text" id="champOrganizer" required placeholder="e.g., Karnataka Taekwondo Association">
+                </div>
+                <button type="submit" class="btn-danger" style="width: 100%; margin-top: 20px;">🚀 Create New Championship & Archive Current</button>
+            </form>
+        </div>
+
+        <!-- Overall Championships Section -->
+        <div id="overallChampionshipSection" class="section hidden">
+            <h2>📚 Overall Championships</h2>
+            <div id="overallChampionshipsList"></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK v9 -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/form-config.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+    <script type="module" src="/js/admin-form-editor.js"></script>
+    <script type="module" src="/js/Team-deadline-manager.js"></script>
+    <script type="module" src="/js/championship-manager.js"></script>
+
+    <script type="module">
+        // Unregister any bad service workers to prevent caching issues
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+                registrations.forEach(reg => reg.unregister());
+            });
+        }
+
+        let currentSection = 'stats';
+
+        function showSection(section) {
+            document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
+            
+            currentSection = section;
+            
+            if (section === 'stats') {
+                document.getElementById('statsSection').classList.remove('hidden');
+                loadStatistics();
+            } else if (section === 'formEditor') {
+                document.getElementById('formEditorSection').classList.remove('hidden');
+                console.log("📝 Form Editor section clicked");
+                console.log("ADMIN_FORM_EDITOR available:", typeof ADMIN_FORM_EDITOR !== 'undefined');
+                console.log("FORM_CONFIG available:", typeof FORM_CONFIG !== 'undefined');
+                
+                if (typeof ADMIN_FORM_EDITOR !== 'undefined' && typeof FORM_CONFIG !== 'undefined' && ADMIN_FORM_EDITOR.init) {
+                    console.log("✅ Modules available, initializing...");
+                    ADMIN_FORM_EDITOR.init();
+                } else {
+                    console.log("⏳ Waiting for modules to load...");
+                    let attempts = 0;
+                    const waitForEditor = setInterval(() => {
+                        attempts++;
+                        if (typeof ADMIN_FORM_EDITOR !== 'undefined' && typeof FORM_CONFIG !== 'undefined' && ADMIN_FORM_EDITOR.init) {
+                            clearInterval(waitForEditor);
+                            ADMIN_FORM_EDITOR.init();
+                        }
+                        if (attempts > 50) {
+                            console.error("❌ Timeout waiting for modules");
+                            clearInterval(waitForEditor);
+                        }
+                    }, 100);
+                }
+            } else if (section === 'teams') {
+                document.getElementById('teamsSection').classList.remove('hidden');
+                // Use TEAM_DEADLINE_MANAGER to render the full teams table with deadline controls
+                if (typeof TEAM_DEADLINE_MANAGER !== 'undefined') {
+                    TEAM_DEADLINE_MANAGER.renderTeamsTable('teamsTableContainer');
+                } else {
+                    // Fallback while module loads
+                    let attempts = 0;
+                    const wait = setInterval(() => {
+                        attempts++;
+                        if (typeof TEAM_DEADLINE_MANAGER !== 'undefined') {
+                            clearInterval(wait);
+                            TEAM_DEADLINE_MANAGER.renderTeamsTable('teamsTableContainer');
+                        }
+                        if (attempts > 50) clearInterval(wait);
+                    }, 100);
+                }
+            } else if (section === 'newChampionship') {
+                document.getElementById('newChampionshipSection').classList.remove('hidden');
+            } else if (section === 'overallChampionship') {
+                document.getElementById('overallChampionshipSection').classList.remove('hidden');
+                loadAllChampionships();
+            }
+        }
+
+        async function loadStatistics() {
+            try {
+                const playersRef = dbRef(database, 'players');
+                const playersSnapshot = await dbGet(playersRef);
+                const playerCount = playersSnapshot.exists() ? Object.keys(playersSnapshot.val()).length : 0;
+                document.getElementById('totalPlayers').textContent = playerCount;
+
+                const teamsRef = dbRef(database, 'teams');
+                const teamsSnapshot = await dbGet(teamsRef);
+                const teamCount = teamsSnapshot.exists() ? Object.keys(teamsSnapshot.val()).length : 0;
+                document.getElementById('totalTeams').textContent = teamCount;
+
+                const historyRef = dbRef(database, 'matchHistory');
+                const historySnapshot = await dbGet(historyRef);
+                let matchCount = 0;
+                if (historySnapshot.exists()) {
+                  const allHistory = historySnapshot.val();
+                  Object.keys(allHistory).forEach(categoryKey => {
+                    if (allHistory[categoryKey]) {
+                      matchCount += Object.keys(allHistory[categoryKey]).length;
+                    }
+                  });
+                }
+                document.getElementById('completedMatches').textContent = matchCount;
+
+                const categoriesRef = dbRef(database, 'weightCategories');
+                const categoriesSnapshot = await dbGet(categoriesRef);
+                const categoryCount = categoriesSnapshot.exists() ? Object.keys(categoriesSnapshot.val()).length : 0;
+                document.getElementById('totalCategories').textContent = categoryCount;
+
+                if (playersSnapshot.exists()) {
+                    const players = [];
+                    playersSnapshot.forEach(child => {
+                        players.push({ id: child.key, ...child.val() });
+                    });
+                    
+                    players.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+                    const recent = players.slice(0, 10);
+                    
+                    const teamsSnapshotForMap = await dbGet(dbRef(database, 'teams'));
+                    const teamsMap = {};
+                    if (teamsSnapshotForMap.exists()) {
+                        teamsSnapshotForMap.forEach(child => {
+                            teamsMap[child.key] = child.val().teamName;
+                        });
+                    }
+                    
+                    let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 20px;">';
+                    html += '<thead><tr style="background: #1a1a1a; border-bottom: 2px solid #FFD700;">';
+                    html += '<th style="padding: 15px; text-align: left;">Name</th>';
+                    html += '<th style="padding: 15px; text-align: left;">Team</th>';
+                    html += '<th style="padding: 15px; text-align: left;">Gender</th>';
+                    html += '<th style="padding: 15px; text-align: left;">Categories</th>';
+                    html += '<th style="padding: 15px; text-align: left;">Weight</th>';
+                    html += '<th style="padding: 15px; text-align: left;">Submitted</th>';
+                    html += '</tr></thead><tbody>';
+                    
+                    recent.forEach(player => {
+                        const teamName = teamsMap[player.teamId] || 'N/A';
+                        html += '<tr style="border-bottom: 1px solid #333;">';
+                        html += `<td style="padding: 12px;">${player.playerName}</td>`;
+                        html += `<td style="padding: 12px;">${teamName}</td>`;
+                        html += `<td style="padding: 12px;">${player.gender}</td>`;
+                        html += `<td style="padding: 12px;">${player.categories ? player.categories.join(', ') : 'N/A'}</td>`;
+                        html += `<td style="padding: 12px;">${player.weightCategory || 'N/A'}</td>`;
+                        html += `<td style="padding: 12px;">${UI.formatTimestamp(player.submittedAt)}</td>`;
+                        html += '</tr>';
+                    });
+                    
+                    html += '</tbody></table>';
+                    document.getElementById('recentPlayersList').innerHTML = html;
+                } else {
+                    document.getElementById('recentPlayersList').innerHTML = '<p style="color: #888;">No players registered yet.</p>';
+                }
+
+            } catch (error) {
+                console.error('Error loading statistics:', error);
+            }
+        }
+
+        async function loadAllChampionships() {
+            try {
+                let html = '<div style="display: grid; gap: 20px;">';
+                
+                const formConfigRef = dbRef(database, 'formConfig');
+                const formSnap = await dbGet(formConfigRef);
+                
+                if (formSnap.exists()) {
+                    const config = formSnap.val();
+                    const playersRef = dbRef(database, 'players');
+                    const teamsRef = dbRef(database, 'teams');
+                    const historyRef = dbRef(database, 'matchHistory');
+                    
+                    const [playersSnap, teamsSnap, historySnap] = await Promise.all([
+                        dbGet(playersRef),
+                        dbGet(teamsRef),
+                        dbGet(historyRef)
+                    ]);
+                    
+                    const playerCount = playersSnap.exists() ? Object.keys(playersSnap.val()).length : 0;
+                    const teamCount = teamsSnap.exists() ? Object.keys(teamsSnap.val()).length : 0;
+                    
+                    let matchCount = 0;
+                    if (historySnap.exists()) {
+                        const history = historySnap.val();
+                        Object.keys(history).forEach(category => {
+                            if (history[category]) {
+                                matchCount += Object.keys(history[category]).length;
+                            }
+                        });
+                    }
+                    
+                    const champName = config.championship?.title || 'Unknown Championship';
+                    
+                    html += `
+                        <div style="background: linear-gradient(135deg, var(--success-green) 0%, #1E7E34 100%); border: 3px solid var(--success-green); border-radius: 8px; padding: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h3 style="color: var(--text-white); margin: 0;">${champName}</h3>
+                                <span style="background: var(--text-white); color: var(--success-green); padding: 5px 15px; border-radius: 20px; font-weight: 700; font-size: 0.9rem;">✅ ACTIVE</span>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 15px;">
+                                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 4px;">
+                                    <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;">Players</p>
+                                    <p style="color: var(--text-white); margin: 5px 0 0 0; font-weight: 700; font-size: 1.3rem;">${playerCount}</p>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 4px;">
+                                    <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;">Teams</p>
+                                    <p style="color: var(--text-white); margin: 5px 0 0 0; font-weight: 700; font-size: 1.3rem;">${teamCount}</p>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 4px;">
+                                    <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;">Matches</p>
+                                    <p style="color: var(--text-white); margin: 5px 0 0 0; font-weight: 700; font-size: 1.3rem;">${matchCount}</p>
+                                </div>
+                            </div>
+                            <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;">This is your active championship</p>
+                        </div>
+                    `;
+                }
+                
+                const champsRef = dbRef(database, 'championships');
+                const champsSnap = await dbGet(champsRef);
+                
+                if (champsSnap.exists()) {
+                    const allChamps = champsSnap.val();
+                    
+                    for (const [champId, champ] of Object.entries(allChamps)) {
+                        if (!champ || !champ.createdAt) continue;
+                        
+                        const dateObj = new Date(champ.createdAt);
+                        const formattedDate = dateObj.toLocaleDateString('en-IN', { 
+                            year: 'numeric', month: 'long', day: 'numeric', 
+                            hour: '2-digit', minute: '2-digit' 
+                        });
+                        
+                        const champName = champ.name || 'Unknown Championship';
+                        const status = (champ.status || 'draft').toUpperCase();
+                        const statusColor = champ.status === 'active' ? 'var(--success-green)' : 'var(--warning-orange)';
+                        
+                        html += `
+                            <div style="background: var(--secondary-black); border: 2px solid ${statusColor}; border-radius: 8px; padding: 20px;">
+                                <h3 style="color: ${statusColor}; margin-top: 0;">${champName}</h3>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 15px 0;">
+                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
+                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Status</p>
+                                        <p style="color: ${statusColor}; margin: 5px 0 0 0; font-weight: 700; font-size: 1.2rem;">${status}</p>
+                                    </div>
+                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
+                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Location</p>
+                                        <p style="color: var(--text-white); margin: 5px 0 0 0; font-weight: 700; font-size: 1rem;">${champ.location || 'N/A'}</p>
+                                    </div>
+                                </div>
+                                <p style="color: var(--text-gray); margin: 15px 0 0 0; font-size: 0.9rem;">📅 ${formattedDate}</p>
+                                <p style="color: var(--text-gray); margin: 5px 0 0 0; font-size: 0.85rem;">${champ.description || ''}</p>
+                                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                                    <button class="btn-primary" onclick="loadNewChampionship('${champId}')" style="flex: 1;">📂 Load This Championship</button>
+                                    <button class="btn-danger" onclick="deleteNewChampionship('${champId}')" style="flex: 1;">🗑️ Delete</button>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                const championships = await CHAMPIONSHIP_MANAGER.loadArchivedChampionships();
+                
+                if (championships.length > 0) {
+                    championships.forEach(champ => {
+                        const dateObj = new Date(champ.timestamp);
+                        const formattedDate = dateObj.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                        
+                        html += `
+                            <div style="background: var(--secondary-black); border: 2px solid var(--border-gold); border-radius: 8px; padding: 20px;">
+                                <h3 style="color: var(--border-gold); margin-top: 0;">${champ.championshipName}</h3>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 15px 0;">
+                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
+                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Players</p>
+                                        <p style="color: var(--border-gold); margin: 5px 0 0 0; font-weight: 700; font-size: 1.4rem;">${champ.playerCount}</p>
+                                    </div>
+                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
+                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Teams</p>
+                                        <p style="color: var(--border-gold); margin: 5px 0 0 0; font-weight: 700; font-size: 1.4rem;">${champ.teamCount}</p>
+                                    </div>
+                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
+                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Matches</p>
+                                        <p style="color: var(--border-gold); margin: 5px 0 0 0; font-weight: 700; font-size: 1.4rem;">${champ.matchCount}</p>
+                                    </div>
+                                </div>
+                                <p style="color: var(--text-gray); margin: 15px 0 0 0; font-size: 0.9rem;">📅 ${formattedDate}</p>
+                                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                                    <button class="btn-primary" onclick="switchToChampionship('${champ.id}')" style="flex: 1;">📂 Load This Championship</button>
+                                    <button class="btn-danger" onclick="deleteChampionship('${champ.id}')" style="flex: 1;">🗑️ Delete</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                
+                if (!champsSnap.exists() && championships.length === 0) {
+                    html += '<div style="background: var(--secondary-black); border: 2px solid var(--border-gold); border-radius: 8px; padding: 20px; text-align: center; color: var(--text-gray);">No championships created yet.</div>';
+                }
+                
+                html += '</div>';
+                document.getElementById('overallChampionshipsList').innerHTML = html;
+
+            } catch (error) {
+                console.error('Error loading all championships:', error);
+                document.getElementById('overallChampionshipsList').innerHTML = '<p style="color: #d32f2f; text-align: center;">Error loading championships.</p>';
+            }
+        }
+
+        function deleteChampionship(championshipId) {
+            (async () => {
+                const confirmed = await MODAL.showConfirm('Are you sure you want to permanently delete this championship history? This cannot be undone.');
+                if (confirmed) {
+                    UI.showLoading('Deleting championship...');
+                    CHAMPIONSHIP_MANAGER.deleteArchivedChampionship(championshipId).then(() => {
+                        UI.hideLoading();
+                        MODAL.success('✅ Championship deleted successfully');
+                        loadAllChampionships();
+                    }).catch(error => {
+                        UI.hideLoading();
+                        MODAL.error('❌ Error deleting championship: ' + error.message);
+                    });
+                }
+            })();
+        }
+
+        async function deleteNewChampionship(champId) {
+            const confirmed = await MODAL.showConfirm('Are you sure you want to delete this championship? This cannot be undone.');
+            if (confirmed) {
+                UI.showLoading('Deleting championship...');
+                try {
+                    const champRef = dbRef(database, `championships/${champId}`);
+                    await dbRemove(champRef);
+                    UI.hideLoading();
+                    MODAL.success('✅ Championship deleted successfully');
+                    loadAllChampionships();
+                } catch (error) {
+                    UI.hideLoading();
+                    MODAL.error('❌ Error deleting championship: ' + error.message);
+                }
+            }
+        }
+
+        async function loadNewChampionship(champId) {
+            const confirmed = await MODAL.showConfirm('Are you sure you want to load this championship?\n\nThis will archive the current championship and load the selected one.');
+            if (confirmed) {
+                UI.showLoading('Loading championship...');
+                try {
+                    const champRef = dbRef(database, `championships/${champId}`);
+                    const champSnap = await dbGet(champRef);
+                    if (!champSnap.exists()) throw new Error('Championship not found');
+                    const champ = champSnap.val();
+                    await CHAMPIONSHIP_MANAGER.archiveCurrentChampionship();
+                    await CHAMPIONSHIP_MANAGER.clearCurrentData();
+                    const formConfigRef = dbRef(database, 'formConfig');
+                    await dbSet(formConfigRef, {
+                        championship: { title: champ.name, venue: champ.location, description: champ.description }
+                    });
+                    await dbRemove(champRef);
+                    UI.hideLoading();
+                    MODAL.success('✅ Championship loaded! Page will reload now.');
+                    setTimeout(() => window.location.reload(), 1000);
+                } catch (error) {
+                    UI.hideLoading();
+                    MODAL.error('❌ Error loading championship: ' + error.message);
+                }
+            }
+        }
+
+        async function switchToChampionship(championshipId) {
+            const confirmed = await MODAL.showConfirm('Are you sure you want to load this championship?\n\nThis will archive the current championship and load the selected one.');
+            if (confirmed) {
+                UI.showLoading('Archiving current championship and loading selected one...');
+                try {
+                    await CHAMPIONSHIP_MANAGER.archiveCurrentChampionship();
+                    await CHAMPIONSHIP_MANAGER.restoreChampionship(championshipId);
+                    await CHAMPIONSHIP_MANAGER.deleteArchivedChampionship(championshipId);
+                    UI.hideLoading();
+                    MODAL.success('✅ Championship loaded! Page will reload now.');
+                    setTimeout(() => window.location.reload(), 1000);
+                } catch (error) {
+                    UI.hideLoading();
+                    MODAL.error('❌ Error switching championship: ' + error.message);
+                }
+            }
+        }
+
+        window.showSection = showSection;
+        window.switchToChampionship = switchToChampionship;
+        window.deleteChampionship = deleteChampionship;
+        window.deleteNewChampionship = deleteNewChampionship;
+        window.loadNewChampionship = loadNewChampionship;
+        window.loadAllChampionships = loadAllChampionships;
+        window.loadStatistics = loadStatistics;
+
+        let modulesReady = false;
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (typeof UI !== 'undefined') {
+                UI.initPageProtection(['admin', 'judge']);
+                UI.createTeamModalHTML();
+            }
+            showSection('stats');
+
+            const waitForModules = setInterval(() => {
+                if (typeof CHAMPIONSHIP_MANAGER !== 'undefined' && typeof FORM_CONFIG !== 'undefined' && typeof window.database !== 'undefined' && typeof window.dbRef === 'function' && typeof window.dbSet === 'function' && typeof window.dbGet === 'function') {
+                    clearInterval(waitForModules);
+                    modulesReady = true;
+                    
+                    const form = document.getElementById('newChampionshipForm');
+                    if (form) {
+                        form.addEventListener('submit', async (e) => {
+                            e.preventDefault();
+                            if (!modulesReady) { MODAL.warning('⏳ Please wait for the system to fully load'); return; }
+                            
+                            const title = document.getElementById('champTitle').value.trim();
+                            const venue = document.getElementById('champVenue').value.trim();
+                            const address = document.getElementById('champAddress').value.trim();
+                            const date = document.getElementById('champDate').value.trim();
+                            const organizer = document.getElementById('champOrganizer').value.trim();
+
+                            if (!title || !venue || !address || !date || !organizer) {
+                                MODAL.warning('❌ Please fill all fields');
+                                return;
+                            }
+
+                            const confirmed = await MODAL.showConfirm('🚨 FINAL CONFIRMATION\n\nThis will:\n1. Archive the current championship\n2. Clear all players, brackets, matches, and teams\n3. Create a new championship\n\nContinue?');
+                            if (confirmed) {
+                                UI.showLoading('Creating new championship and archiving current data...');
+                                try {
+                                    await CHAMPIONSHIP_MANAGER.archiveCurrentChampionship();
+                                    await CHAMPIONSHIP_MANAGER.clearCurrentData();
+                                    await CHAMPIONSHIP_MANAGER.createNewChampionship(title, venue, address, date, organizer);
+                                    UI.hideLoading();
+                                    MODAL.success('✅ New championship created! Page will reload now.');
+                                    form.reset();
+                                    setTimeout(() => window.location.reload(), 1500);
+                                } catch (error) {
+                                    UI.hideLoading();
+                                    MODAL.error('❌ Error: ' + error.message);
+                                }
+                            }
+                        });
+                    }
+                }
+            }, 100);
+
+            setTimeout(() => {
+                if (!modulesReady) {
+                    MODAL.error("❌ System failed to initialize. Please refresh the page.");
+                }
+            }, 5000);
+        });
+
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('createTeamModal');
+            if (modal && e.target === modal) {
+                UI.closeCreateTeamModal();
+            }
+        });
+
+        window.alert = function(message) { return MODAL.showAlert(message); };
+        window.confirm = function(message) { return MODAL.showConfirm(message); };
+    </script>
+</body>
+</html>
