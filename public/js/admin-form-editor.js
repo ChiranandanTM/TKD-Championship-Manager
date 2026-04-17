@@ -4,6 +4,22 @@
 
 const ADMIN_FORM_EDITOR = {
   currentConfig: null,
+  protectedFieldIds: [
+    'playerName',
+    'playerImage',
+    'dob',
+    'age',
+    'gender',
+    'weight',
+    'weightCategory',
+    'ageCategory',
+    'playerCategory',
+    'categories'
+  ],
+
+  isFieldProtected(fieldId) {
+    return this.protectedFieldIds.includes(fieldId);
+  },
 
   // Initialize editor
   async init() {
@@ -237,6 +253,7 @@ const ADMIN_FORM_EDITOR = {
         const fieldType = field?.type || 'text';
         const required = field?.required || false;
         const readonly = field?.readonly || false;
+        const isProtected = this.isFieldProtected(fieldId);
         
         html += `
           <div class="field-item" data-field-id="${fieldId}" draggable="true">
@@ -246,10 +263,11 @@ const ADMIN_FORM_EDITOR = {
               <span class="field-type">(${fieldType})</span>
               ${required ? '<span class="badge-required">Required</span>' : ''}
               ${readonly ? '<span class="badge-readonly">Read-only</span>' : ''}
+              ${isProtected ? '<span class="badge-readonly">System</span>' : ''}
             </div>
             <div class="field-actions">
               <button onclick="ADMIN_FORM_EDITOR.editField('${fieldId}')" class="btn-icon">✏️</button>
-              ${!required ? `<button onclick="ADMIN_FORM_EDITOR.deleteField('${fieldId}')" class="btn-icon">🗑️</button>` : ''}
+              ${!isProtected ? `<button onclick="ADMIN_FORM_EDITOR.deleteField('${fieldId}')" class="btn-icon" title="Delete field">🗑️</button>` : ''}
             </div>
           </div>
         `;
@@ -349,6 +367,15 @@ const ADMIN_FORM_EDITOR = {
     });
   },
 
+  // Keep order values sequential after add/delete/reorder
+  normalizeFieldOrder() {
+    const sorted = [...this.currentConfig.fields].sort((a, b) => (a.order || 0) - (b.order || 0));
+    sorted.forEach((field, index) => {
+      field.order = index + 1;
+    });
+    this.currentConfig.fields = sorted;
+  },
+
   // Edit field
   editField(fieldId) {
     const field = this.currentConfig.fields.find(f => f.id === fieldId);
@@ -364,12 +391,33 @@ const ADMIN_FORM_EDITOR = {
 
   // Delete field
   async deleteField(fieldId) {
-    const confirmed = await MODAL.showConfirm('Are you sure you want to delete this field?');
+    if (this.isFieldProtected(fieldId)) {
+      MODAL.warning('This is a system field and cannot be deleted.');
+      return;
+    }
+
+    const field = this.currentConfig.fields.find(f => f.id === fieldId);
+    const fieldLabel = field?.label || fieldId;
+    const confirmed = await MODAL.showConfirm(`Delete field "${fieldLabel}"? This change will be applied for all team registration forms.`);
     if (!confirmed) return;
-    
+
+    const previousFields = JSON.parse(JSON.stringify(this.currentConfig.fields));
+
     this.currentConfig.fields = this.currentConfig.fields.filter(f => f.id !== fieldId);
+    this.normalizeFieldOrder();
     this.renderEditor();
     this.setupEventListeners();
+
+    const updated = await FORM_CONFIG.updateFields(this.currentConfig.fields);
+    if (!updated) {
+      this.currentConfig.fields = previousFields;
+      this.renderEditor();
+      this.setupEventListeners();
+      MODAL.error('Failed to delete the field in database. Your form was restored.');
+      return;
+    }
+
+    MODAL.success('Field deleted successfully. Team registration forms will reflect this updated form config.');
   },
 
   // Add new field
@@ -430,7 +478,10 @@ const ADMIN_FORM_EDITOR = {
       };
 
       // Save to Firebase
-      await FORM_CONFIG.saveConfig(this.currentConfig);
+      const saved = await FORM_CONFIG.saveConfig(this.currentConfig);
+      if (!saved) {
+        throw new Error('Failed to save form configuration to database.');
+      }
       
       if (typeof MODAL !== 'undefined') {
         MODAL.success('All changes saved successfully!');

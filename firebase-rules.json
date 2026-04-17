@@ -63,7 +63,7 @@
     },
 
     "championships": {
-      ".read": "auth != null",
+      ".read": true,
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       ".indexOn": ["status", "createdAt", "name"],
       "$championshipId": {
@@ -144,11 +144,11 @@
     },
     
     "championshipHistory": {
-      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".read": true,
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       ".indexOn": ["timestamp"],
       "$championshipId": {
-        ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        ".read": true,
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
       }
     }

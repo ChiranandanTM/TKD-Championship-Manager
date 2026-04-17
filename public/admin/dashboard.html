@@ -45,10 +45,6 @@
                     <span class="stat-label">Registered Teams</span>
                 </div>
                 <div class="stat-card">
-                    <span class="stat-value" id="totalCategories">0</span>
-                    <span class="stat-label">Weight Categories</span>
-                </div>
-                <div class="stat-card">
                     <span class="stat-value" id="completedMatches">0</span>
                     <span class="stat-label">Completed Matches</span>
                 </div>
@@ -137,6 +133,60 @@
 
         let currentSection = 'stats';
 
+        function isPermissionDeniedError(error) {
+            const msg = String(error?.message || '').toLowerCase();
+            const code = String(error?.code || '').toLowerCase();
+            return msg.includes('permission denied') || code.includes('permission_denied');
+        }
+
+        async function waitForFirebaseAuth(timeoutMs = 4000) {
+            if (window.auth && window.auth.currentUser) {
+                return true;
+            }
+            if (!window.auth || typeof onAuthStateChanged !== 'function') {
+                return false;
+            }
+
+            return await new Promise((resolve) => {
+                let settled = false;
+                let unsubscribe = null;
+
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    if (unsubscribe) unsubscribe();
+                    clearTimeout(timer);
+                    resolve(result);
+                };
+
+                const timer = setTimeout(() => finish(false), timeoutMs);
+
+                unsubscribe = onAuthStateChanged(window.auth, (user) => {
+                    if (user) {
+                        finish(true);
+                    }
+                });
+            });
+        }
+
+        async function dbGetWithAuthRetry(refToRead) {
+            try {
+                return await dbGet(refToRead);
+            } catch (error) {
+                if (!isPermissionDeniedError(error)) {
+                    throw error;
+                }
+
+                // If auth was still hydrating, wait briefly and retry once.
+                const authReady = await waitForFirebaseAuth(3500);
+                if (!authReady) {
+                    throw new Error('Permission denied: your session is not authenticated. Please log out and log in again as Admin/Judge.');
+                }
+
+                return await dbGet(refToRead);
+            }
+        }
+
         function showSection(section) {
             document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
             
@@ -218,11 +268,6 @@
                   });
                 }
                 document.getElementById('completedMatches').textContent = matchCount;
-
-                const categoriesRef = dbRef(database, 'weightCategories');
-                const categoriesSnapshot = await dbGet(categoriesRef);
-                const categoryCount = categoriesSnapshot.exists() ? Object.keys(categoriesSnapshot.val()).length : 0;
-                document.getElementById('totalCategories').textContent = categoryCount;
 
                 if (playersSnapshot.exists()) {
                     const players = [];
@@ -354,7 +399,7 @@
                 }
                 
                 const champsRef = dbRef(database, 'championships');
-                const champsSnap = await dbGet(champsRef);
+                const champsSnap = await dbGetWithAuthRetry(champsRef);
                 
                 if (champsSnap.exists()) {
                     const allChamps = champsSnap.val();
