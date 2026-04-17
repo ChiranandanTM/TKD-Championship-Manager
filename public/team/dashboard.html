@@ -117,6 +117,7 @@
     <script type="module" src="/js/performance-cache.js"></script>
     <script type="module" src="/js/auth.js"></script>
     <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/player-manager.js"></script>
 
     <script type="module">        async function loadTeamInfo() {
             const user = AUTH_MANAGER.getCurrentUser();
@@ -224,7 +225,12 @@
                 players.forEach(player => {
                     html += `
                         <div class="player-card">
-                            <img src="${player.playerImage}" alt="${player.playerName}" class="player-image">
+                            <div style="position: relative; display: inline-block; width: 100%;">
+                                <img src="${player.playerImage}" alt="${player.playerName}" class="player-image">
+                                <button onclick="deletePlayer('${player.id}', '${player.playerName.replace(/'/g, "\\'")}', '${player.teamId}')" style="position: absolute; top: 10px; right: 10px; background: var(--accent-red); border: 2px solid var(--accent-red); border-radius: 50%; width: 45px; height: 45px; cursor: pointer; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; padding: 0; transition: all 0.3s ease; box-shadow: 0 4px 8px rgba(0,0,0,0.5);" onmouseover="this.style.background='#cc3333'; this.style.transform='scale(1.1)'" onmouseout="this.style.background='var(--accent-red)'; this.style.transform='scale(1)'" title="Delete this player">
+                                    🗑️
+                                </button>
+                            </div>
                             <h3 style="color: var(--border-gold); margin-bottom: 10px;">${player.playerName}</h3>
                             
                             <div class="player-info">
@@ -290,6 +296,24 @@
         window.editPlayer = function(playerId) {
             sessionStorage.setItem('editPlayerId', playerId);
             window.location.href = '/register.html?edit=' + playerId;
+        }
+
+        // Delete player - make it global so onclick handler can access it
+        window.deletePlayer = async function(playerId, playerName, playerTeamId) {
+            if (typeof PLAYER_MANAGER !== 'undefined') {
+                await PLAYER_MANAGER.deletePlayer(playerId, playerName, playerTeamId);
+            } else {
+                // Wait for PLAYER_MANAGER to load
+                let attempts = 0;
+                const wait = setInterval(() => {
+                    attempts++;
+                    if (typeof PLAYER_MANAGER !== 'undefined') {
+                        clearInterval(wait);
+                        PLAYER_MANAGER.deletePlayer(playerId, playerName, playerTeamId);
+                    }
+                    if (attempts > 50) clearInterval(wait);
+                }, 100);
+            }
         }
 
         // Override native alert/confirm with custom modals

@@ -28,6 +28,7 @@ const PRECACHE_URLS = [
   '/js/bracket.js',
   '/js/performance-cache.js',
   '/js/Team-deadline-manager.js',
+  '/js/player-manager.js',
   '/js/admin-form-editor.js',
   '/js/admin-category-editor.js',
 ];

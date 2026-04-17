@@ -32,6 +32,9 @@ const TEAM_DEADLINE_MANAGER = {
 
       const now = new Date();
 
+      // Check if current user is admin
+      const isAdmin = typeof AUTH_MANAGER !== 'undefined' && AUTH_MANAGER.getCurrentUser().role === 'admin';
+
       let rows = '';
       teams.forEach(team => {
         const deadline = team.registrationDeadline || '';
@@ -83,6 +86,13 @@ const TEAM_DEADLINE_MANAGER = {
                   id="toggle-btn-${team.id}">
                   ${isClosed ? '🔓 Reopen' : '🔒 Close'}
                 </button>
+                ${isAdmin ? `<button onclick="TEAM_DEADLINE_MANAGER.deleteTeam('${team.id}', '${team.teamName.replace(/'/g, "\\'")}')"
+                  style="padding: 6px 14px; font-size: 0.85rem; background: var(--accent-red); color: var(--text-white);
+                         border: none; border-radius: 6px; cursor: pointer; font-weight: 700; opacity: 0.8;"
+                  title="⚠️ Delete this team and all associated players"
+                  id="delete-btn-${team.id}">
+                  🗑️ Delete
+                </button>` : ''}
               </div>
             </td>
           </tr>
@@ -236,6 +246,252 @@ const TEAM_DEADLINE_MANAGER = {
       console.error('❌ Error opening all teams:', error);
       if (typeof MODAL !== 'undefined') {
         MODAL.error('Error: ' + error.message);
+      }
+    }
+  },
+
+  // Delete a team and all associated data (ADMIN ONLY)
+  async deleteTeam(teamId, teamName) {
+    // Check admin access
+    if (typeof AUTH_MANAGER !== 'undefined') {
+      const user = AUTH_MANAGER.getCurrentUser();
+      if (user.role !== 'admin') {
+        if (typeof MODAL !== 'undefined') {
+          MODAL.error('❌ Only admins can delete teams.');
+        }
+        return;
+      }
+    }
+
+    // Show confirmation with warning
+    const message = `⚠️ WARNING: This will permanently delete:\n\n` +
+      `• Team: "${teamName}"\n` +
+      `• All players from this team\n` +
+      `• All bracket entries and match records for these players\n\n` +
+      `This action CANNOT be undone.\n\n` +
+      `Are you sure you want to delete this team?`;
+
+    const confirmed = await MODAL.showConfirm(message);
+    if (!confirmed) return;
+
+    const startTime = Date.now();
+    if (typeof MODAL !== 'undefined') {
+      MODAL.info('🔄 Deleting team and associated data... Please wait.');
+    }
+
+    try {
+      console.log(`🗑️ Starting deletion process for team: "${teamName}" (ID: ${teamId})`);
+
+      // Step 1: Find and delete all players associated with this team
+      console.log('📋 Finding all players for this team...');
+      const playersRef = dbRef(database, 'players');
+      const playersSnap = await dbGet(playersRef);
+      
+      const playersToDelete = [];
+      if (playersSnap.exists()) {
+        const allPlayers = playersSnap.val();
+        Object.entries(allPlayers).forEach(([playerId, playerData]) => {
+          // Players are linked to teams via centerName or teamName
+          if (playerData.centerName === teamName || playerData.teamName === teamName) {
+            playersToDelete.push(playerId);
+          }
+        });
+      }
+      console.log(`✅ Found ${playersToDelete.length} players to delete`);
+
+      // Step 2: Find and clean up bracket references
+      console.log('🏆 Cleaning up bracket references...');
+      const bracketsRef = dbRef(database, 'brackets');
+      const bracketsSnap = await dbGet(bracketsRef);
+      
+      const bracketsToUpdate = {};
+      let bracketsModified = 0;
+      if (bracketsSnap.exists()) {
+        const allBrackets = bracketsSnap.val();
+        Object.entries(allBrackets).forEach(([bracketId, bracketData]) => {
+          let modified = false;
+
+          // Remove deleted players from bracket
+          if (bracketData.players && typeof bracketData.players === 'object') {
+            Object.keys(bracketData.players).forEach(playerId => {
+              if (playersToDelete.includes(playerId)) {
+                bracketsToUpdate[`brackets/${bracketId}/players/${playerId}`] = null;
+                modified = true;
+              }
+            });
+          }
+
+          // Remove team references from matches
+          if (bracketData.matches && typeof bracketData.matches === 'object') {
+            Object.entries(bracketData.matches).forEach(([matchId, matchData]) => {
+              let matchModified = false;
+
+              // Check if match involves deleted players
+              if (matchData.player1 && playersToDelete.includes(matchData.player1)) {
+                bracketsToUpdate[`brackets/${bracketId}/matches/${matchId}/player1`] = null;
+                bracketsToUpdate[`brackets/${bracketId}/matches/${matchId}/player1Name`] = null;
+                bracketsToUpdate[`brackets/${bracketId}/matches/${matchId}/player1Team`] = null;
+                matchModified = true;
+              }
+              if (matchData.player2 && playersToDelete.includes(matchData.player2)) {
+                bracketsToUpdate[`brackets/${bracketId}/matches/${matchId}/player2`] = null;
+                bracketsToUpdate[`brackets/${bracketId}/matches/${matchId}/player2Name`] = null;
+                bracketsToUpdate[`brackets/${bracketId}/matches/${matchId}/player2Team`] = null;
+                matchModified = true;
+              }
+
+              if (matchModified) modified = true;
+            });
+          }
+
+          if (modified) bracketsModified++;
+        });
+      }
+      console.log(`✅ Prepared cleanup for ${bracketsModified} brackets`);
+
+      // Step 3: Find and clean up match history / standings references
+      console.log('📊 Cleaning up match history and standings...');
+      const standingsRef = dbRef(database, 'matchHistory');
+      const standingsSnap = await dbGet(standingsRef);
+      
+      let standingsModified = 0;
+      if (standingsSnap.exists()) {
+        const allHistory = standingsSnap.val();
+        Object.entries(allHistory).forEach(([historyId, historyData]) => {
+          if (historyData.player1 && playersToDelete.includes(historyData.player1)) {
+            bracketsToUpdate[`matchHistory/${historyId}/player1`] = null;
+          }
+          if (historyData.player2 && playersToDelete.includes(historyData.player2)) {
+            bracketsToUpdate[`matchHistory/${historyId}/player2`] = null;
+          }
+          if (historyData.winner && playersToDelete.includes(historyData.winner)) {
+            bracketsToUpdate[`matchHistory/${historyId}/winner`] = null;
+          }
+          // Also clean up team references in standings
+          if (historyData.teamId === teamId) {
+            bracketsToUpdate[`matchHistory/${historyId}`] = null;
+          }
+          standingsModified++;
+        });
+      }
+      console.log(`✅ Prepared cleanup for match history and standings`);
+
+      // Step 3b: Clean up match results
+      console.log('📈 Cleaning up match results...');
+      const matchResultsRef = dbRef(database, 'matchResults');
+      const matchResultsSnap = await dbGet(matchResultsRef);
+      
+      let matchResultsModified = 0;
+      if (matchResultsSnap.exists()) {
+        const allResults = matchResultsSnap.val();
+        Object.entries(allResults).forEach(([resultId, resultData]) => {
+          if (resultData.player1 && playersToDelete.includes(resultData.player1)) {
+            bracketsToUpdate[`matchResults/${resultId}/player1`] = null;
+          }
+          if (resultData.player2 && playersToDelete.includes(resultData.player2)) {
+            bracketsToUpdate[`matchResults/${resultId}/player2`] = null;
+          }
+          if (resultData.winner && playersToDelete.includes(resultData.winner)) {
+            bracketsToUpdate[`matchResults/${resultId}/winner`] = null;
+          }
+          if (resultData.teamId === teamId) {
+            bracketsToUpdate[`matchResults/${resultId}`] = null;
+          }
+          matchResultsModified++;
+        });
+      }
+      console.log(`✅ Prepared cleanup for ${matchResultsModified} match results`);
+
+      // Step 3c: Clean up overall standings (team-based statistics)
+      console.log('🏅 Cleaning up overall standings...');
+      const overallStandingsRef = dbRef(database, 'overallStandings');
+      const overallStandingsSnap = await dbGet(overallStandingsRef);
+      
+      let overallStandingsModified = 0;
+      if (overallStandingsSnap.exists()) {
+        const allStandings = overallStandingsSnap.val();
+        Object.entries(allStandings).forEach(([standingId, standingData]) => {
+          // Delete standing records for this team
+          if (standingData.teamId === teamId) {
+            bracketsToUpdate[`overallStandings/${standingId}`] = null;
+            overallStandingsModified++;
+          }
+          // Delete standing records for players from this team
+          playersToDelete.forEach(playerId => {
+            if (standingData.playerId === playerId) {
+              bracketsToUpdate[`overallStandings/${standingId}`] = null;
+              overallStandingsModified++;
+            }
+          });
+        });
+      }
+      console.log(`✅ Prepared cleanup for ${overallStandingsModified} overall standings`);
+
+      // Step 3d: Clean up category results
+      console.log('📋 Cleaning up category results...');
+      const categoryResultsRef = dbRef(database, 'categoryResults');
+      const categoryResultsSnap = await dbGet(categoryResultsRef);
+      
+      let categoryResultsModified = 0;
+      if (categoryResultsSnap.exists()) {
+        const allCategoryResults = categoryResultsSnap.val();
+        Object.entries(allCategoryResults).forEach(([catResultId, catResultData]) => {
+          if (catResultData.teamId === teamId) {
+            bracketsToUpdate[`categoryResults/${catResultId}`] = null;
+            categoryResultsModified++;
+          }
+          // Also check for player references in category results
+          playersToDelete.forEach(playerId => {
+            if (catResultData.playerId === playerId) {
+              bracketsToUpdate[`categoryResults/${catResultId}`] = null;
+              categoryResultsModified++;
+            }
+          });
+        });
+      }
+      console.log(`✅ Prepared cleanup for ${categoryResultsModified} category results`);
+
+      // Step 4: Delete all players in a batch
+      console.log('🗑️ Deleting players...');
+      playersToDelete.forEach(playerId => {
+        bracketsToUpdate[`players/${playerId}`] = null;
+      });
+
+      // Step 5: Delete the team record
+      console.log('🗑️ Deleting team record...');
+      bracketsToUpdate[`teams/${teamId}`] = null;
+
+      // Step 6: Delete team user role entry
+      bracketsToUpdate[`users/${teamId}`] = null;
+
+      // Step 7: Execute all deletions and updates in a single batch operation
+      console.log('💾 Executing batch delete operation...');
+      await dbUpdate(dbRef(database), bracketsToUpdate);
+
+      const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      const successMsg = `✅ Team Deleted Successfully!\n\n` +
+        `Deleted: ${teamName}\n` +
+        `Players removed: ${playersToDelete.length}\n` +
+        `Brackets cleaned: ${bracketsModified}\n` +
+        `Match history cleaned: ${standingsModified}\n` +
+        `Match results cleaned: ${matchResultsModified}\n` +
+        `Overall standings cleaned: ${overallStandingsModified}\n` +
+        `Category results cleaned: ${categoryResultsModified}\n` +
+        `Time: ${duration}s`;
+
+      console.log(`✅ Deletion completed in ${duration}s`);
+
+      if (typeof MODAL !== 'undefined') {
+        MODAL.success(successMsg);
+      }
+
+      // Refresh teams table
+      await this.renderTeamsTable('teamsTableContainer');
+
+    } catch (error) {
+      console.error('❌ Error deleting team:', error);
+      if (typeof MODAL !== 'undefined') {
+        MODAL.error('Error deleting team: ' + error.message);
       }
     }
   }

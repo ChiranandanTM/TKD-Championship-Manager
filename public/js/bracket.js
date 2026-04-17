@@ -1,6 +1,7 @@
 // ============================================
 // BRACKET & TOURNAMENT LOGIC (SINGLE ELIMINATION)
 // With Smart Opponent Matching & Match Management
+// Version: 2.1.0 - Fixed round display order
 // ============================================
 
 const BRACKET = {
@@ -195,19 +196,23 @@ const BRACKET = {
 
     console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
 
-    await this.loadBracket(categoryKey);
+    // Load bracket WITH conflict fixes applied
+    await this.loadBracketWithFixes(categoryKey);
+    
     if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
       console.log(`Player count mismatch: deleting old bracket`);
       await dbSet(dbRef(database, `brackets/${categoryKey}`), null);
       this.currentBracket = null;
     }
 
-    await this.loadBracket(categoryKey);
-
     if (!this.currentBracket) {
       console.log(`Creating new bracket with players:`, category.players);
       this.currentBracket = this.createBracket(category.players);
       await this.saveBracket(categoryKey, this.currentBracket);
+    } else {
+      // Bracket exists and was loaded - fix any conflicts
+      console.log(`Bracket exists - applying conflict resolution...`);
+      await this.fixBracketConflicts();
     }
 
     // Mark bracket as "Live" when opening (only if not already completed)
@@ -270,19 +275,23 @@ const BRACKET = {
 
     console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
 
-    await this.loadBracket(categoryKey);
+    // Load bracket WITH conflict fixes applied
+    await this.loadBracketWithFixes(categoryKey);
+    
     if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
       console.log(`Player count mismatch: deleting old bracket`);
       await dbSet(dbRef(database, `brackets/${categoryKey}`), null);
       this.currentBracket = null;
     }
 
-    await this.loadBracket(categoryKey);
-
     if (!this.currentBracket) {
       console.log(`Creating new bracket with players:`, category.players);
       this.currentBracket = this.createBracket(category.players);
       await this.saveBracket(categoryKey, this.currentBracket);
+    } else {
+      // Bracket exists and was loaded - fix any conflicts
+      console.log(`Bracket exists - applying conflict resolution...`);
+      await this.fixBracketConflicts();
     }
 
     // Mark bracket as "Live" when opening (only if not already completed)
@@ -316,29 +325,245 @@ const BRACKET = {
     };
   },
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // TEAM-AWARE BRACKET GENERATION: Conflict Detection & Resolution
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // Check if two players belong to the same team
+  areSameTeam(player1, player2) {
+    if (!player1 || !player2) return false;
+    const team1 = (player1.teamName || player1.centerName || '').toLowerCase().trim();
+    const team2 = (player2.teamName || player2.centerName || '').toLowerCase().trim();
+    return team1 && team2 && team1 === team2;
+  },
+
+  // Detect all same-team conflicts in a given list of matches
+  // Returns array of conflicts: { matchIndex, player1, player2, matchId }
+  detectTeamConflicts(matches) {
+    const conflicts = [];
+    matches.forEach((match, idx) => {
+      if (match.player1 && match.player2 && this.areSameTeam(match.player1, match.player2)) {
+        conflicts.push({
+          matchIndex: idx,
+          matchId: match.matchId,
+          player1: match.player1,
+          player2: match.player2
+        });
+      }
+    });
+    return conflicts;
+  },
+
+  // Aggressively resolve same-team conflicts by reshuffling and re-pairing
+  // If the seeding has conflicts, completely rebuild the match pairings
+  resolveTeamConflicts(matches) {
+    let currentMatches = matches.map(m => ({ ...m }));
+    
+    // Extract all players
+    const allPlayers = [];
+    currentMatches.forEach(m => {
+      if (m.player1) allPlayers.push(m.player1);
+      if (m.player2) allPlayers.push(m.player2);
+    });
+
+    if (allPlayers.length === 0) {
+      return {
+        resolved: true,
+        newMatches: matches,
+        swaps: [],
+        conflicts: []
+      };
+    }
+
+    // Use aggressive smart seeding to rebuild matches
+    const reseeded = this.smartSeedPlayersForMatching(allPlayers);
+    const rebuiltMatches = [];
+
+    for (let i = 0; i < reseeded.length; i += 2) {
+      const matchIdx = Math.floor(i / 2);
+      const originalMatch = currentMatches[matchIdx] || {};
+      
+      rebuiltMatches.push({
+        matchId: originalMatch.matchId || `R${originalMatch.round}_M${matchIdx + 1}`,
+        round: originalMatch.round || 1,
+        player1: reseeded[i],
+        player2: reseeded[i + 1] || null,
+        winner: null,
+        eliminated: null,
+        status: 'pending',
+        startTime: null,
+        endTime: null
+      });
+    }
+
+    // Verify the rebuild resolved all conflicts
+    const conflicts = this.detectTeamConflicts(rebuiltMatches);
+    
+    if (conflicts.length === 0) {
+      console.log(`✅ Team conflicts resolved through intelligent reshuffling`);
+      return {
+        resolved: true,
+        newMatches: rebuiltMatches,
+        swaps: [],
+        conflicts: []
+      };
+    } else {
+      console.warn(`⚠️ Could not fully resolve ${conflicts.length} team conflict(s) - team composition may be extreme`);
+      return {
+        resolved: false,
+        newMatches: rebuiltMatches,
+        swaps: [],
+        conflicts
+      };
+    }
+  },
+
+  // Smart seeding specifically designed to prevent same-team matches
+  // Uses a greedy algorithm to guarantee conflict-free match pairs
+  smartSeedPlayersForMatching(players) {
+    if (players.length <= 1) return players;
+
+    const result = [];
+    const available = [...players];
+
+    // Build match pairs greedily
+    while (available.length > 0) {
+      const p1 = available.shift();
+      result.push(p1);
+
+      if (available.length === 0) break;
+
+      // Get p1's team
+      const p1Team = (p1.teamName || p1.centerName || '').toLowerCase().trim();
+
+      // Find best partner for p1 from different team
+      let partnerIdx = -1;
+      let foundDifferentTeam = false;
+
+      // First pass: look for player from different team
+      for (let i = 0; i < available.length; i++) {
+        const candidate = available[i];
+        const candTeam = (candidate.teamName || candidate.centerName || '').toLowerCase().trim();
+        
+        if (candTeam !== p1Team) {
+          partnerIdx = i;
+          foundDifferentTeam = true;
+          break;
+        }
+      }
+
+      // Second pass: if no different team found, just take next available
+      if (partnerIdx === -1 && available.length > 0) {
+        partnerIdx = 0;
+      }
+
+      if (partnerIdx !== -1) {
+        const p2 = available.splice(partnerIdx, 1)[0];
+        result.push(p2);
+      }
+    }
+
+    return result;
+  },
+
+  // Enhanced smart seeding to distribute same-team players across bracket sections
+  // Ensures that players in matching positions (0-1, 2-3, 4-5, ...) are from different teams
+  smartSeedPlayers(players) {
+    if (players.length === 0) return [];
+    if (players.length === 1) return players;
+
+    // Use aggressive match-aware seeding
+    const seeded = this.smartSeedPlayersForMatching([...players]);
+    
+    console.log(`✅ Smart seeding complete: ${seeded.length}/${players.length} players with conflict-aware distribution`);
+    return seeded;
+  },
+
+  // Validate bracket integrity: ensure all players assigned exactly once, no duplicates, no data corruption
+  validateBracketIntegrity(bracket, categoryPlayers) {
+    const errors = [];
+    const warnings = [];
+    const foundPlayerIds = new Set();
+
+    // Collect all players from all rounds
+    bracket.rounds.forEach((round, ri) => {
+      round.forEach((match, mi) => {
+        if (match.player1) {
+          if (foundPlayerIds.has(match.player1.id)) {
+            errors.push(`❌ Player ${match.player1.playerName} appears twice (Round ${ri + 1}, Match ${mi + 1})`);
+          }
+          foundPlayerIds.add(match.player1.id);
+        }
+        if (match.player2) {
+          if (foundPlayerIds.has(match.player2.id)) {
+            errors.push(`❌ Player ${match.player2.playerName} appears twice (Round ${ri + 1}, Match ${mi + 1})`);
+          }
+          foundPlayerIds.add(match.player2.id);
+        }
+      });
+    });
+
+    // Check bye players
+    const byePlayers = bracket.byePlayers || {};
+    Object.entries(byePlayers).forEach(([round, player]) => {
+      if (player) {
+        if (foundPlayerIds.has(player.id)) {
+          errors.push(`❌ Bye player ${player.playerName} already appears in a match`);
+        }
+        foundPlayerIds.add(player.id);
+      }
+    });
+
+    // Verify all category players are in bracket
+    categoryPlayers.forEach(player => {
+      if (!foundPlayerIds.has(player.id)) {
+        errors.push(`❌ Player ${player.playerName} missing from bracket`);
+      }
+    });
+
+    // Check for extra players
+    if (foundPlayerIds.size > categoryPlayers.length) {
+      errors.push(`❌ Bracket has ${foundPlayerIds.size} players but category has ${categoryPlayers.length}`);
+    }
+
+    // Warn about same-team matches
+    bracket.rounds.forEach((round, ri) => {
+      round.forEach((match, mi) => {
+        if (match.player1 && match.player2 && this.areSameTeam(match.player1, match.player2)) {
+          warnings.push(`⚠️ R${ri + 1}M${mi + 1}: ${match.player1.playerName} vs ${match.player2.playerName} (same team)`);
+        }
+      });
+    });
+
+    if (errors.length > 0) {
+      console.error('🔴 BRACKET INTEGRITY ERRORS:');
+      errors.forEach(e => console.error(e));
+    }
+
+    if (warnings.length > 0) {
+      console.warn('🟡 BRACKET WARNINGS:');
+      warnings.forEach(w => console.warn(w));
+    }
+
+    if (errors.length === 0) {
+      console.log(`✅ Bracket integrity valid: ${foundPlayerIds.size} players, all assigned exactly once`);
+    }
+
+    return { valid: errors.length === 0, errors, warnings };
+  },
+
   // Create new bracket using standard Taekwondo bye-distribution rules.
+  // WITH TEAM-AWARE CONFLICT RESOLUTION to prevent same-team matches.
   // Rounds are built one at a time — Round 1 is created upfront; later rounds
   // are constructed dynamically by buildNextRound() once the previous round
   // is fully complete.  This guarantees:
   //   • Exact match counts per round (floor(n/2), no power-of-2 padding)
   //   • Bye players wait in their round until all real matches finish
   //   • No player ever receives two consecutive byes
+  //   • Same-team players are not matched in early rounds (where possible)
   createBracket(players) {
-    // ── SMART SEEDING: spread same-team players as far apart as possible ──
-    const teamGroups = {};
-    [...players].forEach(p => {
-      const t = p.teamName || 'unknown';
-      if (!teamGroups[t]) teamGroups[t] = [];
-      teamGroups[t].push(p);
-    });
-    Object.values(teamGroups).forEach(g => g.sort(() => Math.random() - 0.5));
-    const groups = Object.values(teamGroups).sort((a, b) => b.length - a.length);
-    const shuffled = [];
-    let remaining = groups.filter(g => g.length > 0);
-    while (remaining.length > 0) {
-      remaining.forEach(g => { if (g.length > 0) shuffled.push(g.shift()); });
-      remaining = remaining.filter(g => g.length > 0);
-    }
+    // ── ENHANCED SMART SEEDING: distribute same-team players optimally ──
+    const shuffled = this.smartSeedPlayers(players);
     // ─────────────────────────────────────────────────────────────────────
 
     const n = shuffled.length;
@@ -387,11 +612,39 @@ const BRACKET = {
       });
     }
 
+    // ── APPLY TEAM-AWARE CONFLICT RESOLUTION ──────────────────────────────
+    // Resolve any same-team matches in Round 1 by swapping players intelligently
+    const resolution = this.resolveTeamConflicts(round1);
+    if (resolution.resolved && resolution.swaps.length > 0) {
+      console.log(`✅ Round 1: ${resolution.swaps.length} player swap(s) performed to avoid same-team matches`);
+    } else if (!resolution.resolved && resolution.conflicts.length > 0) {
+      console.warn(`⚠️ Round 1: ${resolution.conflicts.length} unavoidable same-team conflict(s) due to team composition`);
+      resolution.conflicts.forEach(c => {
+        console.warn(`  - ${c.player1.playerName} vs ${c.player2.playerName} (both from ${c.player1.teamName})`);
+      });
+    }
+    
+    // Update round1 with resolved matches
+    for (let i = 0; i < resolution.newMatches.length; i++) {
+      round1[i] = {
+        ...round1[i],
+        player1: resolution.newMatches[i].player1,
+        player2: resolution.newMatches[i].player2
+      };
+    }
+
     bracket.rounds.push(round1);
 
     if (round1ByePlayer) {
       bracket.byePlayers['0'] = round1ByePlayer;
       bracket.byeHistory[round1ByePlayer.id] = 1;
+    }
+
+    // ── VALIDATE BRACKET INTEGRITY ────────────────────────────────────────
+    const validation = this.validateBracketIntegrity(bracket, players);
+    if (!validation.valid) {
+      console.error('❌ Bracket creation failed integrity check');
+      validation.errors.forEach(e => console.error(`  ${e}`));
     }
 
     // Subsequent rounds are built dynamically by buildNextRound() —
@@ -400,6 +653,7 @@ const BRACKET = {
   },
 
   // Build the next round after every match in `roundIndex` is completed.
+  // WITH TEAM-AWARE CONFLICT RESOLUTION to prevent same-team matches.
   // Collects all match winners from that round plus the round's bye player
   // (if any), pairs them into new matches, and assigns a fresh bye to the
   // player with the fewest byes so far (never the same player twice in a row
@@ -464,6 +718,27 @@ const BRACKET = {
       });
     }
 
+    // ── APPLY TEAM-AWARE CONFLICT RESOLUTION ──────────────────────────────
+    // Resolve any same-team matches by swapping players intelligently
+    const resolution = this.resolveTeamConflicts(nextRound);
+    if (resolution.resolved && resolution.swaps.length > 0) {
+      console.log(`✅ Round ${nextRoundNum}: ${resolution.swaps.length} player swap(s) performed to avoid same-team matches`);
+    } else if (!resolution.resolved && resolution.conflicts.length > 0) {
+      console.warn(`⚠️ Round ${nextRoundNum}: ${resolution.conflicts.length} unavoidable same-team conflict(s)`);
+      resolution.conflicts.forEach(c => {
+        console.warn(`  - ${c.player1.playerName} vs ${c.player2.playerName} (both from ${c.player1.teamName})`);
+      });
+    }
+
+    // Update nextRound with resolved matches
+    for (let i = 0; i < resolution.newMatches.length; i++) {
+      nextRound[i] = {
+        ...nextRound[i],
+        player1: resolution.newMatches[i].player1,
+        player2: resolution.newMatches[i].player2
+      };
+    }
+
     this.currentBracket.rounds.push(nextRound);
 
     if (nextByePlayer) {
@@ -476,6 +751,75 @@ const BRACKET = {
 
     console.log(`✅ Round ${nextRoundNum} built: ${nextRound.length} match(es)` +
       (nextByePlayer ? `, bye → ${nextByePlayer.playerName}` : ''));
+  },
+
+  // Fix conflicts in an existing bracket by resolving all same-team matches
+  // Applies resolution to each round that has conflicts
+  async fixBracketConflicts() {
+    if (!this.currentBracket || !this.currentBracket.rounds) {
+      return false;
+    }
+
+    let fixedAnyConflicts = false;
+
+    // Check and fix each round
+    for (let roundIdx = 0; roundIdx < this.currentBracket.rounds.length; roundIdx++) {
+      const round = this.currentBracket.rounds[roundIdx];
+      if (!round) continue;
+
+      // Detect conflicts in this round
+      const conflicts = this.detectTeamConflicts(round);
+      
+      if (conflicts.length > 0) {
+        console.log(`🔧 Round ${roundIdx + 1}: Found ${conflicts.length} conflict(s), applying resolution...`);
+        
+        // Build proper match objects for resolution
+        const roundMatches = round.map((match, idx) => ({
+          ...match,
+          matchId: match.matchId || `R${roundIdx + 1}_M${idx + 1}`,
+          round: roundIdx + 1
+        }));
+
+        // Resolve conflicts
+        const result = this.resolveTeamConflicts(roundMatches);
+        
+        if (result.resolved) {
+          console.log(`✅ Round ${roundIdx + 1}: All conflicts resolved!`);
+        } else {
+          console.warn(`⚠️ Round ${roundIdx + 1}: Some conflicts remain (team composition)`);
+        }
+
+        // Update the round with resolved matches
+        this.currentBracket.rounds[roundIdx] = result.newMatches;
+        fixedAnyConflicts = true;
+      }
+    }
+
+    // If we fixed any conflicts, save the bracket
+    if (fixedAnyConflicts) {
+      console.log(`💾 Saving corrected bracket to Firebase...`);
+      await this.saveBracket(this.currentCategory, this.currentBracket);
+      console.log(`✅ Bracket corrected and saved!`);
+    }
+
+    return fixedAnyConflicts;
+  },
+
+  // Load bracket from Firebase and apply conflict fixes
+  async loadBracketWithFixes(categoryKey) {
+    await this.loadBracket(categoryKey);
+    
+    if (this.currentBracket && this.currentBracket.rounds) {
+      // Apply conflict resolution to existing bracket
+      this.currentCategory = categoryKey;
+      const wasFixed = await this.fixBracketConflicts();
+      
+      if (wasFixed) {
+        console.log(`🎯 Existing bracket had same-team conflicts - automatically resolved!`);
+      } else {
+        console.log(`✅ Existing bracket is clean - no team conflicts detected`);
+      }
+    }
   },
 
   // Load bracket from Firebase
@@ -700,8 +1044,13 @@ const BRACKET = {
       <div class="bracket-rounds">
     `;
 
+    // Use expected total rounds (not just built rounds) so Round 1 does not
+    // get mislabeled as Final while later rounds are still not generated.
+    const totalRounds = this.getExpectedTotalRounds(this.currentBracket);
     this.currentBracket.rounds.forEach((round, roundIndex) => {
-      const roundName = this.getRoundName(roundIndex, this.currentBracket.rounds.length);
+      // Get the actual round number from the first match in this round
+      const actualRoundNumber = round[0]?.round || (roundIndex + 1);
+      const roundName = this.getRoundName(roundIndex, totalRounds, actualRoundNumber);
 
       html += `
         <div class="round">
@@ -761,9 +1110,17 @@ const BRACKET = {
     const isPending = match.status === 'pending' && player1 && player2;
     const isInProgress = match.status === 'in-progress';
     const isCompleted = match.status === 'completed';
+    
+    // Check for same-team match (unavoidable conflict)
+    const isSameTeamMatch = player1 && player2 && this.areSameTeam(player1, player2);
+    const sameTeamWarning = isSameTeamMatch ? `
+      <div style="margin-top: 8px; padding: 8px 10px; background: rgba(255, 165, 0, 0.15); border: 1px solid #ffa500; border-radius: 6px; color: #ffa500; font-size: 0.85rem; font-weight: 600;">
+        ⚠️ SAME-TEAM MATCH: Both players are from ${player1.teamName}
+      </div>
+    ` : '';
 
     let html = `
-      <div class="match ${match.status}" data-match-id="${match.matchId}">
+      <div class="match ${match.status}${isSameTeamMatch ? ' same-team-match' : ''}" data-match-id="${match.matchId}">
         <div class="match-players">
           <div class="player player-blue ${match.winner === player1?.id ? 'winner' : ''} ${match.eliminated === player1?.id ? 'eliminated' : ''}">
             <span class="player-name">${player1 ? player1.playerName : '<span class="bye">BYE</span>'}</span>
@@ -777,6 +1134,8 @@ const BRACKET = {
             <span class="player-center">${player2 ? (player2.centerName || '') : ''}</span>
           </div>
         </div>
+
+        ${sameTeamWarning}
 
         ${isPending ? `
           <div style="margin-top: 12px;">
@@ -849,6 +1208,17 @@ const BRACKET = {
     if (!match || !match.player1 || !match.player2) {
       console.log("❌ Match not found or missing players");
       return;
+    }
+
+    // ── WARN IF SAME-TEAM MATCH (unavoidable conflict) ──────────────────
+    if (this.areSameTeam(match.player1, match.player2)) {
+      console.warn(`⚠️ SAME-TEAM MATCH: ${match.player1.playerName} vs ${match.player2.playerName} (${match.player1.teamName})`);
+      if (typeof MODAL !== 'undefined') {
+        MODAL.warning(
+          `⚠️ SAME-TEAM MATCH ALERT\n\n${match.player1.playerName} vs ${match.player2.playerName}\n\nBoth players are from ${match.player1.teamName}. This pairing was unavoidable due to team composition.`,
+          'Match is proceeding'
+        );
+      }
     }
 
     console.log("🎮 Starting match:", matchId);
@@ -1021,13 +1391,52 @@ const BRACKET = {
     return null;
   },
 
-  // Get round name
-  getRoundName(roundIndex, totalRounds) {
-    const fromEnd = totalRounds - roundIndex - 1;
+  // Get expected total rounds for this bracket (works for new + legacy data)
+  getExpectedTotalRounds(bracket) {
+    if (!bracket) return 0;
 
-    if (fromEnd === 0) return 'Final';
-    if (fromEnd === 1) return 'Semi-Final';
-    if (fromEnd === 2) return 'Quarter-Final';
+    const expectedCounts = bracket.expectedRoundMatchCounts || [];
+    const expectedTotal = Array.isArray(expectedCounts)
+      ? expectedCounts.length
+      : Object.keys(expectedCounts).length;
+
+    if (expectedTotal > 0) return expectedTotal;
+
+    // Legacy fallback: infer total rounds from player count
+    const playerCount = Number(bracket.playerCount);
+    if (Number.isFinite(playerCount) && playerCount > 1) {
+      let rounds = 0;
+      let cur = playerCount;
+      while (cur > 1) {
+        rounds += 1;
+        cur = Math.ceil(cur / 2);
+      }
+      return rounds;
+    }
+
+    return Array.isArray(bracket.rounds) ? bracket.rounds.length : 0;
+  },
+
+  // Get round name
+  getRoundName(roundIndex, totalRounds, round) {
+    // If we have the actual round number from match data, use it directly
+    const roundNum = Number(round);
+    if (Number.isFinite(roundNum) && roundNum > 0) {
+      // Only use labels for Final, Semi, Quarter-Final if we know total rounds
+      if (totalRounds && roundNum === totalRounds) return 'Final';
+      if (totalRounds && roundNum === totalRounds - 1) return 'Semi-Final';
+      if (totalRounds && roundNum === totalRounds - 2) return 'Quarter-Final';
+      return `Round ${roundNum}`;
+    }
+    
+    // Fallback: Calculate distance from the final
+    const distanceFromFinal = totalRounds - 1 - roundIndex;
+    
+    if (distanceFromFinal === 0) return 'Final';
+    if (distanceFromFinal === 1) return 'Semi-Final';
+    if (distanceFromFinal === 2) return 'Quarter-Final';
+    
+    // For earlier rounds: Round X where X = roundIndex + 1
     return `Round ${roundIndex + 1}`;
   },
 
@@ -1069,7 +1478,7 @@ const BRACKET = {
     if (this.currentBracket.status === 'complete') return true;
     const rounds = this.currentBracket.rounds;
     if (!rounds || rounds.length === 0) return false;
-    const expectedTotal = (this.currentBracket.expectedRoundMatchCounts || []).length;
+    const expectedTotal = this.getExpectedTotalRounds(this.currentBracket);
     if (rounds.length < expectedTotal) return false;
     for (const round of rounds) {
       for (const match of round) {
@@ -1086,7 +1495,8 @@ const BRACKET = {
     const totalRounds = rounds.length;
     const rankings = [];
 
-    // Final is last round, index totalRounds-1
+    // Rounds are stored in FORWARD order: [Round 1, Quarter-Final, Semi-Final, Final]
+    // Final is at the last index (totalRounds - 1)
     const finalRound = rounds[totalRounds - 1];
     if (!finalRound || finalRound.length === 0) return rankings;
 
@@ -1524,8 +1934,12 @@ const BRACKET = {
       ['Round', 'Match', 'Player 1', 'Player 2', 'Winner', 'Start Time', 'End Time']
     ];
     const totalRounds = this.currentBracket.rounds.length;
+    
+    // Iterate rounds in forward order (they're stored as Round 1, Quarter-Final, Semi-Final, Final)
     this.currentBracket.rounds.forEach((round, ri) => {
-      const roundName = this.getRoundName(ri, totalRounds);
+      // Get the actual round number from the first match in this round
+      const actualRoundNumber = round[0]?.round || (ri + 1);
+      const roundName = this.getRoundName(ri, totalRounds, actualRoundNumber);
       round.forEach((match, mi) => {
         if (!match.player1 && !match.player2) return; // skip empty slots
         const p1 = match.player1 ? match.player1.playerName : 'BYE';

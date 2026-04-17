@@ -255,11 +255,25 @@
         });
 
         // ── HELPERS ──────────────────────────────────────────────────────────
-        function getRoundName(roundIndex, totalRounds) {
-            const fromEnd = totalRounds - 1 - roundIndex;
-            if (fromEnd === 0) return 'Final';
-            if (fromEnd === 1) return 'Semi-Final';
-            if (fromEnd === 2) return 'Quarter-Final';
+        function getRoundName(roundIndex, totalRounds, actualRoundNumber) {
+            // If we have the actual round number from match data, use it directly
+            if (actualRoundNumber) {
+                const roundNum = actualRoundNumber;
+                // Only use labels for Final, Semi, Quarter-Final if we know total rounds
+                if (totalRounds && roundNum === totalRounds) return 'Final';
+                if (totalRounds && roundNum === totalRounds - 1) return 'Semi-Final';
+                if (totalRounds && roundNum === totalRounds - 2) return 'Quarter-Final';
+                return 'Round ' + roundNum;
+            }
+            
+            // Fallback: Calculate distance from the final
+            const distanceFromFinal = totalRounds - 1 - roundIndex;
+            
+            if (distanceFromFinal === 0) return 'Final';
+            if (distanceFromFinal === 1) return 'Semi-Final';
+            if (distanceFromFinal === 2) return 'Quarter-Final';
+            
+            // For earlier rounds: Round X where X = roundIndex + 1
             return 'Round ' + (roundIndex + 1);
         }
 
@@ -322,8 +336,12 @@
                     const totalRounds = rounds.length;
                     let foundNext = false;
 
+                    // Iterate rounds in forward order (they're stored as Round 1, Quarter-Final, Semi-Final, Final)
                     rounds.forEach(function(round, roundIndex) {
                         if (!round) return;
+
+                        // Get the actual round number from the first match in this round
+                        const actualRoundNumber = round[0]?.round || (roundIndex + 1);
 
                         // Same fix for each round
                         const matches = Array.isArray(round)
@@ -333,7 +351,7 @@
                         matches.forEach(function(match) {
                             if (!match || !match.player1 || !match.player2) return;
 
-                            const roundName = getRoundName(roundIndex, totalRounds);
+                            const roundName = getRoundName(roundIndex, totalRounds, actualRoundNumber);
 
                             if (match.status === 'in-progress') {
                                 liveMatches.push({ categoryKey, roundName, match });
@@ -382,6 +400,24 @@
 
         window.alert = function(msg) { if (typeof MODAL !== 'undefined') return MODAL.showAlert(msg); };
         window.confirm = function(msg) { if (typeof MODAL !== 'undefined') return MODAL.showConfirm(msg); };
+
+        // ── AUTO REFRESH (Every 5 seconds) ─────────────────────────────────────
+        // Hard refresh to keep Live Match page always up-to-date
+        // This ensures real-time data is always fresh without manual intervention
+        console.log('⚡ Live Match page auto-refresh initialized (5-second interval)');
+        
+        let isRefreshing = false;
+        setInterval(function() {
+            // Prevent multiple simultaneous refreshes
+            if (isRefreshing) return;
+            
+            isRefreshing = true;
+            console.log('🔄 Live Match hard refresh triggered at', new Date().toLocaleTimeString('en-IN'));
+            
+            // Hard refresh the page to get latest match data
+            // Using true parameter forces cache bypass
+            location.reload(true);
+        }, 5000);
     </script>
 </body>
 </html>
