@@ -165,6 +165,28 @@
             background: var(--border-gold);
             color: var(--primary-black);
         }
+
+        .category-filter-select {
+            border: 2px solid var(--border-gold);
+            background: var(--secondary-black);
+            color: var(--text-white);
+            border-radius: 10px;
+            padding: 7px 12px;
+            font-size: 0.9rem;
+            font-weight: 700;
+            min-width: 170px;
+            outline: none;
+        }
+
+        .category-filter-select:focus {
+            box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.35);
+            border-color: var(--accent-cyan);
+        }
+
+        .category-filter-select option {
+            background: var(--secondary-black);
+            color: var(--text-white);
+        }
     </style>
 </head>
 <body>
@@ -192,9 +214,20 @@
                 <button class="medal-filter-btn" data-medal-filter="Gold" onclick="setMedalFilter('Gold')">🥇 Gold</button>
                 <button class="medal-filter-btn" data-medal-filter="Silver" onclick="setMedalFilter('Silver')">🥈 Silver</button>
                 <button class="medal-filter-btn" data-medal-filter="Bronze" onclick="setMedalFilter('Bronze')">🥉 Bronze</button>
+
+                <span class="medal-filter-label" style="margin-left: 8px;">Age Category:</span>
+                <select id="ageCategoryFilter" class="category-filter-select" onchange="setAgeCategoryFilter(this.value)">
+                    <option value="all">All Categories</option>
+                </select>
             </div>
             <div id="playersList" class="player-grid"></div>
         </div>
+    </div>
+
+    <div class="site-credit-footer">
+        <span class="credit-line">© Karnataka Taekwondo Association</span>
+        <span class="credit-line credit-owner">Built and Developed by Chiranandan T M</span>
+        <span class="credit-line credit-supporter">Co-Supporter: Sharan B N</span>
     </div>
 
     <!-- Firebase SDK v9 -->
@@ -207,6 +240,7 @@
     <script type="module">
         let teamPlayers = [];
         let currentMedalFilter = 'all';
+        let currentAgeCategoryFilter = 'all';
 
         const MEDAL_PRIORITY = {
             Bronze: 1,
@@ -291,19 +325,67 @@
             });
         }
 
+        function getPlayerAgeCategory(player) {
+            return String(player?.ageCategory || '').trim() || 'Unknown';
+        }
+
+        function getAgeCategorySortRank(category) {
+            const sortOrder = {
+                Mini: 1,
+                'Sub-Junior': 2,
+                Cadet: 3,
+                Junior: 4,
+                Senior: 5,
+                Unknown: 99
+            };
+            return sortOrder[category] || 50;
+        }
+
+        function populateAgeCategoryFilterOptions() {
+            const filterSelect = document.getElementById('ageCategoryFilter');
+            if (!filterSelect) return;
+
+            const uniqueCategories = [...new Set(teamPlayers.map(getPlayerAgeCategory))]
+                .sort((a, b) => {
+                    const rankA = getAgeCategorySortRank(a);
+                    const rankB = getAgeCategorySortRank(b);
+                    if (rankA !== rankB) return rankA - rankB;
+                    return a.localeCompare(b);
+                });
+
+            filterSelect.innerHTML = '<option value="all">All Categories</option>';
+            uniqueCategories.forEach(category => {
+                const option = document.createElement('option');
+                option.value = category;
+                option.textContent = category;
+                filterSelect.appendChild(option);
+            });
+
+            const hasSelectedCategory = uniqueCategories.includes(currentAgeCategoryFilter);
+            if (!hasSelectedCategory) {
+                currentAgeCategoryFilter = 'all';
+            }
+            filterSelect.value = currentAgeCategoryFilter;
+            filterSelect.disabled = teamPlayers.length === 0;
+        }
+
         function renderPlayersList() {
             const playersList = document.getElementById('playersList');
             if (!playersList) return;
 
-            const filteredPlayers = currentMedalFilter === 'all'
-                ? teamPlayers
-                : teamPlayers.filter(player => player.medalType === currentMedalFilter);
+            const filteredPlayers = teamPlayers.filter(player => {
+                const medalMatch = currentMedalFilter === 'all' || player.medalType === currentMedalFilter;
+                const categoryMatch = currentAgeCategoryFilter === 'all' || getPlayerAgeCategory(player) === currentAgeCategoryFilter;
+                return medalMatch && categoryMatch;
+            });
 
             if (filteredPlayers.length === 0) {
                 if (teamPlayers.length === 0) {
                     playersList.innerHTML = '<p style="color: #888; text-align: center;">No players registered yet. Click "Register New Player" to add your first player.</p>';
                 } else {
-                    playersList.innerHTML = `<p style="color: #888; text-align: center;">No players with ${currentMedalFilter} medal found.</p>`;
+                    const medalText = currentMedalFilter === 'all' ? 'any medal' : `${currentMedalFilter} medal`;
+                    const categoryText = currentAgeCategoryFilter === 'all' ? 'all categories' : currentAgeCategoryFilter;
+                    playersList.innerHTML = `<p style="color: #888; text-align: center;">No players found for ${medalText} in ${categoryText}.</p>`;
                 }
                 return;
             }
@@ -460,6 +542,7 @@
 
                 if (!playersSnapshot.exists()) {
                     teamPlayers = [];
+                    populateAgeCategoryFilterOptions();
                     renderPlayersList();
                     return;
                 }
@@ -476,6 +559,7 @@
 
                 if (players.length === 0) {
                     teamPlayers = [];
+                    populateAgeCategoryFilterOptions();
                     renderPlayersList();
                     return;
                 }
@@ -484,6 +568,7 @@
                 players.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
                 teamPlayers = players;
+                populateAgeCategoryFilterOptions();
                 renderPlayersList();
 
             } catch (error) {
@@ -511,6 +596,12 @@
         window.setMedalFilter = function(medalType) {
             currentMedalFilter = medalType;
             updateMedalFilterButtons();
+            renderPlayersList();
+        }
+
+        // Age category dropdown filter handler
+        window.setAgeCategoryFilter = function(category) {
+            currentAgeCategoryFilter = category || 'all';
             renderPlayersList();
         }
 
