@@ -948,6 +948,45 @@ button:disabled,
   transform: translateY(-4px);
 }
 
+.category-filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 2px solid rgba(0, 229, 255, 0.45);
+  border-radius: var(--border-radius);
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.72) 0%, rgba(22, 33, 62, 0.72) 100%);
+  box-shadow: 0 4px 12px rgba(0, 229, 255, 0.12);
+}
+
+.category-filter-label {
+  margin: 0;
+  min-width: 150px;
+  font-size: 0.95rem;
+  letter-spacing: 1px;
+  text-shadow: none;
+  color: var(--border-gold);
+}
+
+.category-filter-select {
+  margin: 0;
+  flex: 1;
+  min-width: 260px;
+  font-size: 1rem;
+  padding: 12px 44px 12px 14px;
+}
+
+.category-empty-state {
+  padding: var(--spacing-lg);
+  border: 2px dashed rgba(255, 215, 0, 0.5);
+  border-radius: var(--border-radius);
+  text-align: center;
+  font-size: 1.1rem;
+  color: var(--text-gray);
+  background: linear-gradient(135deg, rgba(26, 26, 46, 0.7) 0%, rgba(22, 33, 62, 0.7) 100%);
+}
+
 /* ============================================
    CATEGORY CARDS
    ============================================ */
@@ -1798,6 +1837,20 @@ button:disabled,
   
   .categories-grid {
     grid-template-columns: 1fr;
+  }
+
+  .category-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .category-filter-label {
+    min-width: 0;
+  }
+
+  .category-filter-select {
+    min-width: 0;
+    width: 100%;
   }
   
   .bracket-rounds {

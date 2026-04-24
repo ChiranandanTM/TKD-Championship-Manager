@@ -14,7 +14,9 @@ const BRACKET = {
   bracketListener: null,
   historyListener: null,
   currentFilter: 'all',
+  currentCategoryFilter: 'all',
   categoryStatuses: {},
+  categoriesRenderRequestId: 0,
 
   // Category images mapping
   categoryImages: {
@@ -121,60 +123,114 @@ const BRACKET = {
     await this.renderCategories();
   },
 
+  // Filter brackets by category key
+  async filterByCategory(categoryKey) {
+    this.currentCategoryFilter = categoryKey || 'all';
+    await this.renderCategories();
+  },
+
+  // Keep category filter options in sync with available categories
+  syncCategoryFilterControl() {
+    const select = document.getElementById('categoryFilterSelect');
+    if (!select) return;
+
+    const categoryOptions = Object.keys(this.categories)
+      .map(key => {
+        const cat = this.categories[key];
+        return {
+          key,
+          label: `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    let optionsHtml = '<option value="all">All Categories</option>';
+    categoryOptions.forEach(option => {
+      optionsHtml += `<option value="${option.key}">${option.label}</option>`;
+    });
+
+    select.innerHTML = optionsHtml;
+
+    if (this.currentCategoryFilter !== 'all' && !this.categories[this.currentCategoryFilter]) {
+      this.currentCategoryFilter = 'all';
+    }
+
+    select.value = this.currentCategoryFilter;
+  },
+
   // Render category list
-  renderCategories() {
+  async renderCategories() {
     const container = document.getElementById('categoriesList');
     if (!container) return;
 
-    const categoryPromises = Object.keys(this.categories).map(async (key) => {
-      const cat = this.categories[key];
-      const playerCount = cat.players.length;
-      const status = await this.getBracketStatus(key);
-      
-      // Store status for later filtering
-      this.categoryStatuses[key] = status;
+    this.syncCategoryFilterControl();
 
-      // Check if category should be displayed based on filter
-      const statusLower = status.toLowerCase();
-      if (this.currentFilter !== 'all' && this.currentFilter !== statusLower) {
-        return null;
-      }
+    const renderRequestId = ++this.categoriesRenderRequestId;
 
-      // Determine status styling
-      let statusColor = 'var(--text-gray)';
-      let statusText = status;
+    try {
+      const categoryPromises = Object.keys(this.categories).map(async (key) => {
+        const cat = this.categories[key];
+        const playerCount = cat.players.length;
+        const status = await this.getBracketStatus(key);
 
-      if (status === 'Completed') {
-        statusColor = 'var(--success-green)';
-      } else if (status === 'Live') {
-        statusColor = 'var(--warning-orange)';
-      } else if (status === 'Pending') {
-        statusColor = 'var(--accent-cyan)';
-      }
+        // Store status for later filtering
+        this.categoryStatuses[key] = status;
 
-      return `
-        <div class="category-card" onclick="BRACKET.openCategory('${key}')">
-          <h3>${cat.gender} ${cat.ageCategory}</h3>
-          <p class="weight-label">${cat.weightCategory}</p>
-          <p class="player-count">${playerCount} Player${playerCount !== 1 ? 's' : ''}</p>
-          <div style="margin: 12px 0; padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; text-align: center;">
-            <span style="color: ${statusColor}; font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px;">
-              ${statusText === 'Live' ? '🔴 ' : ''}${statusText === 'Completed' ? '✅ ' : ''}${statusText === 'Pending' ? '⏳ ' : ''}${statusText}
-            </span>
+        // Check if category should be displayed based on active filters
+        const statusLower = status.toLowerCase();
+        const matchesStatus = this.currentFilter === 'all' || this.currentFilter === statusLower;
+        const matchesCategory = this.currentCategoryFilter === 'all' || this.currentCategoryFilter === key;
+
+        if (!matchesStatus || !matchesCategory) {
+          return null;
+        }
+
+        // Determine status styling
+        let statusColor = 'var(--text-gray)';
+        let statusText = status;
+
+        if (status === 'Completed') {
+          statusColor = 'var(--success-green)';
+        } else if (status === 'Live') {
+          statusColor = 'var(--warning-orange)';
+        } else if (status === 'Pending') {
+          statusColor = 'var(--accent-cyan)';
+        }
+
+        return `
+          <div class="category-card" onclick="BRACKET.openCategory('${key}')">
+            <h3>${cat.gender} ${cat.ageCategory}</h3>
+            <p class="weight-label">${cat.weightCategory}</p>
+            <p class="player-count">${playerCount} Player${playerCount !== 1 ? 's' : ''}</p>
+            <div style="margin: 12px 0; padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; text-align: center;">
+              <span style="color: ${statusColor}; font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                ${statusText === 'Live' ? '🔴 ' : ''}${statusText === 'Completed' ? '✅ ' : ''}${statusText === 'Pending' ? '⏳ ' : ''}${statusText}
+              </span>
+            </div>
+            <button class="btn-primary">View Bracket</button>
           </div>
-          <button class="btn-primary">View Bracket</button>
-        </div>
-      `;
-    });
+        `;
+      });
 
-    Promise.all(categoryPromises).then((categoryCards) => {
+      const categoryCards = await Promise.all(categoryPromises);
+
+      // Ignore stale async renders and keep latest filter result on screen.
+      if (renderRequestId !== this.categoriesRenderRequestId) return;
+
+      const visibleCards = categoryCards.filter(card => card !== null);
+
+      if (visibleCards.length === 0) {
+        container.innerHTML = '<div class="category-empty-state">No brackets found for the selected filters.</div>';
+        return;
+      }
+
       let finalHtml = '<div class="categories-grid">';
-      finalHtml += categoryCards.filter(card => card !== null).join('');
+      finalHtml += visibleCards.join('');
       finalHtml += '</div>';
       container.innerHTML = finalHtml;
-    }).catch(error => {
+    } catch (error) {
       console.error("❌ Error rendering categories:", error);
-    });
+    }
   },
 
   // Open category bracket directly

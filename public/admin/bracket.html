@@ -49,6 +49,13 @@
             </button>
         </div>
 
+        <div class="category-filter-row">
+            <label class="category-filter-label" for="categoryFilterSelect">Category Filter</label>
+            <select id="categoryFilterSelect" class="category-filter-select" onchange="BRACKET.filterByCategory(this.value)">
+                <option value="all">All Categories</option>
+            </select>
+        </div>
+
         <!-- Categories List -->
         <div id="categoriesList"></div>
 
