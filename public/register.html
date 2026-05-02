@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -27,16 +27,9 @@
     <script defer src="/js/modal.js"></script>
 </head>
 <body>
-    <div class="page-header">
-        <div class="container">
-            <button class="btn-secondary" onclick="window.location.href='/team/dashboard.html'" style="float: left;">
-                ← Back to Dashboard
-            </button>
-            <button class="btn-danger" onclick="UI.logout()" style="float: right;">
-                Logout
-            </button>
-            <div style="clear: both;"></div>
-        </div>
+    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 20px">
+        <button class="btn-secondary" onclick="window.location.href='/team/dashboard.html'">← Back to Dashboard</button>
+        <button class="btn-danger" onclick="UI.logout()">Logout</button>
     </div>
 
     <div class="container">

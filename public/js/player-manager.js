@@ -62,25 +62,52 @@ const PLAYER_MANAGER = {
     try {
       console.log(`🗑️ Starting deletion process for player: "${playerName}" (ID: ${playerId})`);
 
-      // For team users (no Firebase Auth), only delete the player record
-      // Admin users will handle cleanup of other collections
+      // For team users (no Firebase Auth), delete player record AND clean bracket references
       if (isTeamOwner && !isAdmin) {
-        console.log('👥 Team user detected - deleting player record only');
-        const playerRef = dbRef(database, `players/${playerId}`);
-        await dbRemove(playerRef);
-        
-        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-        const successMsg = `✅ Player Deleted Successfully!\n\n` +
-          `Deleted: ${playerName}\n` +
-          `Admin will handle cleanup of related bracket and match data\n` +
-          `Time: ${duration}s`;
+        console.log('👥 Team user detected - deleting player + bracket cleanup');
 
-        console.log(`✅ Player deletion completed in ${duration}s`);
-        if (typeof MODAL !== 'undefined') {
-          MODAL.success(successMsg);
+        const cleanupUpdates = {};
+        cleanupUpdates[`players/${playerId}`] = null;
+
+        // Clean bracket references so no ghost IDs remain
+        try {
+          const bracketsSnap = await dbGet(dbRef(database, 'brackets'));
+          if (bracketsSnap.exists()) {
+            bracketsSnap.forEach(bracketChild => {
+              const bracketId = bracketChild.key;
+              const bracketData = bracketChild.val();
+              // Remove from player list
+              if (bracketData.players && bracketData.players[playerId]) {
+                cleanupUpdates[`brackets/${bracketId}/players/${playerId}`] = null;
+              }
+              // Remove from match slots
+              if (bracketData.matches && typeof bracketData.matches === 'object') {
+                Object.entries(bracketData.matches).forEach(([matchId, matchData]) => {
+                  if (matchData.player1 === playerId) {
+                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player1`] = null;
+                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player1Name`] = null;
+                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player1Team`] = null;
+                  }
+                  if (matchData.player2 === playerId) {
+                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player2`] = null;
+                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player2Name`] = null;
+                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player2Team`] = null;
+                  }
+                });
+              }
+            });
+          }
+        } catch (bracketErr) {
+          console.warn('⚠️ Bracket cleanup partial error (non-fatal):', bracketErr.message);
         }
 
-        // Refresh UI
+        await dbUpdate(dbRef(database), cleanupUpdates);
+
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+        if (typeof MODAL !== 'undefined') {
+          MODAL.success(`✅ Player "${playerName}" deleted and bracket data cleaned.\nTime: ${duration}s`);
+        }
+
         if (typeof loadPlayers === 'function') {
           await loadPlayers();
         }

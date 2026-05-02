@@ -2622,4 +2622,83 @@ img { max-width: 100%; height: auto; }
 
   /* Section headings centered */
   .section h2, .section h3 { text-align: center; }
-}
+}
+
+/* ============================================================
+   GLOBAL SIZE-UP — better visibility across all screens
+   ============================================================ */
+
+/* ── Body base font ── */
+body { font-size: 17px; }
+
+/* ── Admin nav buttons ── */
+.admin-nav-btn {
+    font-size: 1rem !important;
+    padding: 14px 18px !important;
+}
+
+/* ── Stat cards (admin + team) ── */
+.td-stat-val, .st-val {
+    font-size: 2.8rem !important;
+}
+.td-stat-lbl, .st-lbl {
+    font-size: .82rem !important;
+    letter-spacing: 1.2px !important;
+}
+.td-stat-icon, .st-icon {
+    font-size: 2.2rem !important;
+    margin-bottom: 10px !important;
+}
+.td-stat { padding: 28px 22px !important; }
+.st-card { padding: 30px 26px !important; }
+
+/* ── Player card text ── */
+.player-info-label { font-size: .82rem !important; }
+.player-info-value { font-size: .95rem !important; }
+.td-val-gender-m, .td-val-gender-f,
+.td-val-cat, .td-val-paid, .td-val-unpaid,
+.td-val-weight, .td-val-center { font-size: .86rem !important; }
+
+/* ── Search bars ── */
+.td-search, .st-search {
+    font-size: 1rem !important;
+    padding: 14px 18px !important;
+}
+
+/* ── Filter chips / medals ── */
+.medal-filter-btn { font-size: .9rem !important; padding: 9px 18px !important; }
+.td-count-pill, .st-pill { font-size: .88rem !important; padding: 6px 16px !important; }
+.status-badge { font-size: .86rem !important; padding: 7px 16px !important; }
+.medal-badge  { font-size: .86rem !important; padding: 7px 16px !important; }
+
+/* ── Stats table ── */
+.st-table th { font-size: .82rem !important; padding: 14px 16px !important; }
+.st-table td { font-size: .92rem !important; padding: 13px 16px !important; }
+.st-num       { font-size: 1rem !important; }
+.st-name      { font-size: .96rem !important; }
+.st-team      { font-size: .86rem !important; padding: 4px 13px !important; }
+.st-cat       { font-size: .84rem !important; }
+.st-wt        { font-size: .9rem !important; }
+.st-time      { font-size: .84rem !important; }
+
+/* ── Login page ── */
+.login-header h1  { font-size: 2.4rem !important; }
+.login-header p   { font-size: 1.15rem !important; }
+.tab-btn          { font-size: 1.05rem !important; padding: 13px 16px !important; }
+
+/* ── Registration banner ── */
+.td-reg-banner { font-size: 1rem !important; padding: 16px 22px !important; }
+
+/* ── Section headings ── */
+.section h2 { font-size: 1.55rem !important; }
+.section h3 { font-size: 1.2rem !important; }
+
+/* ── Page header title ── */
+.page-title { font-size: 2.8rem; }
+
+/* ── Buttons ── */
+.btn-primary, .btn-secondary, .btn-danger, .btn-success, .btn-info {
+    font-size: 1rem !important;
+    padding: 13px 22px !important;
+}
+

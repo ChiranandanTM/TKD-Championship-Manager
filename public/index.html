@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -17,17 +18,42 @@
     <link rel="preload" as="style" href="/assets/css/main.css">
     <link rel="stylesheet" href="/assets/css/main.css">
     <style>
-        .pw-wrap{position:relative}
-        .pw-wrap input{padding-right:44px}
-        .pw-toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#888;font-size:1.2rem;cursor:pointer;padding:4px;line-height:1;transition:color .2s}
-        .pw-toggle:hover{color:#FFD700}
+        .pw-wrap {
+            position: relative
+        }
+
+        .pw-wrap input {
+            padding-right: 44px
+        }
+
+        .pw-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            transition: color .2s
+        }
+
+        .pw-toggle:hover {
+            color: #FFD700
+        }
     </style>
 </head>
+
 <body>
     <div class="login-container">
         <div class="login-header">
-            <h1>🥋 TAEKWONDO<br>CHAMPIONSHIP</h1>
-            <p style="color: #00E5FF; font-size: 1.3rem; margin-top: 15px; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);">Karnataka State Championship</p>
+            <h1>🥋 TAEKWONDO<br>CHAMPIONSHIP<br>MANAGER</h1>
+            <p
+                style="color: #00E5FF; font-size: 1.3rem; margin-top: 15px; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);">
+                Karnataka State Championship</p>
         </div>
 
         <!-- Tab Navigation -->
@@ -111,10 +137,10 @@
 
     <!-- Firebase SDK v9 -->
     <script type="module">
-        import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
-        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
-        import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-database.js';
-        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-storage.js';
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+        import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
+        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
 
         const firebaseConfig = {
             apiKey: "AIzaSyC7NfS7RMv8C78KGJsPkQCeV9fzmJ86lDU",
@@ -207,25 +233,25 @@
                     console.log("🔍 Loading role for UID:", uid);
                     const userRef = ref(database, `users/${uid}`);
                     const snapshot = await get(userRef);
-                    
+
                     console.log("📊 Snapshot exists?", snapshot.exists());
-                    
+
                     if (snapshot.exists()) {
                         const userData = snapshot.val();
                         console.log("📦 User data:", userData);
-                        
+
                         this.currentRole = userData.role;
                         this.currentTeamId = userData.teamId || null;
-                        
+
                         console.log("👤 Role:", this.currentRole);
                         console.log("👤 Role type:", typeof this.currentRole);
-                        
+
                         sessionStorage.setItem('userRole', this.currentRole);
                         sessionStorage.setItem('userId', uid);
                         if (this.currentTeamId) {
                             sessionStorage.setItem('teamId', this.currentTeamId);
                         }
-                        
+
                         return this.currentRole;
                     } else {
                         // ── BOOTSTRAP: Firebase Auth succeeded but no DB record exists.
@@ -248,7 +274,7 @@
                         sessionStorage.setItem('userId', uid);
                         return 'admin';
                     }
-                    
+
                     return null;
                 } catch (error) {
                     console.error("❌ Error loading user role:", error);
@@ -260,22 +286,22 @@
                 try {
                     console.log("🔐 Starting admin login...");
                     console.log("📧 Email:", email);
-                    
+
                     const userCredential = await signInWithEmailAndPassword(auth, email, password);
                     console.log("✅ Firebase Auth successful!");
                     console.log("🆔 UID:", userCredential.user.uid);
-                    
+
                     const role = await this.loadUserRole(userCredential.user.uid);
                     console.log("🎭 Final role:", role);
                     console.log("🎭 Role === 'admin':", role === 'admin');
                     console.log("🎭 Role === 'judge':", role === 'judge');
-                    
+
                     if (role !== 'admin' && role !== 'judge') {
                         console.log("❌ Role check failed!");
                         await signOut(auth);
                         throw new Error("Access denied. Admin or Judge credentials required.");
                     }
-                    
+
                     console.log("✅ Login successful!");
                     return { success: true, role, uid: userCredential.user.uid };
                 } catch (error) {
@@ -346,9 +372,9 @@
 
             redirectBasedOnRole() {
                 if (!this.currentRole) return;
-                
+
                 const path = window.location.pathname;
-                
+
                 if (path.includes('index.html') || path === '/' || path === '') {
                     if (this.currentRole === 'admin' || this.currentRole === 'judge') {
                         window.location.href = window.location.origin + '/admin/dashboard.html';
@@ -370,10 +396,10 @@
         };
 
         // Make functions global
-        window.switchTab = function(tab) {
+        window.switchTab = function (tab) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
+
             if (tab === 'admin') {
                 document.getElementById('tabBtnAdmin').classList.add('active');
                 document.getElementById('adminTab').classList.add('active');
@@ -386,17 +412,17 @@
             }
         };
 
-        window.loginAdmin = async function(event) {
+        window.loginAdmin = async function (event) {
             event.preventDefault();
-            
+
             const email = document.getElementById('adminEmail').value;
             const password = document.getElementById('adminPassword').value;
-            
+
             try {
                 UI.showLoading('Logging in...');
                 const result = await AUTH_MANAGER.loginAdmin(email, password);
                 UI.hideLoading();
-                
+
                 if (result.success) {
                     window.location.href = window.location.origin + '/admin/dashboard.html';
                 }
@@ -406,22 +432,22 @@
             }
         };
 
-        window.loginTeam = async function(event) {
+        window.loginTeam = async function (event) {
             event.preventDefault();
-            
+
             const username = document.getElementById('teamUsername').value.trim();
             const password = document.getElementById('teamPassword').value.trim();
-            
+
             if (!username || !password) {
                 alert('❌ Please enter username and password');
                 return;
             }
-            
+
             try {
                 UI.showLoading('Logging in...');
                 const result = await AUTH_MANAGER.loginTeam(username, password);
                 UI.hideLoading();
-                
+
                 if (result.success) {
                     window.location.href = window.location.origin + '/team/dashboard.html';
                 }
@@ -431,10 +457,10 @@
             }
         };
 
-        window.loginReferee = async function(event) {
+        window.loginReferee = async function (event) {
             event.preventDefault();
 
-            const refId    = document.getElementById('refereeId').value.trim();
+            const refId = document.getElementById('refereeId').value.trim();
             const password = document.getElementById('refereePassword').value.trim();
 
             if (!refId || !password) {
@@ -453,9 +479,9 @@
                 if (data.password !== password) throw new Error('Invalid referee ID or password');
 
                 // Set session
-                sessionStorage.setItem('userRole',    'referee');
-                sessionStorage.setItem('userId',      refId);
-                sessionStorage.setItem('refId',       refId);
+                sessionStorage.setItem('userRole', 'referee');
+                sessionStorage.setItem('userId', refId);
+                sessionStorage.setItem('refId', refId);
                 sessionStorage.setItem('courtNumber', data.courtNumber || '');
 
                 // Sync users/{refId}
@@ -475,4 +501,5 @@
         };
     </script>
 </body>
+
 </html>

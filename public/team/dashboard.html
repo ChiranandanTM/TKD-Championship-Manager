@@ -493,6 +493,16 @@
                 }
             } catch (error) {
                 console.error('Error loading team info:', error);
+                const teamInfoEl = document.getElementById('teamInfo');
+                if (teamInfoEl) {
+                    teamInfoEl.innerHTML = `
+                        <div style="padding:24px;background:rgba(255,23,68,.08);border:2px solid rgba(255,23,68,.3);border-radius:14px;text-align:center">
+                            <div style="font-size:2rem;margin-bottom:8px">⚠️</div>
+                            <div style="color:#ef9a9a;font-weight:700;margin-bottom:6px">Failed to load team info</div>
+                            <div style="color:#666;font-size:.85rem;margin-bottom:14px">${error.message || 'Check your connection'}</div>
+                            <button onclick="loadTeamInfo()" style="padding:10px 24px;background:rgba(255,215,0,.1);border:2px solid rgba(255,215,0,.4);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer">🔄 Retry</button>
+                        </div>`;
+                }
             }
         }
 
@@ -545,6 +555,16 @@
 
             } catch (error) {
                 console.error('Error loading players:', error);
+                const grid = document.getElementById('playersGrid');
+                if (grid) {
+                    grid.innerHTML = `
+                        <div style="grid-column:1/-1;padding:40px 20px;background:rgba(255,23,68,.08);border:2px solid rgba(255,23,68,.3);border-radius:14px;text-align:center">
+                            <div style="font-size:2.5rem;margin-bottom:10px">⚠️</div>
+                            <div style="color:#ef9a9a;font-weight:700;font-size:1.05rem;margin-bottom:6px">Failed to load players</div>
+                            <div style="color:#666;font-size:.85rem;margin-bottom:16px">${error.message || 'Check your connection and try again'}</div>
+                            <button onclick="loadPlayers()" style="padding:11px 28px;background:rgba(255,215,0,.1);border:2px solid rgba(255,215,0,.4);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;font-size:.9rem">🔄 Retry</button>
+                        </div>`;
+                }
             }
         }
 
