@@ -1,71 +1,107 @@
 {
   "rules": {
+    ".read": true,
+    ".write": true,
     "teams": {
       ".read": true,
-      ".indexOn": ["username", "email", "createdAt"],
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": true,
+      ".indexOn": [
+        "username",
+        "email",
+        "createdAt"
+      ],
       "$teamId": {
         ".read": true,
-        ".write": "auth != null && (auth.uid === $teamId || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+        ".write": true
       }
     },
-    
     "users": {
       ".read": "auth != null",
       ".write": "true",
-      ".indexOn": ["role", "teamId"],
+      ".indexOn": [
+        "role",
+        "teamId"
+      ],
       "$uid": {
         ".read": "auth.uid === $uid || (auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('teams').child($uid).exists()",
         ".write": "auth.uid === $uid || (auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('teams').child($uid).exists()"
       }
     },
-    
+    "referees": {
+      ".read": true,
+      ".write": "auth != null",
+      ".indexOn": ["createdAt", "courtNumber"],
+      "$refId": {
+        ".read": true,
+        ".write": "auth != null",
+        "assignedRefs": {
+          ".read": true,
+          ".write": true
+        },
+        "updatedAt": {
+          ".read": true,
+          ".write": true
+        }
+      }
+    },
     "players": {
       ".read": true,
       ".write": true,
-      ".indexOn": ["centerName", "gender", "age", "weight", "createdAt"],
+      ".indexOn": [
+        "centerName",
+        "gender",
+        "age",
+        "weight",
+        "createdAt"
+      ],
       "$playerId": {
         ".read": true,
         ".write": true
       }
     },
-    
     "formConfig": {
       ".read": true,
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      ".write": true
     },
-    
     "weightCategories": {
       ".read": true,
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
-    
     "brackets": {
       ".read": true,
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge' || root.child('users').child(auth.uid).child('role').val() === 'team')",
-      ".indexOn": ["categoryType", "gender", "status", "createdAt"]
+      ".write": true,
+      ".indexOn": [
+        "categoryType",
+        "gender",
+        "status",
+        "createdAt"
+      ]
     },
-    
     "currentMatch": {
       ".read": true,
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge')"
+      ".write": true
     },
-    
     "matchResults": {
       ".read": true,
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'judge' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'team')"
+      ".write": true
     },
-    
     "matchHistory": {
       ".read": true,
-      ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'judge' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'team')",
-      ".indexOn": ["categoryType", "status", "timestamp"]
+      ".write": true,
+      ".indexOn": [
+        "categoryType",
+        "status",
+        "timestamp"
+      ]
     },
-
     "championships": {
       ".read": true,
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".indexOn": ["status", "createdAt", "name"],
+      ".indexOn": [
+        "status",
+        "createdAt",
+        "name"
+      ],
       "$championshipId": {
         ".read": "auth != null",
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
@@ -88,7 +124,10 @@
         "standings": {
           ".read": "auth != null",
           ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge')",
-          ".indexOn": ["rank", "points"],
+          ".indexOn": [
+            "rank",
+            "points"
+          ],
           "$standingId": {
             ".read": "auth != null",
             ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge')"
@@ -101,7 +140,10 @@
         "matches": {
           ".read": "auth != null",
           ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge')",
-          ".indexOn": ["categoryType", "status"],
+          ".indexOn": [
+            "categoryType",
+            "status"
+          ],
           "$matchId": {
             ".read": "auth != null",
             ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge')"
@@ -109,7 +151,6 @@
         }
       }
     },
-
     "championshipSettings": {
       ".read": "auth != null",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
@@ -122,31 +163,39 @@
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
       }
     },
-
     "overallStandings": {
       ".read": "auth != null",
       ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge' || root.child('users').child(auth.uid).child('role').val() === 'team')",
-      ".indexOn": ["rank", "points", "teamId", "championshipId"],
+      ".indexOn": [
+        "rank",
+        "points",
+        "teamId",
+        "championshipId"
+      ],
       "$standingId": {
         ".read": "auth != null",
         ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge' || root.child('users').child(auth.uid).child('role').val() === 'team')"
       }
     },
-
     "categoryResults": {
       ".read": "auth != null",
       ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge' || root.child('users').child(auth.uid).child('role').val() === 'team')",
-      ".indexOn": ["championshipId", "categoryType", "gender"],
+      ".indexOn": [
+        "championshipId",
+        "categoryType",
+        "gender"
+      ],
       "$resultId": {
         ".read": "auth != null",
         ".write": "auth != null && (root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'judge' || root.child('users').child(auth.uid).child('role').val() === 'team')"
       }
     },
-    
     "championshipHistory": {
       ".read": true,
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".indexOn": ["timestamp"],
+      ".indexOn": [
+        "timestamp"
+      ],
       "$championshipId": {
         ".read": true,
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"

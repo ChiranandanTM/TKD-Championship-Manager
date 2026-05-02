@@ -1,5 +1,6 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,10 +10,65 @@
     <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
     <meta name="theme-color" content="#FFD700">
     <link rel="preconnect" href="https://www.gstatic.com">
-    <link rel="preload" as="style" href="/assets/css/main.css">
     <link rel="stylesheet" href="/assets/css/main.css">
     <script defer src="/js/modal.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+        @keyframes cntUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+
+        #statsSection{font-family:'Inter',sans-serif}
+
+        /* Hero stat cards */
+        .st-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin-bottom:36px}
+        .st-card{border-radius:20px;padding:28px 24px;position:relative;overflow:hidden;transition:transform .25s,box-shadow .25s}
+        .st-card:hover{transform:translateY(-5px);box-shadow:0 20px 50px rgba(0,0,0,.4)}
+        .st-card::before{content:'';position:absolute;top:-40%;right:-20%;width:140px;height:140px;border-radius:50%;opacity:.12}
+        .st-card-1{background:linear-gradient(135deg,#1a237e,#283593);border:1.5px solid rgba(92,107,192,.4)}
+        .st-card-1::before{background:#5c6bc0}
+        .st-card-2{background:linear-gradient(135deg,#1b5e20,#2e7d32);border:1.5px solid rgba(76,175,80,.4)}
+        .st-card-2::before{background:#66bb6a}
+        .st-card-3{background:linear-gradient(135deg,#4a148c,#6a1b9a);border:1.5px solid rgba(171,71,188,.4)}
+        .st-card-3::before{background:#ab47bc}
+        .st-icon{font-size:2.2rem;margin-bottom:10px;display:block}
+        .st-val{font-size:3rem;font-weight:900;letter-spacing:-1px;line-height:1;animation:cntUp .5s ease}
+        .st-val-1{color:#7986cb}
+        .st-val-2{color:#66bb6a}
+        .st-val-3{color:#ce93d8}
+        .st-lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:1.2px;font-weight:700;margin-top:8px;opacity:.7}
+
+        /* Section header */
+        .st-hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin:32px 0 18px}
+        .st-hdr h3{margin:0;font-size:1.1rem;font-weight:800;color:#fff}
+        .st-pill{background:rgba(255,215,0,.1);border:1.5px solid rgba(255,215,0,.35);color:#FFD700;padding:5px 16px;border-radius:20px;font-size:.8rem;font-weight:800}
+
+        /* Player search */
+        .st-search{width:100%;box-sizing:border-box;padding:11px 16px;background:rgba(0,0,0,.4);border:2px solid rgba(255,215,0,.2);border-radius:12px;color:#fff;font-size:.92rem;outline:none;margin-bottom:16px;transition:border-color .2s}
+        .st-search:focus{border-color:#FFD700;box-shadow:0 0 0 3px rgba(255,215,0,.1)}
+        .st-search::placeholder{color:#555}
+
+        /* Premium table */
+        .st-table{width:100%;border-collapse:collapse;font-size:.88rem}
+        .st-table thead tr{background:linear-gradient(90deg,rgba(255,215,0,.08),rgba(0,229,255,.06));border-bottom:2px solid rgba(255,215,0,.3)}
+        .st-table th{padding:13px 14px;text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:1px;color:#888;font-weight:700;white-space:nowrap}
+        .st-table td{padding:12px 14px;color:#d0d8e8;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
+        .st-table tbody tr{transition:background .15s}
+        .st-table tbody tr:hover{background:rgba(255,215,0,.04)}
+        .st-table tbody tr:nth-child(even){background:rgba(255,255,255,.02)}
+        .st-num{color:#FFD700;font-weight:900;text-align:center}
+        .st-name{color:#fff;font-weight:700}
+        .st-team{background:rgba(0,229,255,.1);color:#00E5FF;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:700;display:inline-block}
+        .st-gender-m{background:rgba(92,107,192,.15);color:#7986cb;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:700;display:inline-block}
+        .st-gender-f{background:rgba(236,64,122,.12);color:#f48fb1;padding:3px 10px;border-radius:20px;font-size:.78rem;font-weight:700;display:inline-block}
+        .st-cat{background:rgba(171,71,188,.1);color:#ce93d8;padding:3px 8px;border-radius:8px;font-size:.75rem;font-weight:600;display:inline-block;margin:1px}
+        .st-wt{color:#ffb74d;font-weight:700}
+        .st-time{color:#666;font-size:.78rem}
+        .st-empty{text-align:center;padding:60px 20px;color:#444}
+        .st-empty-icon{font-size:3rem;margin-bottom:12px}
+        .st-wrap{overflow-x:auto;border-radius:14px;border:1.5px solid rgba(255,255,255,.06)}
+    </style>
 </head>
+
 <body>
     <div class="page-header">
         <h1 class="page-title">⚙️ ADMIN DASHBOARD</h1>
@@ -25,6 +81,7 @@
             <button class="btn-primary" onclick="showSection('stats')">📊 Statistics</button>
             <button class="btn-primary" onclick="showSection('formEditor')">📝 Edit Form</button>
             <button class="btn-primary" onclick="showSection('teams')">👥 Manage Teams</button>
+            <button class="btn-primary" onclick="window.location.href='referees.html'">🧑‍⚖️ Manage Referees</button>
             <button class="btn-primary" onclick="window.location.href='bracket.html'">🏆 Tournament Bracket</button>
             <button class="btn-primary" onclick="window.open('Live-matches.html', '_blank')">🔴 Live Matches</button>
             <button class="btn-primary" onclick="window.open('form-preview.html', '_blank')">👁️ Preview Form</button>
@@ -34,25 +91,42 @@
 
         <!-- Statistics Section -->
         <div id="statsSection" class="section">
-            <h2>Championship Statistics</h2>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <span class="stat-value" id="totalPlayers">0</span>
-                    <span class="stat-label">Total Players</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px">
+                <div>
+                    <h2 style="margin:0;font-size:1.6rem">📊 Championship Statistics</h2>
+                    <p style="color:#555;margin:4px 0 0;font-size:.88rem">Live overview of the current championship</p>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-value" id="totalTeams">0</span>
-                    <span class="stat-label">Registered Teams</span>
+                <button onclick="loadStatistics()" style="padding:10px 20px;background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.3);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;font-size:.88rem" onmouseover="this.style.background='rgba(255,215,0,.16)'" onmouseout="this.style.background='rgba(255,215,0,.08)'">🔄 Refresh</button>
+            </div>
+
+            <!-- Vibrant stat cards -->
+            <div class="st-cards">
+                <div class="st-card st-card-1">
+                    <span class="st-icon">🥋</span>
+                    <div class="st-val st-val-1" id="totalPlayers">0</div>
+                    <div class="st-lbl">Total Players</div>
                 </div>
-                <div class="stat-card">
-                    <span class="stat-value" id="completedMatches">0</span>
-                    <span class="stat-label">Completed Matches</span>
+                <div class="st-card st-card-2">
+                    <span class="st-icon">🏅</span>
+                    <div class="st-val st-val-2" id="totalTeams">0</div>
+                    <div class="st-lbl">Registered Teams</div>
+                </div>
+                <div class="st-card st-card-3">
+                    <span class="st-icon">⚔️</span>
+                    <div class="st-val st-val-3" id="completedMatches">0</div>
+                    <div class="st-lbl">Completed Matches</div>
                 </div>
             </div>
 
-            <!-- Players Registered -->
-            <h3 style="margin-top: 40px;">Players Registered</h3>
-            <div id="recentPlayersList"></div>
+            <!-- Players table -->
+            <div class="st-hdr">
+                <h3>👥 Registered Players</h3>
+                <span class="st-pill" id="playerCountPill">0 players</span>
+            </div>
+            <input type="text" class="st-search" id="statsPlayerSearch" placeholder="🔍  Search by name, team, category…" oninput="filterStatsTable(this.value)">
+            <div class="st-wrap">
+                <div id="recentPlayersList"></div>
+            </div>
         </div>
 
         <!-- Form Editor Section -->
@@ -65,48 +139,40 @@
         <div id="teamsSection" class="section hidden">
             <h2>Team Management</h2>
             <button class="btn-primary" onclick="UI.createTeamAccount()">➕ Create New Team</button>
-            
+
             <h3 style="margin-top: 30px;">Registered Teams</h3>
             <div id="teamsTableContainer"></div>
         </div>
 
         <!-- New Championship Section -->
         <div id="newChampionshipSection" class="section hidden">
-            <h2>🆕 Create New Championship</h2>
-            <div style="background: var(--warning-orange); color: var(--primary-black); padding: 15px; border-radius: 8px; margin-bottom: 30px; font-weight: 700;">
-                ⚠️ WARNING: This will archive the current championship data and clear all players, brackets, matches, and teams. Previous championship data will be saved in history.
-                <br><br>
-                ✅ When creating a new championship, you can reuse the same team names, usernames, passwords, and email addresses as the previous championship.
+            <h2 style="margin-bottom:8px">🆕 Create New Championship</h2>
+            <p style="color:#666;margin-bottom:24px">Archive current data and start fresh</p>
+
+            <div style="background:linear-gradient(135deg,rgba(255,152,0,.12),rgba(255,87,34,.08));border:2px solid rgba(255,152,0,.5);border-radius:16px;padding:20px 24px;margin-bottom:32px;display:flex;gap:16px;align-items:flex-start">
+                <span style="font-size:2rem;flex-shrink:0">⚠️</span>
+                <div>
+                    <div style="font-weight:800;color:#FF9800;font-size:1rem;margin-bottom:6px">Important Warning</div>
+                    <div style="color:#aaa;font-size:.9rem;line-height:1.6">This will <b style="color:#fff">archive</b> the current championship and <b style="color:#fff">clear</b> all players, brackets, matches, and teams. Previous data is saved in history.<br>Team accounts (username/password) can be reused in the new championship.</div>
+                </div>
             </div>
-            
-            <form id="newChampionshipForm" style="max-width: 600px;">
-                <div class="form-group">
-                    <label for="champTitle">Championship Title</label>
-                    <input type="text" id="champTitle" required placeholder="e.g., TAEKWONDO CHAMPIONSHIP">
-                </div>
-                <div class="form-group">
-                    <label for="champVenue">Venue</label>
-                    <input type="text" id="champVenue" required placeholder="e.g., National Sports Complex">
-                </div>
-                <div class="form-group">
-                    <label for="champAddress">Address/Location</label>
-                    <input type="text" id="champAddress" required placeholder="e.g., Bengaluru, Karnataka, India">
-                </div>
-                <div class="form-group">
-                    <label for="champDate">Championship Date</label>
-                    <input type="date" id="champDate" required>
-                </div>
-                <div class="form-group">
-                    <label for="champOrganizer">Organizer</label>
-                    <input type="text" id="champOrganizer" required placeholder="e.g., Karnataka Taekwondo Association">
-                </div>
-                <button type="submit" class="btn-danger" style="width: 100%; margin-top: 20px;">🚀 Create New Championship & Archive Current</button>
+
+            <form id="newChampionshipForm" style="max-width:580px;background:linear-gradient(150deg,rgba(14,18,42,.98),rgba(20,30,58,.95));border:2px solid rgba(255,215,0,.2);border-radius:20px;padding:32px">
+                <div class="form-group"><label for="champTitle">🏆 Championship Title</label><input type="text" id="champTitle" required placeholder="e.g., TAEKWONDO CHAMPIONSHIP 2026"></div>
+                <div class="form-group"><label for="champVenue">🏟️ Venue</label><input type="text" id="champVenue" required placeholder="e.g., National Sports Complex"></div>
+                <div class="form-group"><label for="champAddress">📍 Address / Location</label><input type="text" id="champAddress" required placeholder="e.g., Bengaluru, Karnataka, India"></div>
+                <div class="form-group"><label for="champDate">📅 Championship Date</label><input type="date" id="champDate" required></div>
+                <div class="form-group"><label for="champOrganizer">🏅 Organizer</label><input type="text" id="champOrganizer" required placeholder="e.g., Karnataka Taekwondo Association"></div>
+                <button type="submit" style="width:100%;margin-top:8px;padding:16px;background:linear-gradient(135deg,#d32f2f,#b71c1c);border:none;border-radius:12px;color:#fff;font-size:1rem;font-weight:800;cursor:pointer;letter-spacing:.5px;transition:all .2s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(211,47,47,.4)'" onmouseout="this.style.transform='none';this.style.boxShadow='none'">🚀 Create New Championship &amp; Archive Current</button>
             </form>
         </div>
 
         <!-- Overall Championships Section -->
         <div id="overallChampionshipSection" class="section hidden">
-            <h2>📚 Overall Championships</h2>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:28px">
+                <div><h2 style="margin:0">📚 Overall Championships</h2><p style="color:#555;margin:4px 0 0;font-size:.9rem">All championships — active and archived</p></div>
+                <button onclick="loadAllChampionships()" style="padding:10px 20px;background:rgba(255,215,0,.1);border:2px solid rgba(255,215,0,.4);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(255,215,0,.2)'" onmouseout="this.style.background='rgba(255,215,0,.1)'">🔄 Refresh</button>
+            </div>
             <div id="overallChampionshipsList"></div>
         </div>
     </div>
@@ -195,9 +261,9 @@
 
         function showSection(section) {
             document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
-            
+
             currentSection = section;
-            
+
             if (section === 'stats') {
                 document.getElementById('statsSection').classList.remove('hidden');
                 loadStatistics();
@@ -206,7 +272,7 @@
                 console.log("📝 Form Editor section clicked");
                 console.log("ADMIN_FORM_EDITOR available:", typeof ADMIN_FORM_EDITOR !== 'undefined');
                 console.log("FORM_CONFIG available:", typeof FORM_CONFIG !== 'undefined');
-                
+
                 if (typeof ADMIN_FORM_EDITOR !== 'undefined' && typeof FORM_CONFIG !== 'undefined' && ADMIN_FORM_EDITOR.init) {
                     console.log("✅ Modules available, initializing...");
                     ADMIN_FORM_EDITOR.init();
@@ -250,6 +316,22 @@
             }
         }
 
+        // All players stored for client-side search
+        let _allStatsRows = [];
+
+        window.filterStatsTable = function(q) {
+            q = (q || '').toLowerCase();
+            const rows = document.querySelectorAll('#statsPlayerTable tbody tr');
+            let visible = 0;
+            rows.forEach(row => {
+                const match = !q || row.textContent.toLowerCase().includes(q);
+                row.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            const pill = document.getElementById('playerCountPill');
+            if (pill) pill.textContent = `${visible} player${visible !== 1 ? 's' : ''}`;
+        };
+
         async function loadStatistics() {
             try {
                 const playersRef = dbRef(database, 'players');
@@ -266,27 +348,26 @@
                 const historySnapshot = await dbGet(historyRef);
                 let matchCount = 0;
                 if (historySnapshot.exists()) {
-                  const allHistory = historySnapshot.val();
-                  Object.keys(allHistory).forEach(categoryKey => {
-                    if (allHistory[categoryKey]) {
-                      matchCount += Object.keys(allHistory[categoryKey]).length;
-                    }
-                  });
+                    const allHistory = historySnapshot.val();
+                    Object.keys(allHistory).forEach(categoryKey => {
+                        if (allHistory[categoryKey]) {
+                            matchCount += Object.keys(allHistory[categoryKey]).length;
+                        }
+                    });
                 }
                 document.getElementById('completedMatches').textContent = matchCount;
+
+                const pill = document.getElementById('playerCountPill');
 
                 if (playersSnapshot.exists()) {
                     const players = [];
                     playersSnapshot.forEach(child => {
                         players.push({ id: child.key, ...child.val() });
                     });
-                    
+
                     console.log('📊 Total players fetched from Firebase:', players.length);
-                    
                     players.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-                    // Display all players, not just a limited subset
-                    const allPlayers = players;
-                    
+
                     const teamsSnapshotForMap = await dbGet(dbRef(database, 'teams'));
                     const teamsMap = {};
                     if (teamsSnapshotForMap.exists()) {
@@ -294,50 +375,40 @@
                             teamsMap[child.key] = child.val().teamName;
                         });
                     }
-                    
-                    let html = '<table style="width: 100%; border-collapse: collapse; margin-top: 20px;">';
-                    html += '<thead><tr style="background: #1a1a1a; border-bottom: 2px solid #FFD700;">';
-                    html += '<th style="padding: 15px; text-align: center; width: 60px;">Sl.No</th>';
-                    html += '<th style="padding: 15px; text-align: left;">Name</th>';
-                    html += '<th style="padding: 15px; text-align: left;">Team</th>';
-                    html += '<th style="padding: 15px; text-align: left;">Gender</th>';
-                    html += '<th style="padding: 15px; text-align: left;">Categories</th>';
-                    html += '<th style="padding: 15px; text-align: left;">Weight</th>';
-                    html += '<th style="padding: 15px; text-align: left;">Submitted</th>';
+
+                    if (pill) pill.textContent = `${players.length} player${players.length !== 1 ? 's' : ''}`;
+
+                    let html = '<table class="st-table" id="statsPlayerTable">';
+                    html += '<thead><tr>';
+                    html += '<th style="width:52px;text-align:center">#</th>';
+                    html += '<th>Name</th><th>Team</th><th>Gender</th><th>Category</th><th>Weight</th><th>Submitted</th>';
                     html += '</tr></thead><tbody>';
-                    
-                    let displayedCount = 0;
-                    allPlayers.forEach((player, index) => {
-                        const slNo = index + 1;
+
+                    players.forEach((player, index) => {
                         const teamName = teamsMap[player.teamId] || 'N/A';
-                        const playerName = player.playerName || '(Unknown Player)';
+                        const playerName = player.playerName || '(Unknown)';
                         const gender = player.gender || 'N/A';
-                        const categories = player.categories ? player.categories.join(', ') : 'N/A';
+                        const genderClass = gender === 'Male' ? 'st-gender-m' : gender === 'Female' ? 'st-gender-f' : '';
+                        const categories = player.categories ? player.categories.map(c => `<span class="st-cat">${c}</span>`).join(' ') : 'N/A';
                         const weightCategory = player.weightCategory || 'N/A';
                         const submittedTime = UI.formatTimestamp(player.submittedAt) || 'N/A';
-                        
-                        html += '<tr style="border-bottom: 1px solid #333;">';
-                        html += `<td style="padding: 12px; text-align: center; font-weight: 600; color: var(--border-gold);">${slNo})</td>`;
-                        html += `<td style="padding: 12px;">${playerName}</td>`;
-                        html += `<td style="padding: 12px;">${teamName}</td>`;
-                        html += `<td style="padding: 12px;">${gender}</td>`;
-                        html += `<td style="padding: 12px;">${categories}</td>`;
-                        html += `<td style="padding: 12px;">${weightCategory}</td>`;
-                        html += `<td style="padding: 12px;">${submittedTime}</td>`;
-                        html += '</tr>';
-                        displayedCount++;
+
+                        html += `<tr>`;
+                        html += `<td class="st-num">${index + 1}</td>`;
+                        html += `<td class="st-name">${playerName}</td>`;
+                        html += `<td><span class="st-team">${teamName}</span></td>`;
+                        html += `<td>${genderClass ? `<span class="${genderClass}">${gender}</span>` : gender}</td>`;
+                        html += `<td>${categories}</td>`;
+                        html += `<td class="st-wt">${weightCategory}</td>`;
+                        html += `<td class="st-time">${submittedTime}</td>`;
+                        html += `</tr>`;
                     });
-                    
-                    console.log('📊 Players displayed in table:', displayedCount);
-                    
+
                     html += '</tbody></table>';
-                    // Add player count summary before the table
-                    const summaryHtml = `<div style="margin-bottom: 15px; color: var(--text-gray); font-size: 1rem;">
-                        <strong>Total Players: ${displayedCount}</strong>
-                    </div>`;
-                    document.getElementById('recentPlayersList').innerHTML = summaryHtml + html;
+                    document.getElementById('recentPlayersList').innerHTML = html;
                 } else {
-                    document.getElementById('recentPlayersList').innerHTML = '<p style="color: #888;">No players registered yet.</p>';
+                    if (pill) pill.textContent = '0 players';
+                    document.getElementById('recentPlayersList').innerHTML = '<div class="st-empty"><div class="st-empty-icon">🥋</div><div style="font-size:1rem;font-weight:700;color:#555">No players registered yet</div></div>';
                 }
 
             } catch (error) {
@@ -346,153 +417,102 @@
         }
 
         async function loadAllChampionships() {
+            const listEl = document.getElementById('overallChampionshipsList');
+            listEl.innerHTML = `<div style="display:flex;align-items:center;gap:12px;padding:20px 0;color:#555"><div style="width:26px;height:26px;border:3px solid rgba(255,215,0,.3);border-top-color:#FFD700;border-radius:50%;animation:spin .8s linear infinite"></div> Loading championships…</div>`;
+
             try {
-                let html = '<div style="display: grid; gap: 20px;">';
-                
-                const formConfigRef = dbRef(database, 'formConfig');
-                const formSnap = await dbGet(formConfigRef);
-                
+                const cards = [];
+
+                // ── ACTIVE championship (formConfig) ─────────────────────────
+                const formSnap = await dbGet(dbRef(database, 'formConfig'));
                 if (formSnap.exists()) {
                     const config = formSnap.val();
-                    const playersRef = dbRef(database, 'players');
-                    const teamsRef = dbRef(database, 'teams');
-                    const historyRef = dbRef(database, 'matchHistory');
-                    
-                    const [playersSnap, teamsSnap, historySnap] = await Promise.all([
-                        dbGet(playersRef),
-                        dbGet(teamsRef),
-                        dbGet(historyRef)
+                    const [pSnap, tSnap, hSnap] = await Promise.all([
+                        dbGet(dbRef(database, 'players')),
+                        dbGet(dbRef(database, 'teams')),
+                        dbGet(dbRef(database, 'matchHistory'))
                     ]);
-                    
-                    const playerCount = playersSnap.exists() ? Object.keys(playersSnap.val()).length : 0;
-                    const teamCount = teamsSnap.exists() ? Object.keys(teamsSnap.val()).length : 0;
-                    
-                    let matchCount = 0;
-                    if (historySnap.exists()) {
-                        const history = historySnap.val();
-                        Object.keys(history).forEach(category => {
-                            if (history[category]) {
-                                matchCount += Object.keys(history[category]).length;
-                            }
-                        });
-                    }
-                    
-                    const champName = config.championship?.title || 'Unknown Championship';
-                    
-                    html += `
-                        <div style="background: linear-gradient(135deg, var(--success-green) 0%, #1E7E34 100%); border: 3px solid var(--success-green); border-radius: 8px; padding: 20px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                <h3 style="color: var(--text-white); margin: 0;">${champName}</h3>
-                                <span style="background: var(--text-white); color: var(--success-green); padding: 5px 15px; border-radius: 20px; font-weight: 700; font-size: 0.9rem;">✅ ACTIVE</span>
+                    const pc = pSnap.exists() ? Object.keys(pSnap.val()).length : 0;
+                    const tc = tSnap.exists() ? Object.keys(tSnap.val()).length : 0;
+                    let mc = 0;
+                    if (hSnap.exists()) Object.values(hSnap.val()).forEach(v => { if (v) mc += Object.keys(v).length; });
+                    const name = config.championship?.title || 'Active Championship';
+                    cards.push(`
+                        <div style="background:linear-gradient(135deg,rgba(0,200,83,.1),rgba(0,150,60,.05));border:2px solid #00E676;border-radius:20px;padding:24px;position:relative;overflow:hidden">
+                            <div style="position:absolute;top:16px;right:16px;background:#00E676;color:#000;font-size:.72rem;font-weight:900;padding:4px 12px;border-radius:20px;letter-spacing:.8px">✅ ACTIVE</div>
+                            <div style="font-size:1.3rem;font-weight:900;color:#fff;margin-bottom:6px;padding-right:90px">${name}</div>
+                            <div style="font-size:.8rem;color:#00E676;font-weight:600;margin-bottom:18px">Currently running</div>
+                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
+                                <div style="background:rgba(0,0,0,.4);border-radius:10px;padding:12px;text-align:center"><div style="font-size:1.8rem;font-weight:900;color:#00E676">${pc}</div><div style="font-size:.72rem;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Players</div></div>
+                                <div style="background:rgba(0,0,0,.4);border-radius:10px;padding:12px;text-align:center"><div style="font-size:1.8rem;font-weight:900;color:#00E676">${tc}</div><div style="font-size:.72rem;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Teams</div></div>
+                                <div style="background:rgba(0,0,0,.4);border-radius:10px;padding:12px;text-align:center"><div style="font-size:1.8rem;font-weight:900;color:#00E676">${mc}</div><div style="font-size:.72rem;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Matches</div></div>
                             </div>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 15px;">
-                                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 4px;">
-                                    <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;">Players</p>
-                                    <p style="color: var(--text-white); margin: 5px 0 0 0; font-weight: 700; font-size: 1.3rem;">${playerCount}</p>
-                                </div>
-                                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 4px;">
-                                    <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;">Teams</p>
-                                    <p style="color: var(--text-white); margin: 5px 0 0 0; font-weight: 700; font-size: 1.3rem;">${teamCount}</p>
-                                </div>
-                                <div style="background: rgba(255,255,255,0.2); padding: 12px; border-radius: 4px;">
-                                    <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;">Matches</p>
-                                    <p style="color: var(--text-white); margin: 5px 0 0 0; font-weight: 700; font-size: 1.3rem;">${matchCount}</p>
-                                </div>
-                            </div>
-                            <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 0.9rem;">This is your active championship</p>
-                        </div>
-                    `;
+                            <div style="font-size:.82rem;color:#444;font-style:italic">This is your currently active championship</div>
+                        </div>`);
                 }
-                
-                const champsRef = dbRef(database, 'championships');
-                const champsSnap = await dbGetWithAuthRetry(champsRef);
-                
+
+                // ── championships node ────────────────────────────────────────
+                const champsSnap = await dbGetWithAuthRetry(dbRef(database, 'championships'));
                 if (champsSnap.exists()) {
-                    const allChamps = champsSnap.val();
-                    
-                    for (const [champId, champ] of Object.entries(allChamps)) {
+                    for (const [champId, champ] of Object.entries(champsSnap.val())) {
                         if (!champ || !champ.createdAt) continue;
-                        
-                        const dateObj = new Date(champ.createdAt);
-                        const formattedDate = dateObj.toLocaleDateString('en-IN', { 
-                            year: 'numeric', month: 'long', day: 'numeric', 
-                            hour: '2-digit', minute: '2-digit' 
-                        });
-                        
-                        const champName = champ.name || 'Unknown Championship';
+                        const dt = new Date(champ.createdAt).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
                         const status = (champ.status || 'draft').toUpperCase();
-                        const statusColor = champ.status === 'active' ? 'var(--success-green)' : 'var(--warning-orange)';
-                        
-                        html += `
-                            <div style="background: var(--secondary-black); border: 2px solid ${statusColor}; border-radius: 8px; padding: 20px;">
-                                <h3 style="color: ${statusColor}; margin-top: 0;">${champName}</h3>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 15px 0;">
-                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
-                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Status</p>
-                                        <p style="color: ${statusColor}; margin: 5px 0 0 0; font-weight: 700; font-size: 1.2rem;">${status}</p>
-                                    </div>
-                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
-                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Location</p>
-                                        <p style="color: var(--text-white); margin: 5px 0 0 0; font-weight: 700; font-size: 1rem;">${champ.location || 'N/A'}</p>
-                                    </div>
+                        const sc = champ.status === 'active' ? '#00E5FF' : '#FF9800';
+                        cards.push(`
+                            <div style="background:linear-gradient(150deg,rgba(12,16,40,.98),rgba(18,28,54,.95));border:2px solid ${sc};border-radius:20px;padding:24px">
+                                <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+                                    <div style="font-size:1.1rem;font-weight:800;color:#fff;flex:1;padding-right:12px">${champ.name || 'Championship'}</div>
+                                    <span style="background:rgba(0,0,0,.5);border:1.5px solid ${sc};color:${sc};font-size:.72rem;font-weight:800;padding:4px 10px;border-radius:20px;white-space:nowrap">${status}</span>
                                 </div>
-                                <p style="color: var(--text-gray); margin: 15px 0 0 0; font-size: 0.9rem;">📅 ${formattedDate}</p>
-                                <p style="color: var(--text-gray); margin: 5px 0 0 0; font-size: 0.85rem;">${champ.description || ''}</p>
-                                <div style="display: flex; gap: 10px; margin-top: 15px;">
-                                    <button class="btn-primary" onclick="loadNewChampionship('${champId}')" style="flex: 1;">📂 Load This Championship</button>
-                                    <button class="btn-danger" onclick="deleteNewChampionship('${champId}')" style="flex: 1;">🗑️ Delete</button>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+                                    <div style="background:rgba(0,0,0,.35);border-radius:10px;padding:10px"><div style="font-size:.72rem;color:#444;text-transform:uppercase;letter-spacing:.8px">Location</div><div style="font-size:.9rem;color:#ccc;font-weight:600;margin-top:4px">${champ.location || 'N/A'}</div></div>
+                                    <div style="background:rgba(0,0,0,.35);border-radius:10px;padding:10px"><div style="font-size:.72rem;color:#444;text-transform:uppercase;letter-spacing:.8px">Created</div><div style="font-size:.82rem;color:#ccc;font-weight:600;margin-top:4px">${dt}</div></div>
                                 </div>
-                            </div>
-                        `;
+                                ${champ.description ? `<div style="font-size:.82rem;color:#444;margin-bottom:14px">${champ.description}</div>` : ''}
+                                <div style="display:flex;gap:10px">
+                                    <button onclick="loadNewChampionship('${champId}')" style="flex:1;padding:10px;background:rgba(0,229,255,.1);border:2px solid #00E5FF;border-radius:10px;color:#00E5FF;font-weight:800;font-size:.85rem;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(0,229,255,.2)'" onmouseout="this.style.background='rgba(0,229,255,.1)'">\ud83d\udcc2 Load</button>
+                                    <button onclick="deleteNewChampionship('${champId}')" style="padding:10px 16px;background:rgba(255,23,68,.1);border:2px solid #FF1744;border-radius:10px;color:#FF1744;font-weight:800;font-size:.85rem;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(255,23,68,.22)'" onmouseout="this.style.background='rgba(255,23,68,.1)'">\ud83d\uddd1</button>
+                                </div>
+                            </div>`);
                     }
                 }
-                
-                const championships = await CHAMPIONSHIP_MANAGER.loadArchivedChampionships();
-                
-                if (championships.length > 0) {
-                    championships.forEach(champ => {
-                        const dateObj = new Date(champ.timestamp);
-                        const formattedDate = dateObj.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-                        
-                        html += `
-                            <div style="background: var(--secondary-black); border: 2px solid var(--border-gold); border-radius: 8px; padding: 20px;">
-                                <h3 style="color: var(--border-gold); margin-top: 0;">${champ.championshipName}</h3>
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 15px 0;">
-                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
-                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Players</p>
-                                        <p style="color: var(--border-gold); margin: 5px 0 0 0; font-weight: 700; font-size: 1.4rem;">${champ.playerCount}</p>
-                                    </div>
-                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
-                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Teams</p>
-                                        <p style="color: var(--border-gold); margin: 5px 0 0 0; font-weight: 700; font-size: 1.4rem;">${champ.teamCount}</p>
-                                    </div>
-                                    <div style="background: var(--primary-black); padding: 12px; border-radius: 4px;">
-                                        <p style="color: var(--text-gray); margin: 0; font-size: 0.9rem;">Matches</p>
-                                        <p style="color: var(--border-gold); margin: 5px 0 0 0; font-weight: 700; font-size: 1.4rem;">${champ.matchCount}</p>
-                                    </div>
-                                </div>
-                                <p style="color: var(--text-gray); margin: 15px 0 0 0; font-size: 0.9rem;">📅 ${formattedDate}</p>
-                                <div style="display: flex; gap: 10px; margin-top: 15px;">
-                                    <button class="btn-primary" onclick="switchToChampionship('${champ.id}')" style="flex: 1;">📂 Load This Championship</button>
-                                    <button class="btn-danger" onclick="deleteChampionship('${champ.id}')" style="flex: 1;">🗑️ Delete</button>
-                                </div>
+
+                // ── Archived championships ────────────────────────────────────
+                const archived = await CHAMPIONSHIP_MANAGER.loadArchivedChampionships();
+                archived.forEach(champ => {
+                    const dt = new Date(champ.timestamp).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+                    cards.push(`
+                        <div style="background:linear-gradient(150deg,rgba(12,16,40,.98),rgba(18,28,54,.95));border:2px solid rgba(255,215,0,.3);border-radius:20px;padding:24px">
+                            <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+                                <div style="font-size:1.1rem;font-weight:800;color:#FFD700;flex:1;padding-right:12px">${champ.championshipName}</div>
+                                <span style="background:rgba(255,215,0,.1);border:1.5px solid rgba(255,215,0,.4);color:#FFD700;font-size:.72rem;font-weight:800;padding:4px 10px;border-radius:20px">ARCHIVED</span>
                             </div>
-                        `;
-                    });
+                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+                                <div style="background:rgba(0,0,0,.4);border-radius:10px;padding:10px;text-align:center"><div style="font-size:1.6rem;font-weight:900;color:#FFD700">${champ.playerCount}</div><div style="font-size:.7rem;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Players</div></div>
+                                <div style="background:rgba(0,0,0,.4);border-radius:10px;padding:10px;text-align:center"><div style="font-size:1.6rem;font-weight:900;color:#FFD700">${champ.teamCount}</div><div style="font-size:.7rem;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Teams</div></div>
+                                <div style="background:rgba(0,0,0,.4);border-radius:10px;padding:10px;text-align:center"><div style="font-size:1.6rem;font-weight:900;color:#FFD700">${champ.matchCount}</div><div style="font-size:.7rem;color:#555;text-transform:uppercase;letter-spacing:.8px;margin-top:2px">Matches</div></div>
+                            </div>
+                            <div style="font-size:.8rem;color:#444;margin-bottom:14px">\ud83d\udcc5 ${dt}</div>
+                            <div style="display:flex;gap:10px">
+                                <button onclick="switchToChampionship('${champ.id}')" style="flex:1;padding:10px;background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.5);border-radius:10px;color:#FFD700;font-weight:800;font-size:.85rem;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(255,215,0,.18)'" onmouseout="this.style.background='rgba(255,215,0,.08)'">\ud83d\udcc2 Load</button>
+                                <button onclick="deleteChampionship('${champ.id}')" style="padding:10px 16px;background:rgba(255,23,68,.1);border:2px solid #FF1744;border-radius:10px;color:#FF1744;font-weight:800;font-size:.85rem;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(255,23,68,.22)'" onmouseout="this.style.background='rgba(255,23,68,.1)'">\ud83d\uddd1</button>
+                            </div>
+                        </div>`);
+                });
+
+                if (cards.length === 0) {
+                    listEl.innerHTML = `<div style="text-align:center;padding:60px 20px;border:2px dashed rgba(255,255,255,.07);border-radius:18px;color:#444"><div style="font-size:3rem;margin-bottom:14px">\ud83c\udfc6</div><div style="font-weight:700;font-size:1rem">No championships yet</div><div style="font-size:.85rem;margin-top:6px">Use "New Championship" to create one</div></div>`;
+                } else {
+                    listEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:20px">${cards.join('')}</div>`;
                 }
-                
-                if (!champsSnap.exists() && championships.length === 0) {
-                    html += '<div style="background: var(--secondary-black); border: 2px solid var(--border-gold); border-radius: 8px; padding: 20px; text-align: center; color: var(--text-gray);">No championships created yet.</div>';
-                }
-                
-                html += '</div>';
-                document.getElementById('overallChampionshipsList').innerHTML = html;
 
             } catch (error) {
-                console.error('Error loading all championships:', error);
-                document.getElementById('overallChampionshipsList').innerHTML = '<p style="color: #d32f2f; text-align: center;">Error loading championships.</p>';
+                console.error('Error loading championships:', error);
+                listEl.innerHTML = `<div style="color:#FF1744;padding:20px;border:1.5px solid #FF1744;border-radius:12px">\u274c ${error.message}</div>`;
             }
         }
+
 
         function deleteChampionship(championshipId) {
             (async () => {
@@ -593,13 +613,13 @@
                 if (typeof CHAMPIONSHIP_MANAGER !== 'undefined' && typeof FORM_CONFIG !== 'undefined' && typeof window.database !== 'undefined' && typeof window.dbRef === 'function' && typeof window.dbSet === 'function' && typeof window.dbGet === 'function') {
                     clearInterval(waitForModules);
                     modulesReady = true;
-                    
+
                     const form = document.getElementById('newChampionshipForm');
                     if (form) {
                         form.addEventListener('submit', async (e) => {
                             e.preventDefault();
                             if (!modulesReady) { MODAL.warning('⏳ Please wait for the system to fully load'); return; }
-                            
+
                             const title = document.getElementById('champTitle').value.trim();
                             const venue = document.getElementById('champVenue').value.trim();
                             const address = document.getElementById('champAddress').value.trim();
@@ -646,8 +666,9 @@
             }
         });
 
-        window.alert = function(message) { return MODAL.showAlert(message); };
-        window.confirm = function(message) { return MODAL.showConfirm(message); };
+        window.alert = function (message) { return MODAL.showAlert(message); };
+        window.confirm = function (message) { return MODAL.showConfirm(message); };
     </script>
 </body>
+
 </html>

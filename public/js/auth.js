@@ -1,4 +1,4 @@
-﻿// ── PATH HELPER ──────────────────────────────────────────────────────────────
+// ── PATH HELPER ──────────────────────────────────────────────────────────────
 // Calculates absolute path to index.html from any subfolder depth.
 // Works on Firebase Hosting and any subdirectory deployment.
 function getLoginPath() {
@@ -31,6 +31,13 @@ const AUTH_MANAGER = {
           return;
         }
 
+        // Referee sessions are also DB-auth (not Firebase Auth)
+        if (existingRole === 'referee') {
+          this.currentRole = 'referee';
+          this.redirectBasedOnRole();
+          return;
+        }
+
         await this.loadUserRole(user.uid);
         this.redirectBasedOnRole();
       } else {
@@ -39,8 +46,8 @@ const AUTH_MANAGER = {
         // Firebase Auth fires with null for team users; clearing currentRole here would
         // cause getCurrentUser to return an inconsistent state vs sessionStorage.
         const sessionRole = sessionStorage.getItem('userRole');
-        if (sessionRole !== 'team') {
-          // Only clear if it's NOT a team session (i.e., admin/judge who genuinely signed out)
+        if (sessionRole !== 'team' && sessionRole !== 'referee') {
+          // Only clear if it's NOT a team/referee session (i.e., admin/judge who genuinely signed out)
           this.currentRole = null;
           this.currentTeamId = null;
         }
@@ -48,6 +55,10 @@ const AUTH_MANAGER = {
         if (sessionRole === 'team') {
           this.currentRole = 'team';
           this.currentTeamId = sessionStorage.getItem('teamId');
+        }
+        // If it IS a referee session, keep currentRole in sync
+        if (sessionRole === 'referee') {
+          this.currentRole = 'referee';
         }
       }
     });
@@ -74,13 +85,18 @@ const AUTH_MANAGER = {
         }
 
         // Only write valid, known roles to sessionStorage
-        if (role === 'admin' || role === 'judge' || role === 'team') {
+        if (role === 'admin' || role === 'judge' || role === 'team' || role === 'referee') {
           this.currentRole = role;
           this.currentTeamId = userData.teamId || null;
           sessionStorage.setItem('userRole', role);
           sessionStorage.setItem('userId', uid);
           if (this.currentTeamId) {
             sessionStorage.setItem('teamId', this.currentTeamId);
+          }
+          // Extra: persist referee-specific session data
+          if (role === 'referee' && userData.refId) {
+            sessionStorage.setItem('refId', userData.refId);
+            sessionStorage.setItem('courtNumber', userData.courtNumber || '');
           }
         }
         
@@ -226,6 +242,8 @@ const AUTH_MANAGER = {
         window.location.href = window.location.origin + '/admin/dashboard.html';
       } else if (this.currentRole === 'team') {
         window.location.href = window.location.origin + '/team/dashboard.html';
+      } else if (this.currentRole === 'referee') {
+        window.location.href = window.location.origin + '/referee/dashboard.html';
       }
     }
   },

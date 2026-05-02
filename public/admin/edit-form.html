@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit Registration Form - Admin</title>
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <meta name="theme-color" content="#FFD700">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script defer src="/js/modal.js"></script>
+</head>
+<body>
+    <div class="page-header">
+        <h1 class="page-title">⚙️ EDIT REGISTRATION FORM</h1>
+        <button class="btn-secondary" onclick="window.location.href='dashboard.html'">← Dashboard</button>
+        <button class="btn-danger" onclick="UI.logout()">Logout</button>
+    </div>
+    <div class="container">
+        <div id="formEditorContainer">
+            <div style="text-align:center;padding:60px 20px;color:#555;">
+                <div style="font-size:2rem;margin-bottom:12px">⏳</div>
+                Loading form editor…
+            </div>
+        </div>
+    </div>
+
+    <div class="site-credit-footer">
+        <span class="credit-line">© Karnataka Taekwondo Association</span>
+        <span class="credit-line credit-owner">Built and Developed by Chiranandan T M</span>
+    </div>
+
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/form-config.js"></script>
+    <script type="module" src="/js/admin-form-editor.js"></script>
+
+    <script type="module">
+        window.addEventListener('DOMContentLoaded', async () => {
+            // Page protection — admin only
+            if (typeof UI !== 'undefined') UI.initPageProtection(['admin']);
+
+            // Wait for modules
+            let tries = 0;
+            const wait = () => new Promise(r => setTimeout(r, 300));
+            while ((typeof ADMIN_FORM_EDITOR === 'undefined' || typeof FORM_CONFIG === 'undefined') && tries++ < 20) await wait();
+
+            if (typeof ADMIN_FORM_EDITOR !== 'undefined') {
+                await ADMIN_FORM_EDITOR.init();
+            } else {
+                document.getElementById('formEditorContainer').innerHTML =
+                  '<div style="padding:20px;background:#ff4444;color:#fff;border-radius:8px;">❌ Module failed to load. Please refresh.</div>';
+            }
+        });
+    </script>
+</body>
+</html>

@@ -138,45 +138,53 @@ const FORM_CONFIG = {
     }
   },
 
+  // Wait for Firebase Auth to settle (up to timeoutMs)
+  _waitForAuth(timeoutMs = 5000) {
+    return new Promise((resolve) => {
+      // Already signed in
+      if (window.auth && window.auth.currentUser) { resolve(window.auth.currentUser); return; }
+      // Auth not available — resolve null so we can attempt write anyway
+      if (!window.auth || typeof window.onAuthStateChanged !== 'function') { resolve(null); return; }
+      let done = false;
+      const timer = setTimeout(() => { if (!done) { done = true; resolve(window.auth?.currentUser || null); } }, timeoutMs);
+      window.onAuthStateChanged(window.auth, (user) => {
+        if (!done) { done = true; clearTimeout(timer); resolve(user); }
+      });
+    });
+  },
+
   // Save form configuration to Firebase and update cache
   async saveConfig(config) {
     try {
       console.log("💾 Saving config to Firebase...");
-      
-      // Verify permissions before attempting write
-      console.log("🔐 Checking admin permissions...");
-      if (!window.auth || !window.auth.currentUser) {
-        throw new Error("User not authenticated");
+
+      // Wait for auth state to settle (fixes race condition after bootstrap login)
+      const user = await this._waitForAuth(5000);
+      console.log("🔐 Auth user:", user ? user.uid : 'none — attempting write anyway (sessionStorage role)');
+
+      // If Firebase Auth user is present, verify role in DB
+      if (user) {
+        const userRef = dbRef(database, `users/${user.uid}`);
+        const snap = await dbGet(userRef);
+        if (snap.exists() && snap.val().role !== 'admin') {
+          throw new Error(`Permission denied: role is '${snap.val().role}', 'admin' required.`);
+        }
+      } else {
+        // No Firebase Auth token — check sessionStorage role as UI-layer guard
+        const role = sessionStorage.getItem('userRole');
+        if (role !== 'admin') throw new Error('User not authenticated as admin.');
       }
-      
-      const uid = window.auth.currentUser.uid;
-      const userRef = dbRef(database, `users/${uid}`);
-      const snapshot = await dbGet(userRef);
-      
-      if (!snapshot.exists()) {
-        throw new Error("User profile not found in database");
-      }
-      
-      const userData = snapshot.val();
-      if (userData.role !== 'admin') {
-        throw new Error(`User role is '${userData.role}', but 'admin' is required for formConfig`);
-      }
-      
-      console.log("✅ Permission verified");
-      
+
       const configRef = dbRef(database, 'formConfig');
-      
       console.log("🔄 Writing to database...");
       await dbSet(configRef, config);
-      
       console.log("✅ Config saved to Firebase");
-      
+
       // Update cache after saving
-      if (typeof PERFORMANCE_CACHE !== 'undefined' && PERFORMANCE_CACHE.EXPIRY_TIMES && PERFORMANCE_CACHE.EXPIRY_TIMES.formConfig) {
+      if (typeof PERFORMANCE_CACHE !== 'undefined' && PERFORMANCE_CACHE.EXPIRY_TIMES?.formConfig) {
         PERFORMANCE_CACHE.set('formConfig', config, PERFORMANCE_CACHE.EXPIRY_TIMES.formConfig);
         console.log("✅ Cache updated");
       }
-      console.log("✅ Form configuration saved successfully");
       return true;
     } catch (error) {
       console.error("❌ Error saving form config:", error);

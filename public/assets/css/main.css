@@ -36,7 +36,7 @@ body {
   font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
   background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%), 
               url('/assets/images/image.png') center/cover no-repeat;
-  background-attachment: scroll;
+  background-attachment: fixed;
   background-blend-mode: overlay;
   color: var(--text-white);
   line-height: 1.6;
@@ -1615,9 +1615,10 @@ button:disabled,
   padding: var(--spacing-md);
   cursor: pointer;
   transition: all 0.4s ease;
-  font-size: 1.2rem;
-  font-weight: 600;
+  font-size: 0.95rem;
+  font-weight: 700;
   border-radius: var(--border-radius);
+  white-space: nowrap;
 }
 
 .tab-btn:hover {

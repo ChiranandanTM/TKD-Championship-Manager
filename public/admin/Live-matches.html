@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -213,7 +213,7 @@
     <div class="page-header">
         <h1 class="page-title">🔴 LIVE MATCHES</h1>
         <div style="display: flex; gap: 12px;">
-            <button class="btn-secondary" onclick="window.location.href='dashboard.html'">← Back to Dashboard</button>
+            <button class="btn-secondary" onclick="goBackToDashboard()">← Back to Dashboard</button>
             <button class="btn-danger" onclick="UI.logout()">Logout</button>
         </div>
     </div>
@@ -257,7 +257,7 @@
             }
         }
         waitForUI(() => {
-            UI.initPageProtection(['admin', 'judge']);
+            UI.initPageProtection(['admin', 'judge', 'referee']);
         });
 
         // ── HELPERS ──────────────────────────────────────────────────────────
@@ -406,6 +406,16 @@
 
         window.alert = function(msg) { if (typeof MODAL !== 'undefined') return MODAL.showAlert(msg); };
         window.confirm = function(msg) { if (typeof MODAL !== 'undefined') return MODAL.showConfirm(msg); };
+
+        // ── Role-aware back navigation ──────────────────────────────────────
+        window.goBackToDashboard = function() {
+            var role = sessionStorage.getItem('userRole');
+            if (role === 'referee') {
+                window.location.href = window.location.origin + '/referee/dashboard.html';
+            } else {
+                window.location.href = 'dashboard.html';
+            }
+        };
 
         // ── AUTO REFRESH (Every 5 seconds) ─────────────────────────────────────
         // Hard refresh to keep Live Match page always up-to-date

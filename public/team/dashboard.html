@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -22,205 +22,155 @@
     <link rel="stylesheet" href="/assets/css/main.css">
     <script defer src="/js/modal.js"></script>
     <style>
-        .player-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 30px;
-        }
+        @keyframes tdSpin{to{transform:rotate(360deg)}}
+        @keyframes tdPulse{0%,100%{opacity:.5}50%{opacity:.2}}
+        @keyframes tdFadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 
-        .player-card {
-            background: var(--secondary-black);
-            border: 2px solid var(--border-gold);
-            border-radius: var(--border-radius);
-            padding: 20px;
-            text-align: center;
-        }
+        /* Skeleton loader */
+        .td-skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:tdPulse 1.5s ease-in-out infinite;border-radius:12px;min-height:120px}
+        .td-loading{display:flex;align-items:center;gap:12px;padding:28px 0;color:#555;font-size:.95rem}
+        .td-spinner{width:26px;height:26px;border:3px solid rgba(255,215,0,.25);border-top-color:#FFD700;border-radius:50%;animation:tdSpin .8s linear infinite;flex-shrink:0}
 
-        .player-image {
-            width: 150px;
-            height: 150px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 3px solid var(--border-gold);
-            margin-bottom: 15px;
-        }
+        /* Summary cards row */
+        .td-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:28px}
+        .td-stat{background:linear-gradient(150deg,rgba(14,18,42,.98),rgba(20,30,58,.95));border:2px solid rgba(255,215,0,.18);border-radius:18px;padding:22px 20px;text-align:center;transition:transform .25s,box-shadow .25s,border-color .25s}
+        .td-stat:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(255,215,0,.08);border-color:rgba(255,215,0,.4)}
+        .td-stat-icon{font-size:1.6rem;margin-bottom:6px}
+        .td-stat-val{font-size:2rem;font-weight:900;color:#FFD700;line-height:1.1}
+        .td-stat-lbl{font-size:.72rem;color:#8899bb;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
 
-        .player-info {
-            text-align: left;
-            margin-top: 15px;
-            padding-top: 15px;
-            border-top: 1px solid var(--text-gray);
-        }
+        /* Search bar */
+        .td-search{width:100%;box-sizing:border-box;padding:12px 18px 12px 16px;background:rgba(0,0,0,.45);border:2px solid rgba(255,215,0,.25);border-radius:12px;color:#fff;font-size:.95rem;font-weight:500;transition:border-color .2s,box-shadow .2s;outline:none}
+        .td-search:focus{border-color:#FFD700;box-shadow:0 0 0 3px rgba(255,215,0,.12)}
+        .td-search::placeholder{color:#666}
+        .td-search-wrap{position:relative;min-width:200px}
 
-        .player-info-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 8px 0;
-            font-size: 0.95rem;
-        }
+        /* Filters row */
+        .td-filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px;padding:16px 20px;background:rgba(0,229,255,.03);border:1.5px solid rgba(0,229,255,.12);border-radius:14px}
+        .td-flbl{font-size:.78rem;color:#00E5FF;font-weight:700;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
 
-        .player-info-label {
-            color: var(--text-gray);
-        }
+        /* Player grid */
+        .player-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:20px;margin-top:20px}
 
-        .player-info-value {
-            color: var(--text-white);
-            font-weight: 600;
-        }
+        /* Player card */
+        .player-card{background:linear-gradient(150deg,rgba(14,18,42,.98),rgba(22,32,62,.96));border:2px solid rgba(255,215,0,.2);border-radius:20px;padding:22px;text-align:center;transition:transform .25s,box-shadow .25s,border-color .3s;animation:tdFadeUp .35s ease;overflow:hidden;position:relative}
+        .player-card:hover{transform:translateY(-5px);box-shadow:0 16px 40px rgba(255,215,0,.12);border-color:rgba(255,215,0,.45)}
 
-        .status-badge {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 700;
-            margin-top: 10px;
-        }
+        .player-image{width:120px;height:120px;border-radius:50%;object-fit:cover;border:3px solid rgba(255,215,0,.5);margin-bottom:12px;transition:border-color .3s,box-shadow .3s}
+        .player-card:hover .player-image{border-color:#FFD700;box-shadow:0 0 20px rgba(255,215,0,.2)}
 
-        .status-pending {
-            background: var(--warning-orange);
-            color: var(--primary-black);
-        }
+        .player-info{text-align:left;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1)}
+        .player-info-row{display:flex;justify-content:space-between;margin:7px 0;font-size:.9rem}
+        .player-info-label{color:#8899bb;font-size:.8rem;text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+        .player-info-value{color:#e8ecf2;font-weight:700;font-size:.88rem}
 
-        .status-approved {
-            background: var(--success-green);
-            color: var(--text-white);
-        }
+        /* Badges */
+        .status-badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:.78rem;font-weight:800;margin-top:10px}
+        .status-pending{background:rgba(255,152,0,.15);color:#FF9800;border:1.5px solid #FF9800}
+        .status-approved{background:rgba(0,230,118,.12);color:#00E676;border:1.5px solid #00E676}
 
-        .card-badge-row {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 10px;
-        }
+        .card-badge-row{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}
+        .card-badge-row .status-badge{margin-top:0}
 
-        .card-badge-row .status-badge {
-            margin-top: 0;
-        }
+        .medal-badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:.78rem;font-weight:800;letter-spacing:.2px;text-transform:uppercase;border:1.5px solid transparent}
+        .medal-gold{background:linear-gradient(135deg,#FFD700,#FFC107);color:#1f1a00;border-color:#B8860B}
+        .medal-silver{background:linear-gradient(135deg,#E5E7EB,#C0C4CC);color:#1f2937;border-color:#9CA3AF}
+        .medal-bronze{background:linear-gradient(135deg,#CD7F32,#A0522D);color:#fff6ee;border-color:#7A3E14}
 
-        .medal-badge {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 800;
-            letter-spacing: 0.2px;
-            text-transform: uppercase;
-            border: 1px solid transparent;
-        }
+        /* Filter buttons */
+        .medal-filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px}
+        .medal-filter-label{color:var(--text-gray);font-size:.95rem;font-weight:700}
+        .medal-filter-btn{border:2px solid rgba(255,215,0,.3);background:rgba(0,0,0,.3);color:#aaa;border-radius:999px;padding:7px 14px;font-size:.85rem;font-weight:700;cursor:pointer;transition:all .2s}
+        .medal-filter-btn:hover{transform:translateY(-1px);border-color:rgba(255,215,0,.6);color:#fff}
+        .medal-filter-btn.active{background:linear-gradient(135deg,#FFD700,#FFA500);color:#000;border-color:#FFD700}
 
-        .medal-gold {
-            background: linear-gradient(135deg, #FFD700 0%, #FFC107 100%);
-            color: #1f1a00;
-            border-color: #B8860B;
-        }
+        .category-filter-select{border:2px solid rgba(255,215,0,.3);background:rgba(0,0,0,.4);color:#fff;border-radius:10px;padding:7px 12px;font-size:.88rem;font-weight:700;min-width:160px;outline:none;transition:border-color .2s}
+        .category-filter-select:focus{box-shadow:0 0 0 2px rgba(0,229,255,.25);border-color:#00E5FF}
+        .category-filter-select option{background:#0a0e2a;color:#fff}
 
-        .medal-silver {
-            background: linear-gradient(135deg, #E5E7EB 0%, #C0C4CC 100%);
-            color: #1f2937;
-            border-color: #9CA3AF;
-        }
+        /* Action buttons on card */
+        .td-card-actions{display:flex;gap:8px;margin-top:14px}
+        .td-btn-edit{flex:1;padding:10px;background:rgba(0,229,255,.08);border:2px solid #00E5FF;border-radius:10px;color:#00E5FF;font-weight:800;font-size:.85rem;cursor:pointer;transition:all .2s}
+        .td-btn-edit:hover{background:rgba(0,229,255,.18);transform:translateY(-1px)}
+        .td-btn-del{padding:10px 14px;background:rgba(255,23,68,.08);border:2px solid rgba(255,23,68,.3);border-radius:10px;color:#ff6b6b;font-weight:700;font-size:.85rem;cursor:pointer;transition:all .2s}
+        .td-btn-del:hover{border-color:#FF1744;color:#FF1744;background:rgba(255,23,68,.15)}
 
-        .medal-bronze {
-            background: linear-gradient(135deg, #CD7F32 0%, #A0522D 100%);
-            color: #fff6ee;
-            border-color: #7A3E14;
-        }
+        /* Empty state */
+        .td-empty{text-align:center;padding:60px 20px;border:2px dashed rgba(255,255,255,.06);border-radius:18px;color:#444}
+        .td-empty-icon{font-size:3.5rem;margin-bottom:14px}
+        .td-empty-title{font-size:1.1rem;font-weight:700;color:#555;margin-bottom:6px}
+        .td-empty-sub{font-size:.88rem;color:#333}
 
-        .medal-filter-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 14px;
-        }
+        /* Registration status banner */
+        .td-reg-banner{padding:14px 20px;border-radius:14px;font-weight:700;font-size:.9rem;margin-bottom:20px;display:flex;align-items:center;gap:12px}
+        .td-reg-open{background:rgba(0,230,118,.08);border:1.5px solid rgba(0,230,118,.3);color:#00E676}
+        .td-reg-closed{background:rgba(255,23,68,.08);border:1.5px solid rgba(255,23,68,.3);color:#FF1744}
 
-        .medal-filter-label {
-            color: var(--text-gray);
-            font-size: 0.95rem;
-            font-weight: 700;
-        }
+        /* Player count pill */
+        .td-count-pill{background:rgba(255,215,0,.1);border:1.5px solid rgba(255,215,0,.3);color:#FFD700;padding:4px 14px;border-radius:20px;font-size:.82rem;font-weight:800;white-space:nowrap}
 
-        .medal-filter-btn {
-            border: 2px solid var(--border-gold);
-            background: var(--secondary-black);
-            color: var(--text-white);
-            border-radius: 999px;
-            padding: 7px 14px;
-            font-size: 0.9rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .medal-filter-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
-        }
-
-        .medal-filter-btn.active {
-            background: var(--border-gold);
-            color: var(--primary-black);
-        }
-
-        .category-filter-select {
-            border: 2px solid var(--border-gold);
-            background: var(--secondary-black);
-            color: var(--text-white);
-            border-radius: 10px;
-            padding: 7px 12px;
-            font-size: 0.9rem;
-            font-weight: 700;
-            min-width: 170px;
-            outline: none;
-        }
-
-        .category-filter-select:focus {
-            box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.35);
-            border-color: var(--accent-cyan);
-        }
-
-        .category-filter-select option {
-            background: var(--secondary-black);
-            color: var(--text-white);
+        @media(max-width:600px){
+            .td-summary{grid-template-columns:1fr 1fr}
+            .player-grid{grid-template-columns:1fr}
+            .td-filters{flex-direction:column;align-items:stretch}
         }
     </style>
 </head>
 <body>
     <div class="page-header">
-        <h1 class="page-title">👥 TEAM DASHBOARD</h1>
-        <div>
-            <button class="btn-primary" id="registerBtn" onclick="window.location.href='/register.html'">
-                ➕ Register New Player
-            </button>
-            <button class="btn-danger" onclick="UI.logout()">Logout</button>
+        <h1 class="page-title" id="teamTitle">👥 TEAM DASHBOARD</h1>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn-primary" id="registerBtn" onclick="window.location.href='/register.html'" style="padding:10px 22px;border-radius:10px;font-weight:800">➕ Register Player</button>
+            <button class="btn-danger" onclick="UI.logout()" style="padding:10px 18px;border-radius:10px;font-weight:700">Logout</button>
         </div>
     </div>
 
     <div class="container">
-        <div class="section">
-            <h2>Team Information</h2>
-            <div id="teamInfo"></div>
+        <!-- Registration Status Banner -->
+        <div id="regBanner"></div>
+
+        <!-- Summary Cards -->
+        <div id="teamInfo">
+            <div class="td-summary">
+                <div class="td-skeleton" style="min-height:100px"></div>
+                <div class="td-skeleton" style="min-height:100px"></div>
+                <div class="td-skeleton" style="min-height:100px"></div>
+                <div class="td-skeleton" style="min-height:100px"></div>
+            </div>
         </div>
 
+        <!-- Players Section -->
         <div class="section">
-            <h2>Your Player Submissions</h2>
-            <div class="medal-filter-row">
-                <span class="medal-filter-label">Filter Medal:</span>
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+                <div style="display:flex;align-items:center;gap:12px">
+                    <h2 style="margin:0">Your Players</h2>
+                    <span class="td-count-pill" id="playerCountPill">0 players</span>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div class="td-search-wrap" style="margin-bottom:16px">
+                <input type="text" class="td-search" id="playerSearch" placeholder="Search players by name…" oninput="window.searchPlayers(this.value)">
+            </div>
+
+            <!-- Filters -->
+            <div class="td-filters">
+                <span class="td-flbl">Medal:</span>
                 <button class="medal-filter-btn active" data-medal-filter="all" onclick="setMedalFilter('all')">All</button>
                 <button class="medal-filter-btn" data-medal-filter="Gold" onclick="setMedalFilter('Gold')">🥇 Gold</button>
                 <button class="medal-filter-btn" data-medal-filter="Silver" onclick="setMedalFilter('Silver')">🥈 Silver</button>
                 <button class="medal-filter-btn" data-medal-filter="Bronze" onclick="setMedalFilter('Bronze')">🥉 Bronze</button>
-
-                <span class="medal-filter-label" style="margin-left: 8px;">Age Category:</span>
+                <span class="td-flbl" style="margin-left:8px">Category:</span>
                 <select id="ageCategoryFilter" class="category-filter-select" onchange="setAgeCategoryFilter(this.value)">
                     <option value="all">All Categories</option>
                 </select>
             </div>
-            <div id="playersList" class="player-grid"></div>
+
+            <div id="playersList" class="player-grid">
+                <div class="td-skeleton" style="min-height:300px"></div>
+                <div class="td-skeleton" style="min-height:300px"></div>
+                <div class="td-skeleton" style="min-height:300px"></div>
+            </div>
         </div>
     </div>
 
@@ -369,6 +319,8 @@
             filterSelect.disabled = teamPlayers.length === 0;
         }
 
+        let currentSearchQuery = '';
+
         function renderPlayersList() {
             const playersList = document.getElementById('playersList');
             if (!playersList) return;
@@ -376,16 +328,19 @@
             const filteredPlayers = teamPlayers.filter(player => {
                 const medalMatch = currentMedalFilter === 'all' || player.medalType === currentMedalFilter;
                 const categoryMatch = currentAgeCategoryFilter === 'all' || getPlayerAgeCategory(player) === currentAgeCategoryFilter;
-                return medalMatch && categoryMatch;
+                const searchMatch = !currentSearchQuery || player.playerName.toLowerCase().includes(currentSearchQuery.toLowerCase());
+                return medalMatch && categoryMatch && searchMatch;
             });
+
+            // Update count pill
+            const pill = document.getElementById('playerCountPill');
+            if (pill) pill.textContent = `${filteredPlayers.length} player${filteredPlayers.length !== 1 ? 's' : ''}`;
 
             if (filteredPlayers.length === 0) {
                 if (teamPlayers.length === 0) {
-                    playersList.innerHTML = '<p style="color: #888; text-align: center;">No players registered yet. Click "Register New Player" to add your first player.</p>';
+                    playersList.innerHTML = `<div class="td-empty" style="grid-column:1/-1"><div class="td-empty-icon">🥋</div><div class="td-empty-title">No players registered yet</div><div class="td-empty-sub">Click "Register Player" to add your first athlete</div></div>`;
                 } else {
-                    const medalText = currentMedalFilter === 'all' ? 'any medal' : `${currentMedalFilter} medal`;
-                    const categoryText = currentAgeCategoryFilter === 'all' ? 'all categories' : currentAgeCategoryFilter;
-                    playersList.innerHTML = `<p style="color: #888; text-align: center;">No players found for ${medalText} in ${categoryText}.</p>`;
+                    playersList.innerHTML = `<div class="td-empty" style="grid-column:1/-1"><div class="td-empty-icon">🔍</div><div class="td-empty-title">No matches found</div><div class="td-empty-sub">Try adjusting your filters or search</div></div>`;
                 }
                 return;
             }
@@ -399,53 +354,28 @@
                 const badgeRowHtml = (approvedBadgeHtml || medalBadgeHtml)
                     ? `<div class="card-badge-row">${approvedBadgeHtml}${medalBadgeHtml}</div>`
                     : '';
+                const tn = (player.playerName || '').replace(/'/g, "\\'");
 
                 html += `
                     <div class="player-card">
-                        <div style="position: relative; display: inline-block; width: 100%;">
-                            <img src="${player.playerImage}" alt="${player.playerName}" class="player-image">
-                            <button onclick="deletePlayer('${player.id}', '${player.playerName.replace(/'/g, "\\'")}', '${player.teamId}')" style="position: absolute; top: 10px; right: 10px; background: var(--accent-red); border: 2px solid var(--accent-red); border-radius: 50%; width: 45px; height: 45px; cursor: pointer; font-size: 1.3rem; display: flex; align-items: center; justify-content: center; padding: 0; transition: all 0.3s ease; box-shadow: 0 4px 8px rgba(0,0,0,0.5);" onmouseover="this.style.background='#cc3333'; this.style.transform='scale(1.1)'" onmouseout="this.style.background='var(--accent-red)'; this.style.transform='scale(1)'" title="Delete this player">
-                                🗑️
-                            </button>
-                        </div>
-                        <h3 style="color: var(--border-gold); margin-bottom: 10px;">${player.playerName}</h3>
-                        
+                        <img src="${player.playerImage}" alt="${player.playerName}" class="player-image">
+                        <h3 style="color:#FFD700;margin:0 0 4px;font-size:1.1rem">${player.playerName}</h3>
+                        <div style="font-size:.78rem;color:#00E5FF;font-weight:600">${player.ageCategory || 'N/A'} · ${player.weightCategory || 'N/A'}</div>
+
                         <div class="player-info">
-                            <div class="player-info-row">
-                                <span class="player-info-label">Gender:</span>
-                                <span class="player-info-value">${player.gender}</span>
-                            </div>
-                            <div class="player-info-row">
-                                <span class="player-info-label">Age:</span>
-                                <span class="player-info-value">${player.age} years</span>
-                            </div>
-                            <div class="player-info-row">
-                                <span class="player-info-label">Weight:</span>
-                                <span class="player-info-value">${player.weight} kg</span>
-                            </div>
-                            <div class="player-info-row">
-                                <span class="player-info-label">Age Category:</span>
-                                <span class="player-info-value">${player.ageCategory || 'N/A'}</span>
-                            </div>
-                            <div class="player-info-row">
-                                <span class="player-info-label">Weight Category:</span>
-                                <span class="player-info-value">${player.weightCategory || 'N/A'}</span>
-                            </div>
-                            <div class="player-info-row">
-                                <span class="player-info-label">Center:</span>
-                                <span class="player-info-value">${player.centerName}</span>
-                            </div>
-                            <div class="player-info-row">
-                                <span class="player-info-label">Payment:</span>
-                                <span class="player-info-value">${player.paymentStatus === 'Paid' ? '✅ Paid' : '❌ Not Paid'}</span>
-                            </div>
+                            <div class="player-info-row"><span class="player-info-label">Gender</span><span class="player-info-value">${player.gender}</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Age</span><span class="player-info-value">${player.age} yrs</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Weight</span><span class="player-info-value">${player.weight} kg</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Center</span><span class="player-info-value">${player.centerName}</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Payment</span><span class="player-info-value">${player.paymentStatus === 'Paid' ? '✅ Paid' : '❌ Not Paid'}</span></div>
                         </div>
-                        
+
                         ${badgeRowHtml}
 
-                        <button class="btn-primary" style="width: 100%; margin-top: 15px;" onclick="editPlayer('${player.id}')">
-                            ✏️ Edit Form
-                        </button>
+                        <div class="td-card-actions">
+                            <button class="td-btn-edit" onclick="editPlayer('${player.id}')">✏️ Edit</button>
+                            <button class="td-btn-del" onclick="deletePlayer('${player.id}', '${tn}', '${player.teamId}')">🗑</button>
+                        </div>
                     </div>
                 `;
             });
@@ -469,6 +399,10 @@
                 if (snapshot.exists()) {
                     const team = snapshot.val();
 
+                    // Update header with team name
+                    const titleEl = document.getElementById('teamTitle');
+                    if (titleEl) titleEl.textContent = `🥋 ${team.teamName}`;
+
                     // ── CHECK PER-TEAM DEADLINE / CLOSED STATUS ──────────────
                     const registerBtn = document.getElementById('registerBtn');
                     const now = new Date();
@@ -488,6 +422,16 @@
                         }
                     }
 
+                    // Registration banner
+                    const banner = document.getElementById('regBanner');
+                    if (banner) {
+                        if (registrationBlocked) {
+                            banner.innerHTML = `<div class="td-reg-banner td-reg-closed">🔒 ${blockedReason}. Contact the organizer for assistance.</div>`;
+                        } else {
+                            banner.innerHTML = `<div class="td-reg-banner td-reg-open">✅ Registration is open — you can register new players.</div>`;
+                        }
+                    }
+
                     if (registrationBlocked && registerBtn) {
                         registerBtn.disabled = true;
                         registerBtn.textContent = '🔒 Registration Closed';
@@ -501,23 +445,30 @@
                     }
                     // ────────────────────────────────────────────────────────
 
-                    let html = `
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
-                            <div class="stat-card">
-                                <span class="stat-label">Team Name</span>
-                                <span class="stat-value" style="font-size: 1.5rem;">${team.teamName}</span>
+                    document.getElementById('teamInfo').innerHTML = `
+                        <div class="td-summary">
+                            <div class="td-stat">
+                                <div class="td-stat-icon">🏅</div>
+                                <div class="td-stat-val" style="font-size:1.2rem;color:#fff">${team.teamName}</div>
+                                <div class="td-stat-lbl">Team Name</div>
                             </div>
-                            <div class="stat-card">
-                                <span class="stat-label">Username</span>
-                                <span class="stat-value" style="font-size: 1.5rem;">${team.username}</span>
+                            <div class="td-stat">
+                                <div class="td-stat-icon">👤</div>
+                                <div class="td-stat-val" style="font-size:1rem;color:#00E5FF">${team.username}</div>
+                                <div class="td-stat-lbl">Username</div>
                             </div>
-                            <div class="stat-card">
-                                <span class="stat-label">Players Registered</span>
-                                <span class="stat-value" id="playerCount">0</span>
+                            <div class="td-stat">
+                                <div class="td-stat-icon">🥋</div>
+                                <div class="td-stat-val" id="playerCount">0</div>
+                                <div class="td-stat-lbl">Players</div>
+                            </div>
+                            <div class="td-stat">
+                                <div class="td-stat-icon">${registrationBlocked ? '🔒' : '✅'}</div>
+                                <div class="td-stat-val" style="font-size:1rem;color:${registrationBlocked ? '#FF1744' : '#00E676'}">${registrationBlocked ? 'Closed' : 'Open'}</div>
+                                <div class="td-stat-lbl">Registration</div>
                             </div>
                         </div>
                     `;
-                    document.getElementById('teamInfo').innerHTML = html;
                 }
             } catch (error) {
                 console.error('Error loading team info:', error);
@@ -602,6 +553,12 @@
         // Age category dropdown filter handler
         window.setAgeCategoryFilter = function(category) {
             currentAgeCategoryFilter = category || 'all';
+            renderPlayersList();
+        }
+
+        // Search handler
+        window.searchPlayers = function(query) {
+            currentSearchQuery = query || '';
             renderPlayersList();
         }
 

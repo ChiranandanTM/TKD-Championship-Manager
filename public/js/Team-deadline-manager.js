@@ -187,6 +187,29 @@ const TEAM_DEADLINE_MANAGER = {
     }
   },
 
+  async setBulkDeadline() {
+    const h = parseInt(document.getElementById('bulk_hours')?.value || 0) || 0;
+    const m = parseInt(document.getElementById('bulk_mins')?.value || 0) || 0;
+    if (h === 0 && m === 0) { MODAL.warning('Enter hours and/or minutes.'); return; }
+
+    const confirmed = await MODAL.showConfirm(`Set a ${h}h ${m}m deadline for ALL teams from now?`);
+    if (!confirmed) return;
+
+    try {
+      const snap = await dbGet(dbRef(database, 'teams'));
+      if (!snap.exists()) return;
+      const deadline = new Date(Date.now() + (h * 60 + m) * 60000).toISOString();
+      const updates = {};
+      snap.forEach(c => {
+        updates[`${c.key}/registrationDeadline`] = deadline;
+        updates[`${c.key}/registrationClosed`] = false;
+      });
+      await dbUpdate(dbRef(database, 'teams'), updates);
+      MODAL.success(`Deadline set for all teams: ${h}h ${m}m from now.`);
+      await this.renderTeamsTable('teamsTableContainer');
+    } catch (e) { MODAL.error('Error: ' + e.message); }
+  },
+
   // Close registration for ALL teams
   async closeAllTeams() {
     const confirmed = await MODAL.showConfirm('🔒 Close registration for ALL teams? Coaches will not be able to register new players.');
@@ -200,10 +223,10 @@ const TEAM_DEADLINE_MANAGER = {
 
       const updates = {};
       snapshot.forEach(child => {
-        updates[`teams/${child.key}/registrationClosed`] = true;
+        updates[`${child.key}/registrationClosed`] = true;
       });
 
-      await dbUpdate(dbRef(database), updates);
+      await dbUpdate(dbRef(database, 'teams'), updates);
 
       if (typeof MODAL !== 'undefined') {
         MODAL.success('Registration closed for all teams.');
@@ -220,34 +243,20 @@ const TEAM_DEADLINE_MANAGER = {
 
   // Open registration for ALL teams
   async openAllTeams() {
-    const confirmed = await MODAL.showConfirm('🔓 Reopen registration for ALL teams?');
-    if (!confirmed) return;
-
+    const ok = await MODAL.showConfirm('🔓 Reopen registration for ALL teams?');
+    if (!ok) return;
     try {
-      const teamsRef = dbRef(database, 'teams');
-      const snapshot = await dbGet(teamsRef);
-
-      if (!snapshot.exists()) return;
-
+      const snap = await dbGet(dbRef(database, 'teams'));
+      if (!snap.exists()) return;
       const updates = {};
-      snapshot.forEach(child => {
-        updates[`teams/${child.key}/registrationClosed`] = false;
-        updates[`teams/${child.key}/registrationDeadline`] = '';
+      snap.forEach(c => {
+        updates[`${c.key}/registrationClosed`] = false;
+        updates[`${c.key}/registrationDeadline`] = '';
       });
-
-      await dbUpdate(dbRef(database), updates);
-
-      if (typeof MODAL !== 'undefined') {
-        MODAL.success('Registration opened for all teams.');
-      }
-
+      await dbUpdate(dbRef(database, 'teams'), updates);
+      MODAL.success('Registration opened for all teams.');
       await this.renderTeamsTable('teamsTableContainer');
-    } catch (error) {
-      console.error('❌ Error opening all teams:', error);
-      if (typeof MODAL !== 'undefined') {
-        MODAL.error('Error: ' + error.message);
-      }
-    }
+    } catch (e) { MODAL.error('Error: ' + e.message); }
   },
 
   // Delete a team and all associated data (ADMIN ONLY)
@@ -286,7 +295,7 @@ const TEAM_DEADLINE_MANAGER = {
       console.log('📋 Finding all players for this team...');
       const playersRef = dbRef(database, 'players');
       const playersSnap = await dbGet(playersRef);
-      
+
       const playersToDelete = [];
       if (playersSnap.exists()) {
         const allPlayers = playersSnap.val();
@@ -303,7 +312,7 @@ const TEAM_DEADLINE_MANAGER = {
       console.log('🏆 Cleaning up bracket references...');
       const bracketsRef = dbRef(database, 'brackets');
       const bracketsSnap = await dbGet(bracketsRef);
-      
+
       const bracketsToUpdate = {};
       let bracketsModified = 0;
       if (bracketsSnap.exists()) {
@@ -353,7 +362,7 @@ const TEAM_DEADLINE_MANAGER = {
       console.log('📊 Cleaning up match history and standings...');
       const standingsRef = dbRef(database, 'matchHistory');
       const standingsSnap = await dbGet(standingsRef);
-      
+
       let standingsModified = 0;
       if (standingsSnap.exists()) {
         const allHistory = standingsSnap.val();
@@ -380,7 +389,7 @@ const TEAM_DEADLINE_MANAGER = {
       console.log('📈 Cleaning up match results...');
       const matchResultsRef = dbRef(database, 'matchResults');
       const matchResultsSnap = await dbGet(matchResultsRef);
-      
+
       let matchResultsModified = 0;
       if (matchResultsSnap.exists()) {
         const allResults = matchResultsSnap.val();
@@ -406,7 +415,7 @@ const TEAM_DEADLINE_MANAGER = {
       console.log('🏅 Cleaning up overall standings...');
       const overallStandingsRef = dbRef(database, 'overallStandings');
       const overallStandingsSnap = await dbGet(overallStandingsRef);
-      
+
       let overallStandingsModified = 0;
       if (overallStandingsSnap.exists()) {
         const allStandings = overallStandingsSnap.val();
@@ -431,7 +440,7 @@ const TEAM_DEADLINE_MANAGER = {
       console.log('📋 Cleaning up category results...');
       const categoryResultsRef = dbRef(database, 'categoryResults');
       const categoryResultsSnap = await dbGet(categoryResultsRef);
-      
+
       let categoryResultsModified = 0;
       if (categoryResultsSnap.exists()) {
         const allCategoryResults = categoryResultsSnap.val();

@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Referee Dashboard — Taekwondo Championship</title>
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Referee portal for Taekwondo Championship.">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script defer src="/js/modal.js"></script>
+
+    <style>
+        /* ── Hero ─────────────────────────────────────────── */
+        .ref-hero {
+            display: flex;
+            align-items: center;
+            gap: 24px;
+            background: linear-gradient(135deg, rgba(0,229,255,0.12) 0%, rgba(255,215,0,0.08) 100%);
+            border: 2px solid var(--accent-cyan);
+            border-radius: var(--border-radius);
+            padding: 28px 36px;
+            margin-bottom: 36px;
+            animation: fadeInUp 0.5s ease;
+        }
+        .ref-avatar {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent-cyan) 0%, #0080FF 100%);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 2.5rem; flex-shrink: 0;
+            box-shadow: 0 0 24px rgba(0,229,255,0.4);
+        }
+        .ref-name { font-size: 2rem; font-weight: 800; color: var(--border-gold); margin-bottom: 6px; letter-spacing: 1px; }
+        .ref-court-display { font-size: 1.3rem; color: var(--accent-cyan); font-weight: 700; }
+
+        /* ── Nav cards ────────────────────────────────────── */
+        .nav-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 28px; margin-bottom: 36px;
+        }
+        .nav-card {
+            background: linear-gradient(145deg, rgba(22,33,62,0.97) 0%, rgba(26,26,46,0.97) 100%);
+            border: 2px solid var(--border-gold);
+            border-radius: var(--border-radius);
+            padding: 32px 28px; text-align: center;
+            text-decoration: none; display: block;
+            transition: all 0.3s ease; animation: fadeInUp 0.6s ease;
+        }
+        .nav-card:hover { border-color: var(--accent-cyan); transform: translateY(-6px); box-shadow: 0 12px 32px rgba(255,215,0,0.3); }
+        .nav-card .card-icon { font-size: 3.5rem; margin-bottom: 16px; display: block; }
+        .nav-card .card-title { font-size: 1.5rem; font-weight: 800; color: var(--border-gold); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+        .nav-card .card-desc { font-size: 0.95rem; color: var(--text-gray); opacity: 0.75; font-weight: 400; }
+
+        /* ── Restricted note ──────────────────────────────── */
+        .restricted-note {
+            background: rgba(255,23,68,0.1);
+            border: 1.5px solid var(--accent-red);
+            border-radius: 8px; padding: 12px 18px;
+            font-size: 0.9rem; color: #ff8a80;
+            margin-bottom: 28px; text-align: center;
+        }
+
+        /* ── Assigned Panel ───────────────────────────────── */
+        .assigned-panel {
+            background: linear-gradient(135deg, rgba(15,20,45,0.98) 0%, rgba(22,33,62,0.98) 100%);
+            border: 2px solid var(--border-gold);
+            border-radius: var(--border-radius);
+            padding: 32px 36px;
+            margin-bottom: 32px;
+            animation: fadeInUp 0.6s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .assigned-panel::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 3px;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--border-gold), var(--accent-cyan));
+            background-size: 200% 100%;
+            animation: shimmer 3s linear infinite;
+        }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+        .panel-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
+        }
+        .panel-title {
+            font-size: 1.5rem; font-weight: 800;
+            color: var(--border-gold); letter-spacing: 1px;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .count-pill {
+            background: linear-gradient(135deg, var(--accent-cyan) 0%, #0080FF 100%);
+            color: #000; font-size: 0.85rem; font-weight: 900;
+            padding: 4px 14px; border-radius: 20px;
+            letter-spacing: 1px; min-width: 36px; text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        /* ── Referee cards grid ───────────────────────────── */
+        .ref-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 18px;
+            margin-bottom: 24px;
+        }
+
+        .ref-person-card {
+            background: linear-gradient(145deg, rgba(0,229,255,0.06) 0%, rgba(255,215,0,0.04) 100%);
+            border: 1.5px solid rgba(0,229,255,0.3);
+            border-radius: 14px;
+            padding: 20px 16px;
+            text-align: center;
+            position: relative;
+            transition: all 0.3s ease;
+            animation: cardPop 0.4s ease both;
+        }
+        .ref-person-card:hover {
+            border-color: var(--border-gold);
+            background: linear-gradient(145deg, rgba(255,215,0,0.08) 0%, rgba(0,229,255,0.06) 100%);
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 8px 24px rgba(255,215,0,0.2);
+        }
+        @keyframes cardPop {
+            0% { opacity:0; transform: scale(0.85) translateY(10px); }
+            100% { opacity:1; transform: scale(1) translateY(0); }
+        }
+
+        .ref-num-badge {
+            position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, var(--border-gold) 0%, #FFA500 100%);
+            color: #000; font-size: 0.7rem; font-weight: 900;
+            width: 24px; height: 24px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 2px 8px rgba(255,215,0,0.5);
+        }
+
+        .ref-person-avatar {
+            width: 56px; height: 56px;
+            border-radius: 50%;
+            margin: 8px auto 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.6rem;
+            position: relative;
+        }
+        /* Cycle through 5 avatar gradient colours */
+        .ref-person-card:nth-child(5n+1) .ref-person-avatar { background: linear-gradient(135deg,#00E5FF,#006BFF); box-shadow: 0 0 16px rgba(0,229,255,0.45); }
+        .ref-person-card:nth-child(5n+2) .ref-person-avatar { background: linear-gradient(135deg,#FF6B35,#FF1744); box-shadow: 0 0 16px rgba(255,23,68,0.45); }
+        .ref-person-card:nth-child(5n+3) .ref-person-avatar { background: linear-gradient(135deg,#00E676,#00BFA5); box-shadow: 0 0 16px rgba(0,230,118,0.45); }
+        .ref-person-card:nth-child(5n+4) .ref-person-avatar { background: linear-gradient(135deg,#FFD700,#FF8F00); box-shadow: 0 0 16px rgba(255,215,0,0.45); }
+        .ref-person-card:nth-child(5n+5) .ref-person-avatar { background: linear-gradient(135deg,#AA00FF,#7C4DFF); box-shadow: 0 0 16px rgba(170,0,255,0.45); }
+
+        .ref-person-name {
+            font-size: 0.95rem; font-weight: 700;
+            color: var(--text-white); line-height: 1.3;
+            word-break: break-word;
+        }
+        .ref-person-role {
+            font-size: 0.75rem; color: var(--accent-cyan);
+            margin-top: 6px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 1px;
+            opacity: 0.8;
+        }
+
+        /* ── Empty state ──────────────────────────────────── */
+        .empty-assigned {
+            text-align: center; padding: 40px 20px;
+            border: 2px dashed rgba(255,215,0,0.2);
+            border-radius: 12px; margin-bottom: 24px;
+        }
+        .empty-assigned .e-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.5; }
+        .empty-assigned p { color: #666; font-size: 0.95rem; }
+
+        /* ── Edit button ──────────────────────────────────── */
+        .edit-refs-btn {
+            display: inline-flex; align-items: center; gap: 10px;
+            background: linear-gradient(135deg, rgba(0,229,255,0.15) 0%, rgba(0,229,255,0.05) 100%);
+            border: 2px solid var(--accent-cyan);
+            color: var(--accent-cyan);
+            padding: 12px 24px; border-radius: 10px;
+            font-size: 1rem; font-weight: 700; cursor: pointer;
+            transition: all 0.25s ease; letter-spacing: 0.5px;
+        }
+        .edit-refs-btn:hover {
+            background: rgba(0,229,255,0.25);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,229,255,0.3);
+        }
+
+        /* ── Edit Modal ───────────────────────────────────── */
+        .edit-modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.82); z-index: 5000;
+            align-items: center; justify-content: center;
+        }
+        .edit-modal-overlay.active { display: flex; }
+
+        .edit-modal {
+            background: linear-gradient(145deg, rgba(12,18,42,0.99) 0%, rgba(22,33,62,0.99) 100%);
+            border: 2px solid var(--border-gold);
+            border-radius: 18px; width: 92%; max-width: 540px;
+            box-shadow: 0 24px 64px rgba(255,215,0,0.3);
+            animation: modalSlide 0.35s cubic-bezier(0.175,0.885,0.32,1.275);
+            overflow: hidden;
+        }
+        @keyframes modalSlide {
+            0% { opacity:0; transform: scale(0.88) translateY(30px); }
+            100% { opacity:1; transform: scale(1) translateY(0); }
+        }
+        .modal-top-bar {
+            background: linear-gradient(90deg, rgba(255,215,0,0.12) 0%, rgba(0,229,255,0.08) 100%);
+            padding: 22px 28px;
+            border-bottom: 1px solid rgba(255,215,0,0.2);
+            display: flex; align-items: center; gap: 14px;
+        }
+        .modal-top-icon {
+            width: 44px; height: 44px; border-radius: 12px;
+            background: linear-gradient(135deg, var(--border-gold), #FFA500);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.4rem; flex-shrink: 0;
+        }
+        .modal-top-title { font-size: 1.3rem; font-weight: 800; color: var(--border-gold); }
+        .modal-top-sub { font-size: 0.85rem; color: var(--text-gray); margin-top: 2px; opacity: 0.7; }
+
+        .modal-body { padding: 24px 28px; }
+
+        .names-input-area {
+            width: 100%; min-height: 160px;
+            padding: 16px 18px;
+            background: rgba(0,0,0,0.4);
+            border: 2px solid rgba(0,229,255,0.4);
+            border-radius: 12px;
+            color: var(--text-white);
+            font-size: 1rem; font-family: inherit;
+            resize: vertical; line-height: 1.8;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .names-input-area:focus {
+            outline: none;
+            border-color: var(--border-gold);
+            box-shadow: 0 0 20px rgba(255,215,0,0.35);
+        }
+        .input-hint {
+            font-size: 0.82rem; color: #666; margin-top: 8px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .modal-actions {
+            display: flex; gap: 12px; margin-top: 20px;
+        }
+        .modal-actions button { flex: 1; padding: 14px; font-size: 1rem; font-weight: 700; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="page-header">
+        <h1 class="page-title">&#x1F9D1;&#x200D;&#x2696;&#xFE0F; REFEREE PORTAL</h1>
+        <button class="btn-danger" onclick="logoutReferee()">Logout</button>
+    </div>
+
+    <div class="container">
+
+        <!-- Hero -->
+        <div class="ref-hero">
+            <div class="ref-avatar">&#x1F94B;</div>
+            <div style="flex:1">
+                <div class="ref-name" id="refDisplayName">Loading...</div>
+                <div class="ref-court-display" id="refCourtDisplay">Court: —</div>
+            </div>
+        </div>
+
+        <!-- Access restriction -->
+        <div class="restricted-note">
+            &#x1F512; Referee access is restricted to Bracket and Live Matches only.
+        </div>
+
+        <!-- Nav cards -->
+        <div class="nav-cards">
+            <a href="/admin/bracket.html" class="nav-card">
+                <span class="card-icon">&#x1F3C6;</span>
+                <div class="card-title">Tournament Bracket</div>
+                <div class="card-desc">View match fixtures, draws and current bracket standings</div>
+            </a>
+            <a href="/admin/Live-matches.html" class="nav-card">
+                <span class="card-icon">&#x1F534;</span>
+                <div class="card-title">Live Matches</div>
+                <div class="card-desc">Monitor live scoring, match timers and ongoing bouts</div>
+            </a>
+        </div>
+
+        <!-- ── Assigned Referees Panel ────────────────────── -->
+        <div class="assigned-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    &#x1F465; Assigned Referees
+                    <span class="count-pill" id="refCountPill">0</span>
+                </div>
+                <button class="edit-refs-btn" id="editRefsBtn" onclick="openEditModal()">
+                    &#x270F;&#xFE0F; Edit List
+                </button>
+            </div>
+
+            <!-- Cards grid / empty state -->
+            <div id="refCardsGrid" class="ref-cards-grid"></div>
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="site-credit-footer">
+        <span class="credit-line">&#169; Karnataka Taekwondo Association</span>
+        <span class="credit-line credit-owner">Built and Developed by Chiranandan T M</span>
+        <span class="credit-line credit-supporter">Co-Supporter: Sharan B N</span>
+    </div>
+
+    <!-- ── Edit Modal ─────────────────────────────────────── -->
+    <div id="editModal" class="edit-modal-overlay">
+        <div class="edit-modal">
+            <div class="modal-top-bar">
+                <div class="modal-top-icon">&#x1F465;</div>
+                <div>
+                    <div class="modal-top-title">Edit Assigned Referees</div>
+                    <div class="modal-top-sub">One name per line — changes are saved to your court</div>
+                </div>
+            </div>
+            <div class="modal-body">
+                <textarea class="names-input-area" id="namesTextarea"
+                    placeholder="Enter referee names, one per line&#10;&#10;e.g.&#10;Ravi Kumar&#10;Priya Nair&#10;John Smith"></textarea>
+                <div class="input-hint">
+                    &#x2139;&#xFE0F; One name per line &nbsp;|&nbsp; Empty lines are ignored
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-success" id="saveModalBtn" onclick="saveAssignedRefs()">&#x1F4BE; Save Changes</button>
+                    <button class="btn-secondary" onclick="closeEditModal()">&#x2716; Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+
+    <script type="module">
+        var _currentNames = [];
+
+        waitForModules();
+
+        function waitForModules() {
+            if (typeof database !== 'undefined' && typeof dbGet === 'function' && typeof dbUpdate === 'function') {
+                initPage();
+            } else {
+                setTimeout(waitForModules, 80);
+            }
+        }
+
+        async function initPage() {
+            var role  = sessionStorage.getItem('userRole');
+            var refId = sessionStorage.getItem('refId') || sessionStorage.getItem('userId');
+
+            if (role !== 'referee' || !refId) {
+                alert('Access denied. Please log in as a referee.');
+                window.location.href = window.location.origin + '/index.html';
+                return;
+            }
+
+            document.getElementById('refDisplayName').textContent = 'Referee: ' + refId;
+            document.getElementById('refCourtDisplay').textContent = 'Assigned Court: ' + (sessionStorage.getItem('courtNumber') || '—');
+
+            try {
+                var snap = await dbGet(dbRef(database, 'referees/' + refId));
+                if (snap.exists()) {
+                    var data = snap.val();
+                    document.getElementById('refDisplayName').textContent = 'Referee: ' + data.refId;
+                    document.getElementById('refCourtDisplay').textContent = 'Assigned Court: ' + (data.courtNumber || '—');
+                    sessionStorage.setItem('courtNumber', data.courtNumber || '');
+                    _currentNames = Array.isArray(data.assignedRefs) ? data.assignedRefs.filter(Boolean) : [];
+                } else {
+                    _currentNames = [];
+                }
+            } catch (err) {
+                console.warn('Fetch error:', err.message);
+                _currentNames = [];
+            }
+            renderCards(_currentNames);
+        }
+
+        // ── Render cards ───────────────────────────────────
+        var AVATARS = ['&#x1F9D1;&#x200D;&#x2696;&#xFE0F;','&#x1F9D1;&#x200D;&#x2696;&#xFE0F;','&#x1F9D1;&#x200D;&#x2696;&#xFE0F;','&#x1F9D1;&#x200D;&#x2696;&#xFE0F;','&#x1F9D1;&#x200D;&#x2696;&#xFE0F;'];
+
+        function renderCards(names) {
+            var grid = document.getElementById('refCardsGrid');
+            document.getElementById('refCountPill').textContent = names.length;
+
+            if (!names || names.length === 0) {
+                grid.innerHTML =
+                    '<div class="empty-assigned" style="grid-column:1/-1">' +
+                    '<div class="e-icon">&#x1F9D1;&#x200D;&#x2696;&#xFE0F;</div>' +
+                    '<p>No referees assigned yet.<br>Click <strong>Edit List</strong> to add names.</p>' +
+                    '</div>';
+                return;
+            }
+
+            grid.innerHTML = names.map(function(name, i) {
+                var initials = name.trim().split(' ').map(function(w){ return w[0] || ''; }).join('').toUpperCase().slice(0,2);
+                return '<div class="ref-person-card" style="animation-delay:' + (i * 0.06) + 's">' +
+                    '<div class="ref-num-badge">' + (i + 1) + '</div>' +
+                    '<div class="ref-person-avatar">' + escHtml(initials) + '</div>' +
+                    '<div class="ref-person-name">' + escHtml(name) + '</div>' +
+                    '<div class="ref-person-role">Referee</div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        // ── Modal ──────────────────────────────────────────
+        window.openEditModal = function() {
+            document.getElementById('namesTextarea').value = _currentNames.join('\n');
+            document.getElementById('editModal').classList.add('active');
+            setTimeout(function() { document.getElementById('namesTextarea').focus(); }, 100);
+        };
+
+        window.closeEditModal = function() {
+            document.getElementById('editModal').classList.remove('active');
+        };
+
+        document.getElementById('editModal').addEventListener('click', function(e) {
+            if (e.target === document.getElementById('editModal')) closeEditModal();
+        });
+
+        // ── Save ───────────────────────────────────────────
+        window.saveAssignedRefs = async function() {
+            var refId = sessionStorage.getItem('refId') || sessionStorage.getItem('userId');
+            var raw   = document.getElementById('namesTextarea').value;
+            var names = raw.split('\n').map(function(n){ return n.trim(); }).filter(Boolean);
+            var btn   = document.getElementById('saveModalBtn');
+
+            btn.disabled = true;
+            btn.textContent = '&#x23F3; Saving...';
+
+            try {
+                await dbUpdate(dbRef(database, 'referees/' + refId), {
+                    assignedRefs: names,
+                    updatedAt: new Date().toISOString()
+                });
+                _currentNames = names;
+                renderCards(names);
+                closeEditModal();
+                showToast('&#x2705; Assigned referees saved!');
+            } catch (err) {
+                alert('Error: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '&#x1F4BE; Save Changes';
+            }
+        };
+
+        // ── Logout ─────────────────────────────────────────
+        window.logoutReferee = async function() {
+            var yes = await MODAL.showConfirm('Are you sure you want to logout?');
+            if (!yes) return;
+            sessionStorage.clear();
+            window.location.href = window.location.origin + '/index.html';
+        };
+
+        // ── Toast ──────────────────────────────────────────
+        function showToast(html) {
+            var t = document.createElement('div');
+            t.innerHTML = html;
+            Object.assign(t.style, {
+                position:'fixed', bottom:'30px', right:'30px',
+                background:'linear-gradient(135deg,#00FF88,#00BFA5)',
+                color:'#000', fontWeight:'800', padding:'14px 24px',
+                borderRadius:'12px', fontSize:'1rem', zIndex:'9999',
+                boxShadow:'0 8px 28px rgba(0,255,136,0.5)',
+                animation:'fadeInUp 0.4s ease'
+            });
+            document.body.appendChild(t);
+            setTimeout(function(){ t.remove(); }, 3000);
+        }
+
+        function escHtml(s) {
+            return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        window.alert   = function(m){ return MODAL.showAlert(m); };
+        window.confirm = function(m){ return MODAL.showConfirm(m); };
+    </script>
+
+</body>
+</html>

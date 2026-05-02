@@ -60,25 +60,25 @@ const REGISTRATION = {
   async loadFormStructure() {
     try {
       const config = await FORM_CONFIG.loadConfig();
-      
+
       // Validate config structure
       if (!config) {
         console.error("❌ Config is null/undefined");
         return;
       }
-      
+
       if (!config.championship) {
         console.error("❌ Championship data missing from config");
         return;
       }
-      
+
       if (!config.fields || !Array.isArray(config.fields)) {
         console.error("❌ Fields not available or not an array");
         return;
       }
-      
+
       console.log("✅ Config loaded successfully");
-      
+
       // ── PER-TEAM REGISTRATION DEADLINE CHECK (client-side UI block) ──────────
       const teamId = sessionStorage.getItem('teamId');
       if (teamId) {
@@ -105,10 +105,10 @@ const REGISTRATION = {
         }
       }
       // ────────────────────────────────────────────────────────────────────────
-      
+
       // Render championship header
       this.renderChampionshipHeader(config.championship);
-      
+
       // Render form fields
       this.renderFormFields(config.fields);
     } catch (error) {
@@ -131,32 +131,32 @@ const REGISTRATION = {
 
       // Log the actual championship data for debugging
       console.log("📊 Championship data received:", championship);
-      
+
       // Get values with defaults - with validation
       let title = championship?.title || 'TAEKWONDO CHAMPIONSHIP';
       let venue = championship?.venue || 'National Sports Complex';
       let address = championship?.address || 'Location TBD';
       let organizer = championship?.organizer || 'Karnataka Taekwondo Association';
-      
+
       // Clean up string values (remove "TBD" that might be recorded as string)
       venue = (venue && venue !== 'TBD' && venue.trim()) || 'Venue TBD';
       address = (address && address !== 'TBD' && address.trim()) || 'Location TBD';
       organizer = (organizer && organizer !== 'TBD' && organizer.trim()) || 'Karnataka Taekwondo Association';
-      
+
       // If organizer looks like a location (contains common location names), swap with address
       const locationKeywords = ['tiptur', 'bangalore', 'bengaluru', 'karnataka', 'district', 'taluk', 'city', 'state', 'india'];
       const organizerLower = organizer.toLowerCase();
       const addressLower = address.toLowerCase();
-      
-      if (locationKeywords.some(keyword => organizerLower.includes(keyword)) && 
-          !locationKeywords.some(keyword => addressLower.includes(keyword))) {
+
+      if (locationKeywords.some(keyword => organizerLower.includes(keyword)) &&
+        !locationKeywords.some(keyword => addressLower.includes(keyword))) {
         // Swap: organizer appears to be a location
         console.warn("⚠️ Detected location in organizer field, swapping with address");
         const temp = organizer;
         organizer = address;
         address = temp;
       }
-      
+
       // Safely parse date
       let dateString = 'Date TBD';
       try {
@@ -185,7 +185,7 @@ const REGISTRATION = {
           <p class="organizer">Organized by: ${organizer}</p>
         </div>
       `;
-      
+
       const headerContainer = document.getElementById('championshipHeader');
       if (headerContainer) {
         headerContainer.innerHTML = headerHTML;
@@ -214,16 +214,16 @@ const REGISTRATION = {
 
       const sortedFields = [...fields].sort((a, b) => (a.order || 0) - (b.order || 0));
       const formContainer = document.getElementById('registrationForm');
-      
+
       if (!formContainer) {
         console.error("❌ Form container not found");
         return;
       }
-      
+
       console.log('📋 Rendering fields:', sortedFields.map(f => f.id));
-      
+
       let formHTML = '';
-      
+
       sortedFields.forEach(field => {
         try {
           formHTML += this.renderField(field);
@@ -238,7 +238,7 @@ const REGISTRATION = {
           <button type="submit" id="submitBtn" class="submit-btn">${buttonText}</button>
         </div>
       `;
-      
+
       formContainer.innerHTML = formHTML;
       console.log('✅ Form HTML injected into DOM');
 
@@ -383,17 +383,17 @@ const REGISTRATION = {
 
       const requiredAttr = field.required ? 'required' : '';
       const readonlyAttr = field.readonly ? 'readonly' : '';
-      
+
       let fieldHTML = `<div class="form-group" data-field-id="${field.id}">`;
       fieldHTML += `<label>${field.label || field.id}${field.required ? ' <span class="required">*</span>' : ''}`;
       if (field.info) {
         fieldHTML += ` <span class="field-info" style="font-size: 0.85em; color: #888;">${field.info}</span>`;
       }
       fieldHTML += `</label>`;
-      
+
       // Safely handle field.options (might be undefined for some field types)
       const options = Array.isArray(field.options) ? field.options : [];
-      
+
       switch (field.type) {
         case 'text':
           // Special handling for readonly category fields - render as badge/display
@@ -426,15 +426,15 @@ const REGISTRATION = {
             fieldHTML += `<input type="text" id="${field.id}" name="${field.id}" ${requiredAttr} ${readonlyAttr}>`;
           }
           break;
-        
+
         case 'number':
           fieldHTML += `<input type="number" id="${field.id}" name="${field.id}" step="0.01" ${requiredAttr} ${readonlyAttr}>`;
           break;
-        
+
         case 'date':
           fieldHTML += `<input type="date" id="${field.id}" name="${field.id}" ${requiredAttr}>`;
           break;
-        
+
         case 'select':
           fieldHTML += `<select id="${field.id}" name="${field.id}" ${requiredAttr}>`;
           fieldHTML += `<option value="">-- Select ${field.label || field.id} --</option>`;
@@ -443,7 +443,7 @@ const REGISTRATION = {
           });
           fieldHTML += `</select>`;
           break;
-        
+
         case 'checkbox':
           fieldHTML += `<div class="checkbox-group">`;
           options.forEach(opt => {
@@ -455,7 +455,7 @@ const REGISTRATION = {
           });
           fieldHTML += `</div>`;
           break;
-        
+
         case 'checkbox-single':
           fieldHTML += `<div class="checkbox-group">`;
           options.forEach(opt => {
@@ -485,12 +485,12 @@ const REGISTRATION = {
             </div>
           `;
           break;
-        
+
         default:
           console.warn("⚠️ Unknown field type:", field.type);
           fieldHTML += `<input type="text" id="${field.id}" name="${field.id}" ${requiredAttr} ${readonlyAttr}>`;
       }
-      
+
       fieldHTML += '</div>';
       return fieldHTML;
     } catch (error) {
@@ -504,44 +504,44 @@ const REGISTRATION = {
     // Wait a bit longer to ensure form is fully rendered
     const setupListeners = () => {
       console.log('⏱️ Setting up event listeners... (delayed call)');
-      
+
       const dobInput = document.getElementById('dob');
       const weightInput = document.getElementById('weight');
       const genderInput = document.getElementById('gender');
-      
+
       console.log('🔍 Element check:');
       console.log('   DOB element:', !!dobInput, dobInput ? '(found)' : '(NOT FOUND!)');
       console.log('   Weight element:', !!weightInput, weightInput ? '(found)' : '(NOT FOUND!)');
       console.log('   Gender element:', !!genderInput, genderInput ? '(found)' : '(NOT FOUND!)');
-      
+
       // Debug: log all input elements
       const allInputs = document.querySelectorAll('input[type="date"], input[type="number"], select');
       console.log('📊 All form inputs found:', allInputs.length);
       allInputs.forEach(input => {
         console.log(`   - ${input.id || input.name}: ${input.type}`);
       });
-      
+
       // DOB change handler
       const handleDobChange = (e) => {
         console.log('📅 DOB changed:', e.target.value);
         const age = CATEGORY_LOGIC.calculateAge(e.target.value);
         const ageCategory = CATEGORY_LOGIC.getAgeCategory(age);
-        
+
         console.log('📊 Calculated - Age:', age, 'AgeCategory:', ageCategory);
-        
+
         // Update age input
         const ageInput = document.getElementById('age');
         if (ageInput) {
           ageInput.value = age;
           console.log('✅ Age input updated:', age);
         }
-        
+
         // Update age category hidden input
         const ageCategoryInput = document.getElementById('ageCategory');
         if (ageCategoryInput) {
           ageCategoryInput.value = ageCategory;
           console.log('✅ Age category input updated:', ageCategory);
-          
+
           // Update the display badge
           const ageCategoryBadge = document.querySelector('[data-category-field="ageCategory"]');
           if (ageCategoryBadge) {
@@ -551,13 +551,13 @@ const REGISTRATION = {
         } else {
           console.error('❌ Age category input not found!');
         }
-        
+
         // Update player category (same as age category)
         const playerCategoryInput = document.getElementById('playerCategory');
         if (playerCategoryInput) {
           playerCategoryInput.value = ageCategory;
           console.log(`✅ Player category set to: ${ageCategory}`);
-          
+
           // Update the display badge
           const playerCategoryBadge = document.querySelector('[data-category-field="playerCategory"]');
           if (playerCategoryBadge) {
@@ -565,17 +565,17 @@ const REGISTRATION = {
             console.log('✅ Player category badge updated:', ageCategory);
           }
         }
-        
+
         // Auto-set hidden categories field
         const categoriesInput = document.querySelector('input[name="categories"]');
         if (categoriesInput) {
           categoriesInput.value = ageCategory;
         }
-        
+
         // Trigger weight category update
         this.updateWeightCategory();
       };
-      
+
       if (dobInput) {
         dobInput.addEventListener('change', handleDobChange);
         console.log('✅ DOB listener attached');
@@ -588,7 +588,7 @@ const REGISTRATION = {
         console.log('⚖️ Weight changed:', e.target.value);
         this.updateWeightCategory();
       };
-      
+
       if (weightInput) {
         weightInput.addEventListener('input', handleWeightChange);
         weightInput.addEventListener('change', handleWeightChange);
@@ -596,13 +596,13 @@ const REGISTRATION = {
       } else {
         console.error('❌ Weight input element not found in DOM!');
       }
-      
+
       // Gender change handler
       const handleGenderChange = (e) => {
         console.log('👥 Gender changed:', e.target.value);
         this.updateWeightCategory();
       };
-      
+
       if (genderInput) {
         genderInput.addEventListener('change', handleGenderChange);
         console.log('✅ Gender listener attached');
@@ -619,10 +619,10 @@ const REGISTRATION = {
         });
         console.log('✅ Form submit listener attached');
       }
-      
+
       console.log('✅ Event listener setup complete');
     };
-    
+
     // Use a longer timeout to ensure form is completely rendered
     console.log('⏱️ Scheduling event listener setup with 300ms delay...');
     setTimeout(setupListeners, 300);
@@ -635,24 +635,24 @@ const REGISTRATION = {
       const genderInput = document.getElementById('gender');
       const ageCategoryInput = document.getElementById('ageCategory');
       const weightCategoryInput = document.getElementById('weightCategory');
-      
+
       // Log current state
       console.log('🔄 Updating weight category...');
       console.log('  Weight:', weightInput?.value);
       console.log('  Gender:', genderInput?.value);
       console.log('  Age Category:', ageCategoryInput?.value);
-      
+
       // Get values
       const weight = weightInput ? parseFloat(weightInput.value) : null;
       const gender = genderInput ? genderInput.value : null;
       const ageCategory = ageCategoryInput ? ageCategoryInput.value : null;
-      
+
       // If any required value is missing, clear the field
       if (!weightCategoryInput) {
         console.warn('⚠️ Weight category input not found in DOM');
         return;
       }
-      
+
       if (!weight || !gender || !ageCategory) {
         console.warn('⚠️ Missing required data for weight category calculation');
         console.warn('  Weight:', weight, 'Gender:', gender, 'AgeCategory:', ageCategory);
@@ -664,23 +664,23 @@ const REGISTRATION = {
         }
         return;
       }
-      
+
       // Check if CATEGORY_LOGIC is available
       if (typeof CATEGORY_LOGIC === 'undefined') {
         console.warn('⚠️ CATEGORY_LOGIC not loaded yet');
         weightCategoryInput.value = '';
         return;
       }
-      
+
       console.log('📊 Calling CATEGORY_LOGIC.getWeightCategory...');
       // Pass ageCategory as array (as expected by getWeightCategory)
       const weightCategory = await CATEGORY_LOGIC.getWeightCategory(gender, [ageCategory], weight);
-      
+
       console.log('📊 Weight category result:', weightCategory);
-      
+
       // Always set the value, even if empty
       weightCategoryInput.value = weightCategory || '';
-      
+
       // Update the display badge
       const weightCategoryBadge = document.querySelector('[data-category-field="weightCategory"]');
       if (weightCategoryBadge) {
@@ -694,7 +694,7 @@ const REGISTRATION = {
       } else {
         console.warn('⚠️ Weight category badge element not found');
       }
-      
+
     } catch (error) {
       console.error('❌ Error determining weight category:', error);
       const weightCategoryInput = document.getElementById('weightCategory');
@@ -713,7 +713,7 @@ const REGISTRATION = {
     try {
       const video = document.getElementById('cameraVideo');
       const captureBtn = document.getElementById('captureBtn');
-      
+
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       video.srcObject = stream;
       video.style.display = 'block';
@@ -739,7 +739,7 @@ const REGISTRATION = {
         const MAX = 400;
         let w = img.width, h = img.height;
         if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
-        else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+        else { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
@@ -761,7 +761,7 @@ const REGISTRATION = {
     const MAX = 400;
     let w = video.videoWidth, h = video.videoHeight;
     if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
-    else        { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
+    else { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
     canvas.width = w; canvas.height = h;
     canvas.getContext('2d').drawImage(video, 0, 0, w, h);
 
@@ -842,7 +842,7 @@ const REGISTRATION = {
   async submitForm() {
     const submitBtn = document.getElementById('submitBtn');
     const originalText = submitBtn.textContent;
-    
+
     try {
       // ── PER-TEAM SERVER-SIDE DEADLINE RE-VALIDATION ──────────────────────────
       // Re-fetch team data from Firebase to get the authoritative deadline/closed
@@ -903,31 +903,31 @@ const REGISTRATION = {
         throw new Error('Date of Birth is required to determine age category.');
       }
       // ────────────────────────────────────────────────────────────────────────
-      
+
       // Ensure categories is an array for display
-      const categoriesDisplay = Array.isArray(formData.categories) 
+      const categoriesDisplay = Array.isArray(formData.categories)
         ? formData.categories.join(', ')
         : (formData.ageCategory || 'Not assigned');
-      
+
       // Show confirmation dialog BEFORE proceeding with submission
-      const confirmMsg = this.editingPlayerId 
+      const confirmMsg = this.editingPlayerId
         ? `✏️ Update Player Information?\n\nPlayer Name: ${formData.playerName}\nGender: ${formData.gender}\nWeight: ${formData.weight} kg\nAge Category: ${formData.ageCategory || 'Auto-calculated'}\n\nPlease review the information above before confirming.`
         : `📝 Confirm Player Registration?\n\nPlayer Name: ${formData.playerName}\nGender: ${formData.gender}\nWeight: ${formData.weight} kg\nAge Category: ${formData.ageCategory || 'Auto-calculated'}\n\nPlease review the information above before confirming.`;
-      
+
       const confirmed = await MODAL.showConfirm(confirmMsg);
-      
+
       // If user doesn't confirm, stop processing
       if (!confirmed) {
         console.log("❌ User cancelled the submission");
         return;
       }
-      
+
       console.log("✅ User confirmed, proceeding with submission...");
-      
+
       // NOW enable the button and disable it for processing
       submitBtn.disabled = true;
       submitBtn.textContent = this.editingPlayerId ? 'Updating player data...' : 'Saving player data...';
-      
+
       // Add timeout to prevent infinite hang
       const timeout = setTimeout(() => {
         submitBtn.disabled = false;
@@ -939,7 +939,7 @@ const REGISTRATION = {
           alert(timeoutMsg);
         }
       }, 30000); // 30 second timeout
-      
+
       // Upload new image if one was selected for editing
       if (this.currentImageFile) {
         submitBtn.textContent = 'Uploading image...';
@@ -954,11 +954,11 @@ const REGISTRATION = {
       if (this.editingPlayerId) {
         // Update existing player
         const playerRef = dbRef(database, `players/${this.editingPlayerId}`);
-        
+
         // Merge with existing data to preserve approval status
         const existingRef = dbRef(database, `players/${this.editingPlayerId}`);
         const existingSnapshot = await dbGet(existingRef);
-        
+
         if (existingSnapshot.exists()) {
           const existingData = existingSnapshot.val();
           formData.status = existingData.status; // Keep existing status
@@ -978,12 +978,12 @@ const REGISTRATION = {
       } else {
         // Create new player
         formData.status = 'pending';
-        
+
         const playersRef = dbRef(database, 'players');
         const newPlayerRef = dbPush(playersRef);
         await dbSet(newPlayerRef, formData);
         clearTimeout(timeout);
-        
+
         const regMsg = '✅ Player registered successfully!';
         if (typeof MODAL !== 'undefined') {
           MODAL.success(regMsg);
@@ -991,21 +991,21 @@ const REGISTRATION = {
           alert(regMsg);
         }
       }
-      
+
       // Redirect to team dashboard
       setTimeout(() => {
         window.location.href = window.location.origin + '/team/dashboard.html';
       }, 1000);
-      
+
     } catch (error) {
       submitBtn.disabled = false;
       submitBtn.textContent = originalText;
       console.error('❌ Operation error:', error);
       console.error('Error code:', error.code);
       console.error('Error message:', error.message);
-      
+
       let errorMsg = error.message;
-      
+
       if (error.message && error.message.includes('PERMISSION_DENIED')) {
         errorMsg = 'Database permission error.\n\n❌ This means Firebase security rules may be blocking the write.\n\n✅ Possible fixes:\n- Make sure rules are published\n- Log out and back in\n- Check that your user role is set\n\nCheck console (F12) for detailed error.';
       } else if (error.code === 'storage/unauthenticated') {
@@ -1013,7 +1013,7 @@ const REGISTRATION = {
       } else if (error.code === 'storage/unauthorized') {
         errorMsg = 'You do not have permission. Please contact admin.';
       }
-      
+
       if (typeof MODAL !== 'undefined') {
         MODAL.error(`Operation Failed:\n\n${errorMsg}`);
       } else {
@@ -1025,7 +1025,7 @@ const REGISTRATION = {
   // Collect form data
   collectFormData() {
     const data = {};
-    
+
     // Collect text, number, date inputs, hidden inputs, and selects
     const inputs = document.querySelectorAll('#registrationForm input[type="text"], #registrationForm input[type="number"], #registrationForm input[type="date"], #registrationForm input[type="hidden"], #registrationForm select');
     inputs.forEach(input => {
@@ -1046,7 +1046,7 @@ const REGISTRATION = {
       // Convert categories string to array (from hidden input)
       data.categories = [data.categories];
     }
-    
+
     // Ensure ageCategory is set from either ageCategory field or categories array
     if (!data.ageCategory) {
       if (data.categories && Array.isArray(data.categories) && data.categories[0]) {
