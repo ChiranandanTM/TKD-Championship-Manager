@@ -115,8 +115,28 @@ const TEAM_DEADLINE_MANAGER = {
           </button>
         </div>
 
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+          <input
+            id="teamsSearchInput"
+            type="text"
+            placeholder="🔍 Search by name, username or email…"
+            oninput="TEAM_DEADLINE_MANAGER.filterTeamsTable(this.value)"
+            style="flex:1;min-width:220px;padding:12px 16px;background:rgba(0,0,0,.4);
+                   border:2px solid rgba(255,215,0,.3);border-radius:12px;color:#fff;
+                   font-size:1rem;outline:none;transition:border-color .2s;"
+            onfocus="this.style.borderColor='#FFD700'"
+            onblur="this.style.borderColor='rgba(255,215,0,.3)'"
+          >
+          <span id="teamsCountBadge"
+            style="background:rgba(255,215,0,.1);border:1.5px solid rgba(255,215,0,.35);
+                   color:#FFD700;padding:6px 16px;border-radius:20px;font-size:.9rem;
+                   font-weight:800;white-space:nowrap;">
+            ${teams.length} team${teams.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
         <div style="overflow-x: auto;">
-          <table style="width: 100%; border-collapse: collapse; background: var(--card-black);
+          <table id="teamsTable" style="width: 100%; border-collapse: collapse; background: var(--card-black);
                         border: 2px solid var(--border-gold); border-radius: var(--border-radius);">
             <thead>
               <tr style="background: linear-gradient(135deg, rgba(255,215,0,0.15) 0%, rgba(0,229,255,0.05) 100%);
@@ -502,6 +522,30 @@ const TEAM_DEADLINE_MANAGER = {
       if (typeof MODAL !== 'undefined') {
         MODAL.error('Error deleting team: ' + error.message);
       }
+    }
+  },
+
+  // Live search: filter teams table rows by name / username / email
+  filterTeamsTable(query) {
+    const q = (query || '').toLowerCase().trim();
+    const table = document.getElementById('teamsTable');
+    const badge = document.getElementById('teamsCountBadge');
+    if (!table) return;
+
+    const rows = table.querySelectorAll('tbody tr');
+    let visible = 0;
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      const show = !q || text.includes(q);
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    if (badge) {
+      const total = rows.length;
+      badge.textContent = q
+        ? `${visible} of ${total} team${total !== 1 ? 's' : ''}`
+        : `${total} team${total !== 1 ? 's' : ''}`;
     }
   }
 };

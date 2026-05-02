@@ -8,13 +8,13 @@ const PERFORMANCE_CACHE = {
   _pendingRequests: {}, // Dedup simultaneous requests for same key
 
   EXPIRY_TIMES: {
-    formConfig:       10 * 60 * 1000, // 10 min  (rarely changes)
-    weightCategories: 15 * 60 * 1000, // 15 min
-    players:           2 * 60 * 1000, // 2 min
-    teams:             5 * 60 * 1000, // 5 min
-    brackets:          1 * 60 * 1000, // 1 min
-    matchHistory:      1 * 60 * 1000, // 1 min
-    championship:     10 * 60 * 1000, // 10 min
+    formConfig:        30 * 1000,        // 30 s — admin changes propagate quickly
+    weightCategories: 15 * 60 * 1000,   // 15 min
+    players:           2 * 60 * 1000,   // 2 min
+    teams:             5 * 60 * 1000,   // 5 min
+    brackets:          1 * 60 * 1000,   // 1 min
+    matchHistory:      1 * 60 * 1000,   // 1 min
+    championship:     10 * 60 * 1000,   // 10 min
   },
 
   set(key, value, expiryTime) {
@@ -41,6 +41,14 @@ const PERFORMANCE_CACHE = {
     this.cache = {};
     this.cacheExpiry = {};
     this._pendingRequests = {};
+  },
+
+  /**
+   * Call this after any write operation to bust the relevant cache key(s).
+   * Usage: PERFORMANCE_CACHE.invalidateOnWrite('formConfig', 'players')
+   */
+  invalidateOnWrite(...keys) {
+    keys.forEach(k => this.clear(k));
   },
 
   // Deduplication: if same key is already being fetched, wait for it instead of firing another request

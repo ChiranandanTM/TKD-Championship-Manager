@@ -1,10 +1,13 @@
 // ============================================
-// SERVICE WORKER v3 - Fast load, offline support
+// SERVICE WORKER v4 - Fast load, offline support
+// v4: Cache-bust bump — forces fresh fetch of all assets
 // ============================================
 
-const CACHE_NAME = 'tkd-championship-v3';
+const CACHE_NAME = 'tkd-championship-v4';
 
 // Static assets to cache on install (app shell)
+// NOTE: Large page-specific scripts (bracket.js, 82KB) are excluded from
+// precache — they will be cached on first visit via stale-while-revalidate.
 const PRECACHE_URLS = [
   '/index.html',
   '/register.html',
@@ -15,7 +18,9 @@ const PRECACHE_URLS = [
   '/admin/championships.html',
   '/admin/standings.html',
   '/admin/Live-matches.html',
+  '/admin/referees.html',
   '/team/dashboard.html',
+  '/referee/dashboard.html',
   '/assets/css/main.css',
   '/js/modal.js',
   '/js/custom-select.js',
@@ -25,12 +30,10 @@ const PRECACHE_URLS = [
   '/js/category-logic.js',
   '/js/registration.js',
   '/js/championship-manager.js',
-  '/js/bracket.js',
   '/js/performance-cache.js',
   '/js/Team-deadline-manager.js',
   '/js/player-manager.js',
-  '/js/admin-form-editor.js',
-  '/js/admin-category-editor.js',
+  // bracket.js (82KB) intentionally omitted — cached on first use only
 ];
 
 // ── Install: precache app shell ──────────────────────────────────────────────
