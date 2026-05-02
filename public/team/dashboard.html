@@ -33,11 +33,25 @@
 
         /* Summary cards row */
         .td-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:28px}
-        .td-stat{background:linear-gradient(150deg,rgba(14,18,42,.98),rgba(20,30,58,.95));border:2px solid rgba(255,215,0,.18);border-radius:18px;padding:22px 20px;text-align:center;transition:transform .25s,box-shadow .25s,border-color .25s}
-        .td-stat:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(255,215,0,.08);border-color:rgba(255,215,0,.4)}
-        .td-stat-icon{font-size:1.6rem;margin-bottom:6px}
-        .td-stat-val{font-size:2rem;font-weight:900;color:#FFD700;line-height:1.1}
-        .td-stat-lbl{font-size:.72rem;color:#8899bb;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+        .td-stat{border-radius:20px;padding:26px 22px;text-align:center;position:relative;overflow:hidden;transition:transform .25s,box-shadow .3s}
+        .td-stat:hover{transform:translateY(-5px);box-shadow:0 20px 50px rgba(0,0,0,.5)}
+        .td-stat::before{content:'';position:absolute;top:-35%;right:-15%;width:120px;height:120px;border-radius:50%;opacity:.13}
+        /* Card colour variants */
+        .td-stat-1{background:linear-gradient(135deg,#0d47a1,#1565c0);border:1.5px solid rgba(66,165,245,.35)}
+        .td-stat-1::before{background:#42a5f5}
+        .td-stat-1 .td-stat-val{color:#64b5f6}
+        .td-stat-2{background:linear-gradient(135deg,#1b5e20,#2e7d32);border:1.5px solid rgba(102,187,106,.35)}
+        .td-stat-2::before{background:#66bb6a}
+        .td-stat-2 .td-stat-val{color:#81c784}
+        .td-stat-3{background:linear-gradient(135deg,#4a148c,#6a1b9a);border:1.5px solid rgba(186,104,200,.35)}
+        .td-stat-3::before{background:#ba68c8}
+        .td-stat-3 .td-stat-val{color:#ce93d8}
+        .td-stat-4{background:linear-gradient(135deg,#004d40,#00695c);border:1.5px solid rgba(77,182,172,.35)}
+        .td-stat-4::before{background:#4db6ac}
+        .td-stat-4 .td-stat-val{color:#4db6ac}
+        .td-stat-icon{font-size:2rem;margin-bottom:8px;display:block}
+        .td-stat-val{font-size:2.4rem;font-weight:900;line-height:1.1;letter-spacing:-1px}
+        .td-stat-lbl{font-size:.68rem;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:1.1px;margin-top:6px;font-weight:700}
 
         /* Search bar */
         .td-search{width:100%;box-sizing:border-box;padding:12px 18px 12px 16px;background:rgba(0,0,0,.45);border:2px solid rgba(255,215,0,.25);border-radius:12px;color:#fff;font-size:.95rem;font-weight:500;transition:border-color .2s,box-shadow .2s;outline:none}
@@ -60,9 +74,17 @@
         .player-card:hover .player-image{border-color:#FFD700;box-shadow:0 0 20px rgba(255,215,0,.2)}
 
         .player-info{text-align:left;margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1)}
-        .player-info-row{display:flex;justify-content:space-between;margin:7px 0;font-size:.9rem}
-        .player-info-label{color:#8899bb;font-size:.8rem;text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+        .player-info-row{display:flex;justify-content:space-between;align-items:center;margin:8px 0;font-size:.88rem}
+        .player-info-label{color:#6a7fa8;font-size:.72rem;text-transform:uppercase;letter-spacing:.8px;font-weight:700}
         .player-info-value{color:#e8ecf2;font-weight:700;font-size:.88rem}
+        /* Coloured value chips */
+        .td-val-gender-m{background:rgba(66,165,245,.12);color:#64b5f6;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:700}
+        .td-val-gender-f{background:rgba(236,64,122,.12);color:#f48fb1;padding:2px 10px;border-radius:20px;font-size:.78rem;font-weight:700}
+        .td-val-weight{color:#ffb74d;font-weight:800}
+        .td-val-cat{background:rgba(186,104,200,.12);color:#ce93d8;padding:2px 9px;border-radius:8px;font-size:.76rem;font-weight:700}
+        .td-val-paid{background:rgba(102,187,106,.1);color:#81c784;padding:2px 9px;border-radius:8px;font-size:.76rem;font-weight:700}
+        .td-val-unpaid{background:rgba(255,23,68,.1);color:#ef9a9a;padding:2px 9px;border-radius:8px;font-size:.76rem;font-weight:700}
+        .td-val-center{color:#80cbc4;font-weight:700}
 
         /* Badges */
         .status-badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:.78rem;font-weight:800;margin-top:10px}
@@ -96,10 +118,10 @@
         .td-btn-del:hover{border-color:#FF1744;color:#FF1744;background:rgba(255,23,68,.15)}
 
         /* Empty state */
-        .td-empty{text-align:center;padding:60px 20px;border:2px dashed rgba(255,255,255,.06);border-radius:18px;color:#444}
+        .td-empty{text-align:center;padding:60px 20px;border:2px dashed rgba(255,255,255,.07);border-radius:18px}
         .td-empty-icon{font-size:3.5rem;margin-bottom:14px}
-        .td-empty-title{font-size:1.1rem;font-weight:700;color:#555;margin-bottom:6px}
-        .td-empty-sub{font-size:.88rem;color:#333}
+        .td-empty-title{font-size:1.1rem;font-weight:700;color:#666;margin-bottom:6px}
+        .td-empty-sub{font-size:.88rem;color:#444}
 
         /* Registration status banner */
         .td-reg-banner{padding:14px 20px;border-radius:14px;font-weight:700;font-size:.9rem;margin-bottom:20px;display:flex;align-items:center;gap:12px}
@@ -359,15 +381,19 @@
                 html += `
                     <div class="player-card">
                         <img src="${player.playerImage}" alt="${player.playerName}" class="player-image">
-                        <h3 style="color:#FFD700;margin:0 0 4px;font-size:1.1rem">${player.playerName}</h3>
-                        <div style="font-size:.78rem;color:#00E5FF;font-weight:600">${player.ageCategory || 'N/A'} · ${player.weightCategory || 'N/A'}</div>
+                        <h3 style="color:#FFD700;margin:6px 0 2px;font-size:1.05rem;font-weight:900">${player.playerName}</h3>
+                        <div style="font-size:.76rem;font-weight:700;letter-spacing:.5px">
+                            <span class="td-val-cat">${player.ageCategory || 'N/A'}</span>
+                            <span style="color:#555;margin:0 4px">·</span>
+                            <span class="td-val-weight">${player.weightCategory || 'N/A'}</span>
+                        </div>
 
                         <div class="player-info">
-                            <div class="player-info-row"><span class="player-info-label">Gender</span><span class="player-info-value">${player.gender}</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Gender</span><span class="${player.gender==='Male'?'td-val-gender-m':'td-val-gender-f'}">${player.gender}</span></div>
                             <div class="player-info-row"><span class="player-info-label">Age</span><span class="player-info-value">${player.age} yrs</span></div>
-                            <div class="player-info-row"><span class="player-info-label">Weight</span><span class="player-info-value">${player.weight} kg</span></div>
-                            <div class="player-info-row"><span class="player-info-label">Center</span><span class="player-info-value">${player.centerName}</span></div>
-                            <div class="player-info-row"><span class="player-info-label">Payment</span><span class="player-info-value">${player.paymentStatus === 'Paid' ? '✅ Paid' : '❌ Not Paid'}</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Weight</span><span class="td-val-weight">${player.weight} kg</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Center</span><span class="td-val-center">${player.centerName}</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Payment</span><span class="${player.paymentStatus==='Paid'?'td-val-paid':'td-val-unpaid'}">${player.paymentStatus==='Paid'?'✅ Paid':'❌ Unpaid'}</span></div>
                         </div>
 
                         ${badgeRowHtml}
@@ -447,24 +473,24 @@
 
                     document.getElementById('teamInfo').innerHTML = `
                         <div class="td-summary">
-                            <div class="td-stat">
+                            <div class="td-stat td-stat-1">
                                 <div class="td-stat-icon">🏅</div>
-                                <div class="td-stat-val" style="font-size:1.2rem;color:#fff">${team.teamName}</div>
+                                <div class="td-stat-val" style="font-size:1.15rem">${team.teamName}</div>
                                 <div class="td-stat-lbl">Team Name</div>
                             </div>
-                            <div class="td-stat">
+                            <div class="td-stat td-stat-2">
                                 <div class="td-stat-icon">👤</div>
-                                <div class="td-stat-val" style="font-size:1rem;color:#00E5FF">${team.username}</div>
+                                <div class="td-stat-val" style="font-size:1.1rem">${team.username}</div>
                                 <div class="td-stat-lbl">Username</div>
                             </div>
-                            <div class="td-stat">
+                            <div class="td-stat td-stat-3">
                                 <div class="td-stat-icon">🥋</div>
                                 <div class="td-stat-val" id="playerCount">0</div>
                                 <div class="td-stat-lbl">Players</div>
                             </div>
-                            <div class="td-stat">
+                            <div class="td-stat td-stat-4">
                                 <div class="td-stat-icon">${registrationBlocked ? '🔒' : '✅'}</div>
-                                <div class="td-stat-val" style="font-size:1rem;color:${registrationBlocked ? '#FF1744' : '#00E676'}">${registrationBlocked ? 'Closed' : 'Open'}</div>
+                                <div class="td-stat-val" style="font-size:1.05rem;color:${registrationBlocked ? '#ef9a9a' : '#4db6ac'}">${registrationBlocked ? 'Closed' : 'Open'}</div>
                                 <div class="td-stat-lbl">Registration</div>
                             </div>
                         </div>
