@@ -320,8 +320,8 @@ const TEAM_DEADLINE_MANAGER = {
       if (playersSnap.exists()) {
         const allPlayers = playersSnap.val();
         Object.entries(allPlayers).forEach(([playerId, playerData]) => {
-          // Players are linked to teams via centerName or teamName
-          if (playerData.centerName === teamName || playerData.teamName === teamName) {
+          // Players are linked to teams via teamId (primary), or centerName/teamName (legacy fallback)
+          if (playerData.teamId === teamId || playerData.centerName === teamName || playerData.teamName === teamName) {
             playersToDelete.push(playerId);
           }
         });

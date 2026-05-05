@@ -86,6 +86,12 @@ const REGISTRATION = {
         if (teamSnap.exists()) {
           const teamData = teamSnap.val();
 
+          // Store authoritative team name to pre-fill and lock the centerName field
+          if (teamData.teamName) {
+            this.currentTeamName = teamData.teamName;
+            sessionStorage.setItem('teamName', teamData.teamName);
+          }
+
           // Check hard close flag
           if (teamData.registrationClosed === true) {
             this.showDeadlineClosed(config.championship, null, true);
@@ -297,7 +303,11 @@ const REGISTRATION = {
         }
       } else {
         // text, number, date, hidden inputs
-        input.value = playerData[key];
+        if (key === 'centerName' && this.currentTeamName) {
+          input.value = this.currentTeamName;
+        } else {
+          input.value = playerData[key];
+        }
       }
     });
 
@@ -422,6 +432,13 @@ const REGISTRATION = {
           } else if (field.id === 'weight') {
             // Weight field: use text input with numeric pattern to preserve exact user input
             fieldHTML += `<input type="text" id="${field.id}" name="${field.id}" pattern="^\\d+(\\.\\d+)?$" placeholder="Enter weight (e.g., 60 or 61.5)" title="Please enter a valid weight (numbers and one decimal point only)" ${requiredAttr} ${readonlyAttr}>`;
+          } else if (field.id === 'centerName') {
+            // Force centerName to be readonly and prepopulated with the authoritative team name
+            const teamName = this.currentTeamName || sessionStorage.getItem('teamName') || '';
+            fieldHTML += `
+              <input type="text" id="${field.id}" name="${field.id}" value="${teamName}" readonly style="background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.1); color: var(--text-gray); cursor: not-allowed;" title="Assigned automatically from your team account">
+              <div style="font-size: 0.85em; color: var(--accent-cyan); margin-top: 6px;">Team name is automatically bound to your account to ensure correct fixture mapping.</div>
+            `;
           } else {
             fieldHTML += `<input type="text" id="${field.id}" name="${field.id}" ${requiredAttr} ${readonlyAttr}>`;
           }
@@ -950,6 +967,24 @@ const REGISTRATION = {
       formData.teamId = currentUser.teamId;
       formData.submittedAt = new Date().toISOString();
       formData.submittedBy = currentUser.uid;
+
+      // ── AUTHORITATIVE TEAM NAME: override user-entered centerName/teamName ──
+      // Always fetch the real team name from the database so that fixtures
+      // reflect the admin-created team, regardless of what the user typed.
+      try {
+        const teamSnap = await dbGet(dbRef(database, `teams/${currentUser.teamId}`));
+        if (teamSnap.exists()) {
+          const authoritativeTeamName = teamSnap.val().teamName;
+          if (authoritativeTeamName) {
+            formData.centerName = authoritativeTeamName;
+            formData.teamName  = authoritativeTeamName;
+            console.log(`✅ Team name overridden with authoritative value: "${authoritativeTeamName}"`);
+          }
+        }
+      } catch (teamLookupErr) {
+        console.warn('⚠️ Could not fetch authoritative team name; keeping form value.', teamLookupErr);
+      }
+      // ────────────────────────────────────────────────────────────────────────
 
       if (this.editingPlayerId) {
         // Update existing player

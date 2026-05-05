@@ -17,6 +17,7 @@ const BRACKET = {
   currentCategoryFilter: 'all',
   categoryStatuses: {},
   categoriesRenderRequestId: 0,
+  _teamNameCache: null,  // { teamId → teamName } lookup built once per session
 
   // Category images mapping
   categoryImages: {
@@ -31,6 +32,75 @@ const BRACKET = {
     this.categorizePlayers();
     this.renderCategories();
     console.log('✅ Bracket initialized with categories:', Object.keys(this.categories).length);
+  },
+
+  // Build teamId → teamName lookup from the teams node (cached per session)
+  async _buildTeamNameCache() {
+    if (this._teamNameCache) return this._teamNameCache;
+    try {
+      const teamsSnap = await dbGet(dbRef(database, 'teams'));
+      const map = {};
+      if (teamsSnap.exists()) {
+        teamsSnap.forEach(child => {
+          const t = child.val();
+          if (t.teamName) map[child.key] = t.teamName;
+        });
+      }
+      this._teamNameCache = map;
+      console.log(`✅ Team name cache built: ${Object.keys(map).length} teams`);
+    } catch (err) {
+      console.warn('⚠️ Could not build team name cache', err);
+      this._teamNameCache = {};
+    }
+    return this._teamNameCache;
+  },
+
+  // Normalize a single player's centerName/teamName using the authoritative
+  // team name from the database, keyed by teamId.
+  _normalizePlayerTeam(player, cache) {
+    if (!player || !player.teamId || !cache[player.teamId]) return;
+    const authName = cache[player.teamId];
+    player.centerName = authName;
+    player.teamName = authName;
+  },
+
+  // Patch all compressed player objects inside a loaded bracket so they
+  // reflect the authoritative team names.  Returns true if any data changed.
+  // playerTeamIdMap is an optional { playerId → teamId } lookup used to
+  // backfill teamId for old brackets created before teamId was stored.
+  _normalizeBracketTeamNames(bracket, cache, playerTeamIdMap) {
+    if (!bracket || !cache) return false;
+    let changed = false;
+    const patch = (p) => {
+      if (!p) return;
+      // Backfill teamId from player records if missing in compressed data
+      if (!p.teamId && playerTeamIdMap && playerTeamIdMap[p.id]) {
+        p.teamId = playerTeamIdMap[p.id];
+        changed = true;
+      }
+      if (!p.teamId || !cache[p.teamId]) return;
+      const authName = cache[p.teamId];
+      if (p.centerName !== authName || p.teamName !== authName) {
+        p.centerName = authName;
+        p.teamName = authName;
+        changed = true;
+      }
+    };
+    // Patch rounds
+    if (bracket.rounds) {
+      bracket.rounds.forEach(round => {
+        if (!round) return;
+        round.forEach(match => {
+          patch(match.player1);
+          patch(match.player2);
+        });
+      });
+    }
+    // Patch bye players
+    if (bracket.byePlayers) {
+      Object.values(bracket.byePlayers).forEach(p => patch(p));
+    }
+    return changed;
   },
 
   // Load all registered players
@@ -48,6 +118,13 @@ const BRACKET = {
           };
           this.players.push(player);
         });
+
+        // ── NORMALIZE TEAM NAMES ──────────────────────────────────────
+        // Override each player's centerName/teamName with the
+        // authoritative value from the teams DB, keyed by teamId.
+        const cache = await this._buildTeamNameCache();
+        this.players.forEach(p => this._normalizePlayerTeam(p, cache));
+        // ─────────────────────────────────────────────────────────────
       }
     } catch (error) {
       console.error("❌ Error loading players:", error);
@@ -112,13 +189,13 @@ const BRACKET = {
   // Filter brackets by status
   async filterByStatus(status) {
     this.currentFilter = status;
-    
+
     // Update tab UI
     document.querySelectorAll('.status-tab').forEach(tab => {
       tab.classList.remove('active');
     });
     document.querySelector(`[data-filter="${status}"]`).classList.add('active');
-    
+
     // Re-render categories with filter
     await this.renderCategories();
   },
@@ -254,7 +331,7 @@ const BRACKET = {
 
     // Load bracket WITH conflict fixes applied
     await this.loadBracketWithFixes(categoryKey);
-    
+
     if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
       console.log(`Player count mismatch: deleting old bracket`);
       await dbSet(dbRef(database, `brackets/${categoryKey}`), null);
@@ -333,7 +410,7 @@ const BRACKET = {
 
     // Load bracket WITH conflict fixes applied
     await this.loadBracketWithFixes(categoryKey);
-    
+
     if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
       console.log(`Player count mismatch: deleting old bracket`);
       await dbSet(dbRef(database, `brackets/${categoryKey}`), null);
@@ -377,7 +454,8 @@ const BRACKET = {
       id: player.id,
       playerName: player.playerName || '',
       centerName: player.centerName || '',
-      teamName: player.teamName || player.centerName || ''
+      teamName: player.teamName || player.centerName || '',
+      teamId: player.teamId || null
     };
   },
 
@@ -385,12 +463,34 @@ const BRACKET = {
   // TEAM-AWARE BRACKET GENERATION: Conflict Detection & Resolution
   // ═════════════════════════════════════════════════════════════════════════
 
-  // Check if two players belong to the same team
+  // Check if two players belong to the same team.
+  // Resolution order (most to least authoritative):
+  //   1. Look up each player by ID in this.players (live data from Firebase)
+  //   2. teamId on the compressed bracket player object
+  //   3. String comparison of teamName/centerName (legacy fallback only)
   areSameTeam(player1, player2) {
     if (!player1 || !player2) return false;
-    const team1 = (player1.teamName || player1.centerName || '').toLowerCase().trim();
-    const team2 = (player2.teamName || player2.centerName || '').toLowerCase().trim();
-    return team1 && team2 && team1 === team2;
+
+    // Helper: get teamId for a compressed player object.
+    // Prefer the live player record (this.players) keyed by player ID,
+    // which always has the authoritative teamId regardless of what stale
+    // centerName/teamName was stored in the bracket.
+    const getTeamId = (p) => {
+      if (!p || !p.id) return null;
+      const live = this.players.find(lp => lp.id === p.id);
+      return (live && live.teamId) || p.teamId || null;
+    };
+
+    const t1 = getTeamId(player1);
+    const t2 = getTeamId(player2);
+
+    // If both have a teamId, compare directly — this is tamper-proof
+    if (t1 && t2) return t1 === t2;
+
+    // Last resort: string comparison for legacy data with no teamId at all
+    const name1 = (player1.teamName || player1.centerName || '').toLowerCase().trim();
+    const name2 = (player2.teamName || player2.centerName || '').toLowerCase().trim();
+    return name1 && name2 && name1 === name2;
   },
 
   // Detect all same-team conflicts in a given list of matches
@@ -414,7 +514,7 @@ const BRACKET = {
   // If the seeding has conflicts, completely rebuild the match pairings
   resolveTeamConflicts(matches) {
     let currentMatches = matches.map(m => ({ ...m }));
-    
+
     // Extract all players
     const allPlayers = [];
     currentMatches.forEach(m => {
@@ -438,23 +538,26 @@ const BRACKET = {
     for (let i = 0; i < reseeded.length; i += 2) {
       const matchIdx = Math.floor(i / 2);
       const originalMatch = currentMatches[matchIdx] || {};
-      
+
       rebuiltMatches.push({
         matchId: originalMatch.matchId || `R${originalMatch.round}_M${matchIdx + 1}`,
         round: originalMatch.round || 1,
         player1: reseeded[i],
         player2: reseeded[i + 1] || null,
-        winner: null,
-        eliminated: null,
-        status: 'pending',
-        startTime: null,
-        endTime: null
+        // ✅ PRESERVE match result data (winner, eliminated, status, times)
+        // so that completed matches don't get reset when resolving conflicts
+        winner: originalMatch.winner !== undefined ? originalMatch.winner : null,
+        eliminated: originalMatch.eliminated !== undefined ? originalMatch.eliminated : null,
+        status: originalMatch.status || 'pending',
+        startTime: originalMatch.startTime || null,
+        endTime: originalMatch.endTime || null,
+        courtNumber: originalMatch.courtNumber || null
       });
     }
 
     // Verify the rebuild resolved all conflicts
     const conflicts = this.detectTeamConflicts(rebuiltMatches);
-    
+
     if (conflicts.length === 0) {
       console.log(`✅ Team conflicts resolved through intelligent reshuffling`);
       return {
@@ -489,7 +592,8 @@ const BRACKET = {
 
       if (available.length === 0) break;
 
-      // Get p1's team
+      // Get p1's team — prefer teamId, fall back to name-based comparison
+      const p1TeamId = p1.teamId || null;
       const p1Team = (p1.teamName || p1.centerName || '').toLowerCase().trim();
 
       // Find best partner for p1 from different team
@@ -499,9 +603,8 @@ const BRACKET = {
       // First pass: look for player from different team
       for (let i = 0; i < available.length; i++) {
         const candidate = available[i];
-        const candTeam = (candidate.teamName || candidate.centerName || '').toLowerCase().trim();
-        
-        if (candTeam !== p1Team) {
+        // Use areSameTeam which looks up live player data — tamper-proof
+        if (!this.areSameTeam(p1, candidate)) {
           partnerIdx = i;
           foundDifferentTeam = true;
           break;
@@ -530,7 +633,7 @@ const BRACKET = {
 
     // Use aggressive match-aware seeding
     const seeded = this.smartSeedPlayersForMatching([...players]);
-    
+
     console.log(`✅ Smart seeding complete: ${seeded.length}/${players.length} players with conflict-aware distribution`);
     return seeded;
   },
@@ -679,7 +782,7 @@ const BRACKET = {
         console.warn(`  - ${c.player1.playerName} vs ${c.player2.playerName} (both from ${c.player1.teamName})`);
       });
     }
-    
+
     // Update round1 with resolved matches
     for (let i = 0; i < resolution.newMatches.length; i++) {
       round1[i] = {
@@ -738,13 +841,13 @@ const BRACKET = {
     }
 
     const nextRoundIndex = roundIndex + 1;
-    const nextRoundNum   = nextRoundIndex + 1;  // 1-based label for matchId
+    const nextRoundNum = nextRoundIndex + 1;  // 1-based label for matchId
 
     // ── ASSIGN BYE FOR NEXT ROUND (only if advancing count is odd) ───────
     let nextByePlayer = null;
     if (advancing.length % 2 === 1) {
       const byeHistory = this.currentBracket.byeHistory || {};
-      const prevByeId  = roundByePlayer ? roundByePlayer.id : null;
+      const prevByeId = roundByePlayer ? roundByePlayer.id : null;
 
       // Sort by: fewest byes first; break ties by pushing the previous-round
       // bye holder to the back (prevents consecutive byes).
@@ -825,10 +928,10 @@ const BRACKET = {
 
       // Detect conflicts in this round
       const conflicts = this.detectTeamConflicts(round);
-      
+
       if (conflicts.length > 0) {
         console.log(`🔧 Round ${roundIdx + 1}: Found ${conflicts.length} conflict(s), applying resolution...`);
-        
+
         // Build proper match objects for resolution
         const roundMatches = round.map((match, idx) => ({
           ...match,
@@ -838,7 +941,7 @@ const BRACKET = {
 
         // Resolve conflicts
         const result = this.resolveTeamConflicts(roundMatches);
-        
+
         if (result.resolved) {
           console.log(`✅ Round ${roundIdx + 1}: All conflicts resolved!`);
         } else {
@@ -864,14 +967,27 @@ const BRACKET = {
   // Load bracket from Firebase and apply conflict fixes
   async loadBracketWithFixes(categoryKey) {
     await this.loadBracket(categoryKey);
-    
+
     if (this.currentBracket && this.currentBracket.rounds) {
+      // ── NORMALIZE TEAM NAMES inside the bracket's compressed data ───
+      const cache = await this._buildTeamNameCache();
+      // Build playerId → teamId map from loaded players so we can backfill
+      // teamId into old brackets that were created before teamId was stored.
+      const playerTeamIdMap = {};
+      this.players.forEach(p => { if (p.teamId) playerTeamIdMap[p.id] = p.teamId; });
+      const teamNamesFixed = this._normalizeBracketTeamNames(this.currentBracket, cache, playerTeamIdMap);
+      if (teamNamesFixed) {
+        console.log('🔧 Bracket player team names normalized to authoritative values');
+      }
+      // ───────────────────────────────────────────────────────────────
+
       // Apply conflict resolution to existing bracket
       this.currentCategory = categoryKey;
       const wasFixed = await this.fixBracketConflicts();
-      
-      if (wasFixed) {
-        console.log(`🎯 Existing bracket had same-team conflicts - automatically resolved!`);
+
+      if (wasFixed || teamNamesFixed) {
+        console.log(`🎯 Existing bracket had issues - automatically resolved & saved!`);
+        await this.saveBracket(categoryKey, this.currentBracket);
       } else {
         console.log(`✅ Existing bracket is clean - no team conflicts detected`);
       }
@@ -974,6 +1090,12 @@ const BRACKET = {
               courtNumber: match.courtNumber || null
             }))
           );
+        }
+        // Normalize team names in real-time data
+        if (this._teamNameCache) {
+          const ptMap = {};
+          this.players.forEach(p => { if (p.teamId) ptMap[p.id] = p.teamId; });
+          this._normalizeBracketTeamNames(rawBracket, this._teamNameCache, ptMap);
         }
         // Only re-render if bracket actually changed
         if (JSON.stringify(this.currentBracket) !== JSON.stringify(rawBracket)) {
@@ -1166,7 +1288,7 @@ const BRACKET = {
     const isPending = match.status === 'pending' && player1 && player2;
     const isInProgress = match.status === 'in-progress';
     const isCompleted = match.status === 'completed';
-    
+
     // Check for same-team match (unavoidable conflict)
     const isSameTeamMatch = player1 && player2 && this.areSameTeam(player1, player2);
     const sameTeamWarning = isSameTeamMatch ? `
@@ -1291,7 +1413,7 @@ const BRACKET = {
 
     await this.saveBracket(this.currentCategory, this.currentBracket);
     this.renderBracket();
-    
+
     // Update category list to show "Live" status
     if (!document.getElementById('bracketContainer').style.display || document.getElementById('bracketContainer').style.display === 'none') {
       this.renderCategories();
@@ -1330,7 +1452,7 @@ const BRACKET = {
 
     await this.saveBracket(this.currentCategory, this.currentBracket);
     this.renderBracket();
-    
+
     // Update category list to show status change (from "Live" to potentially "Completed" or "Pending")
     this.renderCategories();
 
@@ -1353,7 +1475,7 @@ const BRACKET = {
   // Advance winner: when every match in the current round is complete,
   // build the next round dynamically (including correct bye assignment).
   advanceWinner(match) {
-    const roundNum   = parseInt(match.matchId.split('_')[0].substring(1)); // 1-based
+    const roundNum = parseInt(match.matchId.split('_')[0].substring(1)); // 1-based
     const roundIndex = roundNum - 1;                                        // 0-based
 
     const currentRound = this.currentBracket.rounds[roundIndex];
@@ -1365,10 +1487,10 @@ const BRACKET = {
     // the current bracket so the allDone check is accurate.
     const bracketMatch = currentRound.find(m => m.matchId === match.matchId);
     if (bracketMatch) {
-      bracketMatch.status    = match.status;
-      bracketMatch.winner    = match.winner;
+      bracketMatch.status = match.status;
+      bracketMatch.winner = match.winner;
       bracketMatch.eliminated = match.eliminated;
-      bracketMatch.endTime   = match.endTime;
+      bracketMatch.endTime = match.endTime;
     }
 
     const allDone = currentRound.every(m => m.status === 'completed');
@@ -1484,14 +1606,14 @@ const BRACKET = {
       if (totalRounds && roundNum === totalRounds - 2) return 'Quarter-Final';
       return `Round ${roundNum}`;
     }
-    
+
     // Fallback: Calculate distance from the final
     const distanceFromFinal = totalRounds - 1 - roundIndex;
-    
+
     if (distanceFromFinal === 0) return 'Final';
     if (distanceFromFinal === 1) return 'Semi-Final';
     if (distanceFromFinal === 2) return 'Quarter-Final';
-    
+
     // For earlier rounds: Round X where X = roundIndex + 1
     return `Round ${roundIndex + 1}`;
   },
@@ -1504,7 +1626,7 @@ const BRACKET = {
     // Update bracket status before closing
     if (this.currentCategory && this.currentBracket) {
       const isBracketComplete = this.isCategoryComplete();
-      
+
       if (isBracketComplete) {
         // Keep as "Complete" if all matches are done
         this.currentBracket.status = 'complete';
@@ -1514,7 +1636,7 @@ const BRACKET = {
         this.currentBracket.status = 'pending';
         console.log(`⏳ Bracket ${this.currentCategory} reverted to PENDING`);
       }
-      
+
       await this.saveBracket(this.currentCategory, this.currentBracket);
     }
 
@@ -1523,7 +1645,7 @@ const BRACKET = {
     this.currentCategory = null;
     this.currentBracket = null;
     this.matchHistory = [];
-    
+
     // Refresh category list to update status display
     this.renderCategories();
   },
@@ -1622,9 +1744,9 @@ const BRACKET = {
 
       // ── TOTAL SLOTS = R1 match player rows + 1 bye row if there is a R1 bye ──
       // Each R1 match occupies 2 rows; the bye player occupies 1 extra row.
-      const r1ByePlayer  = byePlayers['0'] || null;
+      const r1ByePlayer = byePlayers['0'] || null;
       const r1MatchSlots = r1Matches.length * 2;
-      const totalSlots   = r1MatchSlots + (r1ByePlayer ? 1 : 0);
+      const totalSlots = r1MatchSlots + (r1ByePlayer ? 1 : 0);
 
       const { jsPDF } = window.jspdf || window;
 
@@ -1640,7 +1762,7 @@ const BRACKET = {
       const colStep = BW + GAP;
 
       const drawH = PH - MT - MB;
-      const rowH  = drawH / totalSlots;
+      const rowH = drawH / totalSlots;
 
       // Y position of the bye player box — one row below the last R1 match slot
       const byeSlotY = r1ByePlayer ? MT + r1MatchSlots * rowH + BH / 2 : null;
@@ -1664,7 +1786,7 @@ const BRACKET = {
       midY.push(r0mids);
 
       for (let ri = 1; ri < totalRounds; ri++) {
-        const prev  = midY[ri - 1];
+        const prev = midY[ri - 1];
         const count = (expectedCounts[ri] !== undefined)
           ? expectedCounts[ri]
           : Math.ceil(prev.length / 2);
@@ -1785,12 +1907,12 @@ const BRACKET = {
           // last R2 match mid = average(r0mids[last-1], r0mids[last]) which
           // already accounts for the bye slot.  We use that as the destination.
           const r2LastMatchIdx = midY[1].length - 1;
-          const destY          = midY[1][r2LastMatchIdx];
+          const destY = midY[1][r2LastMatchIdx];
 
           const bxX2 = ML + colStep;
           const fromX = ML + BW;
-          const midX  = fromX + GAP / 2;
-          const endX  = bxX2;
+          const midX = fromX + GAP / 2;
+          const endX = bxX2;
 
           doc.setLineDashPattern([4, 3], 0);
           doc.setDrawColor(180, 110, 0);
@@ -1822,8 +1944,8 @@ const BRACKET = {
         const cy2 = MT + (mi * 2 + 1) * rowH + BH / 2;
         const fromX = ML + BW;
         const spineX = fromX + GAP / 2;
-        const nextY  = midY[0][mi];
-        const nextX  = ML + colStep;
+        const nextY = midY[0][mi];
+        const nextX = ML + colStep;
 
         doc.line(fromX, cy1, spineX, cy1);
         doc.line(spineX, cy1, spineX, cy2);
@@ -1835,28 +1957,28 @@ const BRACKET = {
 
       // ── DRAW ROUNDS 2+ BOXES + CONNECTORS ────────────────────────────
       for (let ri = 1; ri < totalRounds; ri++) {
-        const bxX     = ML + ri * colStep;
+        const bxX = ML + ri * colStep;
         const prevMids = midY[ri - 1];
-        const curMids  = midY[ri];
+        const curMids = midY[ri];
 
         curMids.forEach((cy, mi) => {
-          const match  = (rounds[ri] || [])[mi] || {};
-          const p1     = match.player1 || null;
-          const p2     = match.player2 || null;
-          const winner = match.winner  || null;
+          const match = (rounds[ri] || [])[mi] || {};
+          const p1 = match.player1 || null;
+          const p2 = match.player2 || null;
+          const winner = match.winner || null;
 
           const feedA = prevMids[mi * 2];
           const feedB = prevMids[mi * 2 + 1];
-          const topY  = feedA !== undefined ? feedA : cy - rowH / 2;
-          const botY  = feedB !== undefined ? feedB : cy + rowH / 2;
+          const topY = feedA !== undefined ? feedA : cy - rowH / 2;
+          const botY = feedB !== undefined ? feedB : cy + rowH / 2;
 
           const isWin1 = p1 && winner === p1.id;
           const isWin2 = p2 && winner === p2.id;
 
           // Check if either slot belongs to a bye player in this round
           const roundByePlayer = byePlayers[String(ri)] || null;
-          const topIsBye  = roundByePlayer && p1 && p1.id === roundByePlayer.id;
-          const botIsBye  = roundByePlayer && p2 && p2.id === roundByePlayer.id;
+          const topIsBye = roundByePlayer && p1 && p1.id === roundByePlayer.id;
+          const botIsBye = roundByePlayer && p2 && p2.id === roundByePlayer.id;
 
           // ── Final round: one winner box centred at cy, not two slots ──
           if (ri === totalRounds - 1) {
@@ -1914,8 +2036,8 @@ const BRACKET = {
           if (ri < totalRounds - 1) {
             doc.setLineDashPattern([], 0);
             const spineX = bxX + BW + GAP / 2;
-            const nextX  = bxX + colStep;
-            const nextY  = curMids[mi];
+            const nextX = bxX + colStep;
+            const nextY = curMids[mi];
             doc.setDrawColor(0, 0, 0);
             doc.setLineWidth(LW);
             doc.line(bxX + BW, topY, spineX, topY);
@@ -1927,7 +2049,7 @@ const BRACKET = {
       }
 
       // ── CHAMPION LINE ─────────────────────────────────────────────────
-      const lastRound  = rounds[totalRounds - 1] || [];
+      const lastRound = rounds[totalRounds - 1] || [];
       const finalMatch = lastRound[0] || {};
       if (finalMatch.status === 'completed' && finalMatch.winner) {
         const champ = (finalMatch.player1 && finalMatch.player1.id === finalMatch.winner)
@@ -1990,7 +2112,7 @@ const BRACKET = {
       ['Round', 'Match', 'Player 1', 'Player 2', 'Winner', 'Start Time', 'End Time']
     ];
     const totalRounds = this.currentBracket.rounds.length;
-    
+
     // Iterate rounds in forward order (they're stored as Round 1, Quarter-Final, Semi-Final, Final)
     this.currentBracket.rounds.forEach((round, ri) => {
       // Get the actual round number from the first match in this round
