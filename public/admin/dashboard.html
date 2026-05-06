@@ -21,14 +21,18 @@
             color: var(--text-gray);
             border: 2px solid rgba(255, 215, 0, .25);
             border-radius: var(--border-radius);
-            padding: 12px 16px;
+            padding: 20px 24px;
             cursor: pointer;
             font-weight: 700;
-            font-size: .88rem;
+            font-size: 1.4rem;
             transition: all .25s;
             white-space: normal;
-            line-height: 1.3;
+            line-height: 1.4;
             text-align: center;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .admin-nav-btn:hover {
@@ -42,6 +46,41 @@
             color: #000;
             border-color: #FFD700;
             box-shadow: 0 0 18px rgba(255, 215, 0, .45);
+        }
+
+        /* Championship Ticker */
+        .championship-ticker {
+            background: linear-gradient(135deg, rgba(26, 26, 46, .95), rgba(22, 33, 62, .95));
+            border-bottom: 2px solid rgba(255, 215, 0, .5);
+            padding: 16px 0;
+            overflow: hidden;
+            width: 100%;
+            margin-bottom: 24px;
+        }
+
+        .ticker-content {
+            display: inline-block;
+            white-space: nowrap;
+            animation: tickerScroll 40s linear infinite;
+            padding-left: 100%;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #FFD700;
+            text-shadow: 0 0 10px rgba(255, 215, 0, .4);
+            letter-spacing: 2px;
+        }
+
+        .championship-ticker:hover .ticker-content {
+            animation-play-state: paused;
+        }
+
+        @keyframes tickerScroll {
+            0% {
+                transform: translateX(0);
+            }
+            100% {
+                transform: translateX(-100%);
+            }
         }
     </style>
     <style>
@@ -270,7 +309,8 @@
         .st-num {
             color: #FFD700;
             font-weight: 900;
-            text-align: center
+            text-align: center;
+            white-space: nowrap
         }
 
         .st-name {
@@ -352,6 +392,13 @@
     <div class="page-header">
         <h1 class="page-title">⚙️ ADMIN DASHBOARD</h1>
         <button class="btn-danger" onclick="UI.logout()">Logout</button>
+    </div>
+
+    <!-- Championship Info Ticker -->
+    <div class="championship-ticker">
+        <div class="ticker-content" id="tickerContent">
+            Loading championship information...
+        </div>
     </div>
 
     <div class="container">
@@ -594,6 +641,40 @@
             }
         }
 
+        async function loadChampionshipTicker() {
+            try {
+                const formConfigRef = dbRef(database, 'formConfig');
+                const snapshot = await dbGet(formConfigRef);
+
+                if (snapshot.exists() && snapshot.val().championship) {
+                    const champ = snapshot.val().championship;
+                    const title = champ.title || '';
+                    const venue = champ.venue || '';
+                    const address = champ.address || '';
+                    const organizer = champ.organizer || '';
+                    const date = champ.date ? new Date(champ.date).toLocaleDateString('en-IN') : '';
+
+                    const tickerContent = `🏆 ${title}  •  📍 Venue: ${venue}  •  📍 Location: ${address}  •  📅 Date: ${date}  •  👤 Organizer: ${organizer}  •  🏆 ${title}  •  📍 Venue: ${venue}  •  📍 Location: ${address}  •  📅 Date: ${date}  •  👤 Organizer: ${organizer}  •  `;
+
+                    const tickerElement = document.getElementById('tickerContent');
+                    if (tickerElement) {
+                        tickerElement.textContent = tickerContent;
+                    }
+                } else {
+                    const tickerElement = document.getElementById('tickerContent');
+                    if (tickerElement) {
+                        tickerElement.textContent = '🏆 No championship created yet. Create one from the Championship section.';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading championship ticker:', error);
+                const tickerElement = document.getElementById('tickerContent');
+                if (tickerElement) {
+                    tickerElement.textContent = '⚠️ Unable to load championship information';
+                }
+            }
+        }
+
         function showSection(section) {
             document.querySelectorAll('.section').forEach(s => s.classList.add('hidden'));
 
@@ -744,7 +825,7 @@
                         const submittedTime = UI.formatTimestamp(player.submittedAt) || 'N/A';
 
                         html += `<tr>`;
-                        html += `<td class="st-num">${index + 1}</td>`;
+                        html += `<td class="st-num">${index + 1})</td>`;
                         html += `<td class="st-name">${playerName}</td>`;
                         html += `<td><span class="st-team">${teamName}</span></td>`;
                         html += `<td>${genderClass ? `<span class="${genderClass}">${gender}</span>` : gender}</td>`;
@@ -963,6 +1044,7 @@
                 if (typeof CHAMPIONSHIP_MANAGER !== 'undefined' && typeof FORM_CONFIG !== 'undefined' && typeof window.database !== 'undefined' && typeof window.dbRef === 'function' && typeof window.dbSet === 'function' && typeof window.dbGet === 'function') {
                     clearInterval(waitForModules);
                     modulesReady = true;
+                    loadChampionshipTicker();
 
                     const form = document.getElementById('newChampionshipForm');
                     if (form) {

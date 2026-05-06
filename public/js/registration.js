@@ -861,41 +861,52 @@ const REGISTRATION = {
     const originalText = submitBtn.textContent;
 
     try {
-      // ── PER-TEAM SERVER-SIDE DEADLINE RE-VALIDATION ──────────────────────────
-      // Re-fetch team data from Firebase to get the authoritative deadline/closed
-      // status. This blocks API calls even if someone bypasses the UI.
-      const teamIdCheck = sessionStorage.getItem('teamId');
-      if (teamIdCheck) {
-        const teamSnap = await dbGet(dbRef(database, `teams/${teamIdCheck}`));
-        if (teamSnap.exists()) {
-          const teamData = teamSnap.val();
-          if (teamData.registrationClosed === true) {
-            throw new Error('Registration has been closed by the administrator for your team.');
-          }
-          const teamDeadline = teamData.registrationDeadline;
-          if (teamDeadline) {
-            const deadlineDate = new Date(teamDeadline);
-            deadlineDate.setHours(23, 59, 59, 999);
-            if (new Date() > deadlineDate) {
-              const formattedDate = new Date(teamDeadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
-              throw new Error(`Registration closed. The deadline for your team was ${formattedDate}.`);
-            }
-          }
-        }
+      // ────────────────────────────────────────────────────────────────────────
+      // CRITICAL: Extract and validate the CURRENT authenticated user IMMEDIATELY
+      // This prevents race conditions from concurrent registrations
+      // ────────────────────────────────────────────────────────────────────────
+      const currentTeamId = sessionStorage.getItem('teamId');
+      const currentUserId = sessionStorage.getItem('userId');
+      const currentUserRole = sessionStorage.getItem('userRole');
+      
+      if (currentUserRole !== 'team' || !currentTeamId || !currentUserId) {
+        throw new Error('Session expired or invalid role. Please log in again.');
       }
+      
+      if (currentTeamId !== currentUserId) {
+        throw new Error('❌ SECURITY: Team ID mismatch detected. Session may be compromised. Please log in again.');
+      }
+      
+      console.log(`✅ SECURITY: Authenticated user=${currentUserId}, team=${currentTeamId}, role=${currentUserRole}`);
       // ────────────────────────────────────────────────────────────────────────
 
-      // Read team identity directly from sessionStorage — the most reliable source.
-      // register.html already enforces team-only access via a synchronous check at page load,
-      // so any user who reaches this point is authenticated as a team.
-      // Avoid relying on AUTH_MANAGER.currentRole which may be stale due to async
-      // onAuthStateChanged timing.
-      const teamId = sessionStorage.getItem('teamId');
-      const userId = sessionStorage.getItem('userId');
-      if (!teamId || !userId) {
-        throw new Error('Session expired. Please log in again.');
+      // ── PER-TEAM SERVER-SIDE DEADLINE RE-VALIDATION ──────────────────────────
+      // Re-fetch team data from Firebase using CURRENT authenticated team
+      // to get the authoritative deadline/closed status.
+      // This blocks API calls even if someone bypasses the UI.
+      const teamSnap = await dbGet(dbRef(database, `teams/${currentTeamId}`));
+      if (!teamSnap.exists()) {
+        throw new Error('Team record not found. Session may be invalid.');
       }
-      const currentUser = { role: 'team', teamId, uid: userId };
+      
+      const teamData = teamSnap.val();
+      
+      // Verify this team record still exists and belongs to current user
+      if (teamData.registrationClosed === true) {
+        throw new Error('Registration has been closed by the administrator for your team.');
+      }
+      
+      const teamDeadline = teamData.registrationDeadline;
+      if (teamDeadline) {
+        const deadlineDate = new Date(teamDeadline);
+        deadlineDate.setHours(23, 59, 59, 999);
+        if (new Date() > deadlineDate) {
+          const formattedDate = new Date(teamDeadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+          throw new Error(`Registration closed. The deadline for your team was ${formattedDate}.`);
+        }
+      }
+      console.log('✅ Team authorization verified:', teamData.teamName);
+      // ────────────────────────────────────────────────────────────────────────
 
       // Validate image (required for new registrations, optional for edits)
       if (!this.currentImageFile && !this.editingPlayerId && !this.currentImageURL) {
@@ -964,44 +975,52 @@ const REGISTRATION = {
         formData.playerImage = imageUrl;
       }
 
-      formData.teamId = currentUser.teamId;
+      // ────────────────────────────────────────────────────────────────────────
+      // CRITICAL: SET TEAM DATA FROM AUTHENTICATED USER, NOT FROM FORM/SESSION
+      // This ensures that even if two registrations run simultaneously,
+      // each player is bound to the correct team at save time
+      // ────────────────────────────────────────────────────────────────────────
+      formData.teamId = currentTeamId;
+      formData.centerName = teamData.teamName;    // Authoritative team name
+      formData.teamName = teamData.teamName;      // Authoritative team name
       formData.submittedAt = new Date().toISOString();
-      formData.submittedBy = currentUser.uid;
+      formData.submittedBy = currentUserId;
+      
+      console.log(`✅ SECURITY: Setting teamId=${currentTeamId}, teamName="${teamData.teamName}"`);
+      console.log(`✅ SECURITY: Player ${formData.playerName} bound to team ${formData.teamName}`);
+      // ────────────────────────────────────────────────────────────────────────
 
-      // ── AUTHORITATIVE TEAM NAME: override user-entered centerName/teamName ──
-      // Always fetch the real team name from the database so that fixtures
-      // reflect the admin-created team, regardless of what the user typed.
-      try {
-        const teamSnap = await dbGet(dbRef(database, `teams/${currentUser.teamId}`));
-        if (teamSnap.exists()) {
-          const authoritativeTeamName = teamSnap.val().teamName;
-          if (authoritativeTeamName) {
-            formData.centerName = authoritativeTeamName;
-            formData.teamName  = authoritativeTeamName;
-            console.log(`✅ Team name overridden with authoritative value: "${authoritativeTeamName}"`);
-          }
-        }
-      } catch (teamLookupErr) {
-        console.warn('⚠️ Could not fetch authoritative team name; keeping form value.', teamLookupErr);
+      // ── VALIDATE PLAYER TEAM BINDING BEFORE SAVE ──────────────────────────
+      if (formData.teamId !== currentTeamId) {
+        throw new Error('❌ SECURITY: Team binding mismatch. Player cannot be registered to a different team.');
+      }
+      if (!formData.teamName || formData.teamName !== teamData.teamName) {
+        throw new Error('❌ SECURITY: Team name mismatch detected. Please try again.');
       }
       // ────────────────────────────────────────────────────────────────────────
 
       if (this.editingPlayerId) {
-        // Update existing player
-        const playerRef = dbRef(database, `players/${this.editingPlayerId}`);
-
-        // Merge with existing data to preserve approval status
+        // ── UPDATE: Verify player belongs to current team before updating ──
         const existingRef = dbRef(database, `players/${this.editingPlayerId}`);
         const existingSnapshot = await dbGet(existingRef);
 
-        if (existingSnapshot.exists()) {
-          const existingData = existingSnapshot.val();
-          formData.status = existingData.status; // Keep existing status
-          if (existingData.playerImage && !this.currentImageFile) {
-            formData.playerImage = existingData.playerImage; // Keep existing image if not updated
-          }
+        if (!existingSnapshot.exists()) {
+          throw new Error('Player record not found.');
         }
 
+        const existingData = existingSnapshot.val();
+        
+        // SECURITY: Ensure player being edited belongs to current logged-in team
+        if (existingData.teamId !== currentTeamId) {
+          throw new Error('❌ SECURITY: You can only edit players from your own team. This player belongs to another team.');
+        }
+
+        formData.status = existingData.status; // Keep existing status
+        if (existingData.playerImage && !this.currentImageFile) {
+          formData.playerImage = existingData.playerImage; // Keep existing image if not updated
+        }
+
+        const playerRef = dbRef(database, `players/${this.editingPlayerId}`);
         await dbSet(playerRef, formData);
         clearTimeout(timeout);
         const updateMsg = '✅ Player information updated successfully!';
@@ -1011,11 +1030,14 @@ const REGISTRATION = {
           alert(updateMsg);
         }
       } else {
-        // Create new player
+        // ── CREATE: New player - bind to current authenticated team ──
         formData.status = 'pending';
 
         const playersRef = dbRef(database, 'players');
         const newPlayerRef = dbPush(playersRef);
+        
+        console.log(`✅ SECURITY: Creating new player ${newPlayerRef.key} for team ${currentTeamId}`);
+        
         await dbSet(newPlayerRef, formData);
         clearTimeout(timeout);
 

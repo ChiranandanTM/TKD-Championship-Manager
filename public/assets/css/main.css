@@ -1552,7 +1552,8 @@ button:disabled,
 
 .admin-nav button {
   flex: 1;
-  min-width: 220px;
+  min-width: 300px;
+  min-height: 80px;
   animation: slideInUp 0.8s ease;
 }
 
