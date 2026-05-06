@@ -3,9 +3,42 @@
 // ============================================
 
 const CHAMPIONSHIP_MANAGER = {
+  // 🔒 CONCURRENCY FIX #5: Lock mechanism to prevent concurrent operations
+  isCreatingChampionship: false,
+  
+  // ✅ Database connection verification helper
+  async _verifyDatabaseConnection(timeoutMs = 3000) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        console.warn('⚠️ Connection check timeout - assuming offline');
+        resolve(false);
+      }, timeoutMs);
+
+      try {
+        const testRef = dbRef(database, '.info/connected');
+        const unsubscribe = dbOnValue(testRef, (snap) => {
+          if (unsubscribe) unsubscribe();
+          clearTimeout(timer);
+          const isConnected = snap.val() === true;
+          console.log(`📡 Database ${isConnected ? 'ONLINE' : 'OFFLINE'}`);
+          resolve(isConnected);
+        });
+      } catch (e) {
+        clearTimeout(timer);
+        console.error('❌ Connection check error:', e.message);
+        resolve(false);
+      }
+    });
+  },
   
   // Archive current championship
   async archiveCurrentChampionship() {
+    // 🔒 CONCURRENCY FIX #5: Prevent concurrent execution
+    if (this.isCreatingChampionship) {
+      throw new Error('Championship operation already in progress. Please wait.');
+    }
+    
+    this.isCreatingChampionship = true;
     try {
       console.log("📦 Starting archive process...");
       
@@ -57,6 +90,8 @@ const CHAMPIONSHIP_MANAGER = {
       console.error("❌ Error archiving championship:", error);
       console.error("❌ Error details:", error.message, error.code);
       throw error;
+    } finally {
+      this.isCreatingChampionship = false;  // 🔒 Always release lock
     }
   },
 
@@ -90,21 +125,34 @@ const CHAMPIONSHIP_MANAGER = {
     }
   },
 
-  // Create new championship (ONLY saves to /championships, does NOT overwrite formConfig)
+  // Create new championship (PRESERVES all existing championships in /championships collection)
   async createNewChampionship(title, venue, address, date, organizer) {
+    // 🔒 CONCURRENCY FIX #5: Prevent concurrent execution
+    if (this.isCreatingChampionship) {
+      throw new Error('Championship operation already in progress. Please wait.');
+    }
+    
+    this.isCreatingChampionship = true;
     try {
+      // ✅ DATABASE CONNECTION FIX #4: Verify connection first
+      const isConnected = await this._verifyDatabaseConnection(3000);
+      if (!isConnected) {
+        throw new Error('Database connection failed. Please check your internet and try again.');
+      }
+      
       console.log("📝 Creating new championship with:", { title, venue, address, date, organizer });
       
-      // Save ONLY to /championships collection - do NOT touch formConfig
-      // This ensures all championships are preserved and not overwritten
-      console.log("💾 Saving to /championships collection...");
+      // Generate unique championship ID
       const champId = `champ_${Date.now()}`;
       const champRef = dbRef(database, `championships/${champId}`);
       
+      // Save to /championships collection (PERMANENT storage - never overwritten)
       await dbSet(champRef, {
         name: title,
-        description: `${venue}, ${address}`,
         location: venue,
+        description: address,
+        date: date,
+        organizer: organizer,
         status: 'active',
         createdAt: Date.now(),
         championship: {
@@ -122,25 +170,32 @@ const CHAMPIONSHIP_MANAGER = {
       });
       console.log("✅ Championship saved to /championships collection with ID:", champId);
       
-      // Also update formConfig so forms display the new championship information
+      // Also update formConfig so the current form displays the new championship info
       console.log("💾 Updating formConfig with new championship details...");
-      const config = await FORM_CONFIG.loadConfig();
+      const configRef = dbRef(database, 'formConfig');
+      const configSnap = await dbGet(configRef);
+      const config = configSnap.exists() ? configSnap.val() : {};
+      
       config.championship = {
         title,
         venue,
         address,
         date,
-        organizer
+        organizer,
+        champId: champId
       };
-      await FORM_CONFIG.saveConfig(config);
+      
+      await dbSet(configRef, config);
       console.log("✅ formConfig updated with new championship details");
       
-      console.log("✅ New championship created successfully");
+      console.log("✅ New championship created successfully - existing championships preserved");
       return { success: true, champId };
     } catch (error) {
       console.error("❌ Error creating championship:", error);
       console.error("❌ Error details:", error.message, error.code);
       throw error;
+    } finally {
+      this.isCreatingChampionship = false;  // 🔒 Always release lock
     }
   },
 
@@ -193,7 +248,55 @@ const CHAMPIONSHIP_MANAGER = {
     return count;
   },
 
-  // Restore championship
+  // Load championship from /championships collection (KEEPS it in collection - does NOT delete)
+  async loadChampionshipFromCollection(champId) {
+    try {
+      console.log("📂 Loading championship from /championships collection:", champId);
+      const champRef = dbRef(database, `championships/${champId}`);
+      const champSnap = await dbGet(champRef);
+
+      if (!champSnap.exists()) {
+        throw new Error("Championship not found in /championships collection");
+      }
+
+      const champ = champSnap.val();
+      console.log("📖 Championship data loaded", champ);
+      
+      // Extract championship metadata
+      const champMetadata = champ.championship || {
+        title: champ.name,
+        venue: champ.location,
+        address: champ.description,
+        date: champ.date,
+        organizer: champ.organizer
+      };
+      
+      // Update formConfig to mark this as the active championship
+      console.log("💾 Updating formConfig with championship metadata...");
+      const configRef = dbRef(database, 'formConfig');
+      const configSnap = await dbGet(configRef);
+      const config = configSnap.exists() ? configSnap.val() : {};
+      
+      config.championship = {
+        ...champMetadata,
+        champId: champId,
+        loadedAt: Date.now()
+      };
+      
+      await dbSet(configRef, config);
+      console.log("✅ formConfig updated");
+      
+      // Note: Championship remains in /championships collection - NOT deleted
+      console.log("✅ Championship loaded successfully from collection (preserved in /championships)");
+      return { success: true, data: champ };
+    } catch (error) {
+      console.error("❌ Error loading championship from collection:", error);
+      console.error("❌ Error details:", error.message);
+      throw error;
+    }
+  },
+
+  // Restore championship from archive
   async restoreChampionship(championshipId) {
     try {
       console.log("📂 Loading championship:", championshipId);

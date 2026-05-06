@@ -988,13 +988,28 @@
                     const champSnap = await dbGet(champRef);
                     if (!champSnap.exists()) throw new Error('Championship not found');
                     const champ = champSnap.val();
+                    
+                    // Archive current championship before loading new one
                     await CHAMPIONSHIP_MANAGER.archiveCurrentChampionship();
                     await CHAMPIONSHIP_MANAGER.clearCurrentData();
+                    
+                    // Update formConfig with new championship (keeps it as active)
                     const formConfigRef = dbRef(database, 'formConfig');
                     await dbSet(formConfigRef, {
-                        championship: { title: champ.name, venue: champ.location, description: champ.description }
+                        championship: {
+                            title: champ.name,
+                            venue: champ.location,
+                            address: champ.description || '',
+                            date: champ.date || '',
+                            organizer: champ.organizer || '',
+                            champId: champId
+                        }
                     });
-                    await dbRemove(champRef);
+                    
+                    // Mark championship as active in the collection (do NOT delete it)
+                    const updateRef = dbRef(database, `championships/${champId}/status`);
+                    await dbSet(updateRef, 'active');
+                    
                     UI.hideLoading();
                     MODAL.success('✅ Championship loaded! Page will reload now.');
                     setTimeout(() => window.location.reload(), 1000);
@@ -1010,9 +1025,23 @@
             if (confirmed) {
                 UI.showLoading('Archiving current championship and loading selected one...');
                 try {
+                    // Archive the current active championship first
                     await CHAMPIONSHIP_MANAGER.archiveCurrentChampionship();
+                    
+                    // Restore the selected championship from history
                     await CHAMPIONSHIP_MANAGER.restoreChampionship(championshipId);
-                    await CHAMPIONSHIP_MANAGER.deleteArchivedChampionship(championshipId);
+                    
+                    // Mark the championship as active
+                    const historyData = await dbGet(dbRef(database, `championshipHistory/${championshipId}`));
+                    if (historyData.exists()) {
+                        const champData = historyData.val();
+                        const formConfigRef = dbRef(database, 'formConfig');
+                        await dbSet(formConfigRef, {
+                            championship: champData.championship || { title: 'Loaded Championship' }
+                        });
+                    }
+                    
+                    // Note: Keep the archived championship in history - do NOT delete it
                     UI.hideLoading();
                     MODAL.success('✅ Championship loaded! Page will reload now.');
                     setTimeout(() => window.location.reload(), 1000);

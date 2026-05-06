@@ -98,4 +98,29 @@ window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
 window.dbGoOnline = goOnline;
 window.dbGoOffline = goOffline;
 
+// 🔌 DATABASE CONNECTION FIX #4: Export connection verification function
+window.verifyDatabaseConnection = async function(timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      console.warn('⚠️ Connection check timeout - assuming offline');
+      resolve(false);
+    }, timeoutMs);
+
+    try {
+      const testRef = ref(database, '.info/connected');
+      const unsubscribe = onValue(testRef, (snap) => {
+        if (unsubscribe) unsubscribe();
+        clearTimeout(timer);
+        const isConnected = snap.val() === true;
+        console.log(`📡 Database ${isConnected ? 'ONLINE ✅' : 'OFFLINE ❌'}`);
+        resolve(isConnected);
+      });
+    } catch (e) {
+      clearTimeout(timer);
+      console.error('❌ Connection check error:', e.message);
+      resolve(false);
+    }
+  });
+};
+
 console.log("✅ Firebase v11 initialized");

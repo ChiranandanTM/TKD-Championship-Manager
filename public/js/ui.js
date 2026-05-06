@@ -3,8 +3,47 @@
 // ============================================
 
 const UI = {
+  // 🔐 SECURITY FIX #3: Validate session expiration before critical operations
+  validateSessionExpiry() {
+    const sessionDataStr = sessionStorage.getItem('sessionData');
+    if (!sessionDataStr) return true; // No expiry data = session valid (backward compat)
+    
+    try {
+      const sessionData = JSON.parse(sessionDataStr);
+      const now = Date.now();
+      
+      if (now > sessionData.expiresAt) {
+        console.log('⏰ Session expired - logging out user');
+        sessionStorage.clear();
+        MODAL.error('❌ Your session has expired. Please login again.');
+        setTimeout(() => {
+          location.href = window.location.origin + '/index.html';
+        }, 1000);
+        return false;
+      }
+      
+      // Session still valid
+      const timeRemaining = sessionData.expiresAt - now;
+      const hoursRemaining = Math.floor(timeRemaining / (60 * 60 * 1000));
+      
+      // Warn if less than 1 hour remaining
+      if (hoursRemaining < 1 && hoursRemaining >= 0) {
+        const minutesRemaining = Math.floor(timeRemaining / (60 * 1000));
+        console.warn(`⏰ Session expiring soon - ${minutesRemaining} minutes remaining`);
+      }
+      
+      return true;
+    } catch (e) {
+      console.warn('⚠️ Could not parse session data:', e.message);
+      return true; // Invalid data = allow (backward compat)
+    }
+  },
+
   // Initialize page protection - check if user has required role
   initPageProtection(requiredRoles) {
+    // 🔐 Check session expiration first
+    if (!this.validateSessionExpiry()) return;
+    
     const user = AUTH_MANAGER.getCurrentUser();
     const userRole = user.role;
 
@@ -33,6 +72,9 @@ const UI = {
 
   // Open create team modal
   openCreateTeamModal() {
+    // 🔐 Check session expiration before critical operations
+    if (!this.validateSessionExpiry()) return;
+    
     const modal = document.getElementById('createTeamModal');
     if (!modal) {
       this.createTeamModalHTML();

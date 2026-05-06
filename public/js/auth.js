@@ -212,6 +212,18 @@ const AUTH_MANAGER = {
       sessionStorage.setItem('teamId', teamId);
       sessionStorage.setItem('teamName', teamData.teamName);
       
+      // 🔐 SECURITY FIX #3: Add session expiration timeout (24 hours)
+      const SESSION_EXPIRY_HOURS = 24;
+      const sessionData = {
+        teamId: teamId,
+        teamName: teamData.teamName,
+        userRole: 'team',
+        createdAt: Date.now(),
+        expiresAt: Date.now() + (SESSION_EXPIRY_HOURS * 60 * 60 * 1000)
+      };
+      sessionStorage.setItem('sessionData', JSON.stringify(sessionData));
+      console.log(`✅ Session created - expires in ${SESSION_EXPIRY_HOURS} hours`);
+      
       console.log("✅ Team login successful!");
       return { success: true, role: 'team', uid: teamId, teamId };
     } catch (error) {

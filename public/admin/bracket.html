@@ -177,6 +177,23 @@
         if (typeof BRACKET !== 'undefined') {
             BRACKET.init();
         }
+
+        // 🧹 CRITICAL FIX: Clean up bracket listeners on page unload
+        // Prevents memory leaks and duplicate listener accumulation
+        window.addEventListener('beforeunload', () => {
+            if (typeof BRACKET !== 'undefined' && BRACKET.bracketListener) {
+                console.log('🧹 Cleaning up bracket listeners on page unload');
+                BRACKET.stopBracketListeners();
+            }
+        });
+
+        // Also cleanup when tab becomes hidden
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && typeof BRACKET !== 'undefined' && BRACKET.bracketListener) {
+                console.log('🧹 Cleaning up bracket listeners - tab hidden');
+                BRACKET.stopBracketListeners();
+            }
+        });
     </script>
 
     <!-- Override native alert/confirm with custom modals -->

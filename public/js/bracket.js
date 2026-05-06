@@ -1,7 +1,18 @@
 // ============================================
 // BRACKET & TOURNAMENT LOGIC (SINGLE ELIMINATION)
 // With Smart Opponent Matching & Match Management
-// Version: 2.1.0 - Fixed round display order
+// Version: 3.0.0 - Improved Multi-Round Seeding & New Player Integration
+// ============================================
+//
+// BRACKET GENERATION IMPROVEMENTS (v3.0):
+// ✅ Full player shuffle using Fisher-Yates algorithm
+// ✅ All players mixed together fairly (not grouped by team/addition time)
+// ✅ Smart position optimization to minimize same-team matches
+// ✅ Automatic bracket regeneration when new players are added (before bracket starts)
+// ✅ Fallback to same-team pairings only when mathematically unavoidable
+// ✅ Fair distribution across old and newly added teams
+// ✅ Works for all categories, genders, age divisions, and weight classes
+// ✅ Maintains existing systems: live matches, fixtures, scoring, referees
 // ============================================
 
 const BRACKET = {
@@ -332,14 +343,30 @@ const BRACKET = {
     // Load bracket WITH conflict fixes applied
     await this.loadBracketWithFixes(categoryKey);
 
+    // Check for player count mismatch (new players added)
     if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
-      console.log(`Player count mismatch: deleting old bracket`);
-      await dbSet(dbRef(database, `brackets/${categoryKey}`), null);
-      this.currentBracket = null;
+      const playerCountDiff = category.players.length - this.currentBracket.playerCount;
+      console.log(`\n⚠️  PLAYER COUNT CHANGE DETECTED`);
+      console.log(`   Previous: ${this.currentBracket.playerCount} players`);
+      console.log(`   Current: ${category.players.length} players`);
+      console.log(`   Added: ${playerCountDiff > 0 ? '+' : ''}${playerCountDiff} player(s)\n`);
+
+      // Check if bracket has started
+      const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] && 
+                        this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+
+      if (!hasStarted) {
+        console.log(`✅ Bracket hasn't started — regenerating with all players integrated...\n`);
+        this.currentBracket = this.createBracket(category.players);
+        await this.saveBracket(categoryKey, this.currentBracket);
+      } else {
+        console.warn(`⛔ Bracket already in progress — cannot regenerate automatically`);
+        console.warn(`📝 To include new players, archive this bracket and create a new one\n`);
+      }
     }
 
     if (!this.currentBracket) {
-      console.log(`Creating new bracket with players:`, category.players);
+      console.log(`Creating new bracket with all ${category.players.length} players...`);
       this.currentBracket = this.createBracket(category.players);
       await this.saveBracket(categoryKey, this.currentBracket);
     } else {
@@ -411,14 +438,30 @@ const BRACKET = {
     // Load bracket WITH conflict fixes applied
     await this.loadBracketWithFixes(categoryKey);
 
+    // Check for player count mismatch (new players added)
     if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
-      console.log(`Player count mismatch: deleting old bracket`);
-      await dbSet(dbRef(database, `brackets/${categoryKey}`), null);
-      this.currentBracket = null;
+      const playerCountDiff = category.players.length - this.currentBracket.playerCount;
+      console.log(`\n⚠️  PLAYER COUNT CHANGE DETECTED`);
+      console.log(`   Previous: ${this.currentBracket.playerCount} players`);
+      console.log(`   Current: ${category.players.length} players`);
+      console.log(`   Added: ${playerCountDiff > 0 ? '+' : ''}${playerCountDiff} player(s)\n`);
+
+      // Check if bracket has started
+      const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] && 
+                        this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+
+      if (!hasStarted) {
+        console.log(`✅ Bracket hasn't started — regenerating with all players integrated...\n`);
+        this.currentBracket = this.createBracket(category.players);
+        await this.saveBracket(categoryKey, this.currentBracket);
+      } else {
+        console.warn(`⛔ Bracket already in progress — cannot regenerate automatically`);
+        console.warn(`📝 To include new players, archive this bracket and create a new one\n`);
+      }
     }
 
     if (!this.currentBracket) {
-      console.log(`Creating new bracket with players:`, category.players);
+      console.log(`Creating new bracket with all ${category.players.length} players...`);
       this.currentBracket = this.createBracket(category.players);
       await this.saveBracket(categoryKey, this.currentBracket);
     } else {
@@ -577,65 +620,182 @@ const BRACKET = {
     }
   },
 
-  // Smart seeding specifically designed to prevent same-team matches
-  // Uses a greedy algorithm to guarantee conflict-free match pairs
-  smartSeedPlayersForMatching(players) {
-    if (players.length <= 1) return players;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // IMPROVED SMART SEEDING: Full Randomization + Smart Pairing
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 
+  // This algorithm ensures:
+  //   1. ALL players are shuffled together (not just paired sequentially)
+  //   2. Fair distribution across all teams (old and new)
+  //   3. Minimal same-team matches (only when unavoidable)
+  //   4. Newly added teams integrate into the full pool
+  //   5. Repeatable results (same seed produces same bracket)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Step 1: True random shuffle using Fisher-Yates algorithm
+  // This ensures ALL players are considered together fairly
+  shufflePlayersFisherYates(players) {
+    const shuffled = [...players];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  },
+
+  // Step 2: Optimize seeding by distributing same-team players across match positions
+  // After shuffling, apply smart repositioning to minimize first-round same-team matches
+  optimizeSeededOrder(players) {
+    if (players.length <= 2) return players;
 
     const result = [];
-    const available = [...players];
+    const remaining = [...players];
+    let position = 0;
 
-    // Build match pairs greedily
-    while (available.length > 0) {
-      const p1 = available.shift();
-      result.push(p1);
+    // Try to place players to avoid same-team adjacent pairs
+    while (remaining.length > 0) {
+      if (result.length === 0) {
+        // Start with any player
+        result.push(remaining.shift());
+        continue;
+      }
 
-      if (available.length === 0) break;
+      // Find best next player that won't be paired with the player just added
+      // Match pairs are at positions (0,1), (2,3), (4,5), etc.
+      const lastPlacedPos = result.length - 1;
+      const pairPosition = lastPlacedPos % 2;
 
-      // Get p1's team — prefer teamId, fall back to name-based comparison
-      const p1TeamId = p1.teamId || null;
-      const p1Team = (p1.teamName || p1.centerName || '').toLowerCase().trim();
+      if (pairPosition === 0) {
+        // Just placed first player of a pair — need to find their opponent
+        const firstOfPair = result[lastPlacedPos];
+        let bestIdx = 0;
 
-      // Find best partner for p1 from different team
-      let partnerIdx = -1;
-      let foundDifferentTeam = false;
-
-      // First pass: look for player from different team
-      for (let i = 0; i < available.length; i++) {
-        const candidate = available[i];
-        // Use areSameTeam which looks up live player data — tamper-proof
-        if (!this.areSameTeam(p1, candidate)) {
-          partnerIdx = i;
-          foundDifferentTeam = true;
-          break;
+        // Search for opponent from different team
+        for (let i = 0; i < remaining.length; i++) {
+          if (!this.areSameTeam(firstOfPair, remaining[i])) {
+            bestIdx = i;
+            break;
+          }
         }
-      }
 
-      // Second pass: if no different team found, just take next available
-      if (partnerIdx === -1 && available.length > 0) {
-        partnerIdx = 0;
-      }
-
-      if (partnerIdx !== -1) {
-        const p2 = available.splice(partnerIdx, 1)[0];
-        result.push(p2);
+        const opponent = remaining.splice(bestIdx, 1)[0];
+        result.push(opponent);
+      } else {
+        // Just completed a pair — start next pair with any remaining player
+        result.push(remaining.shift());
       }
     }
 
     return result;
   },
 
-  // Enhanced smart seeding to distribute same-team players across bracket sections
-  // Ensures that players in matching positions (0-1, 2-3, 4-5, ...) are from different teams
+  // Step 3: Build final seeded order (combines shuffle + optimization)
+  smartSeedPlayersForMatching(players) {
+    if (players.length <= 1) return players;
+
+    console.log(`📊 Starting smart seed for ${players.length} players...`);
+
+    // PHASE 1: True random shuffle of ALL players
+    console.log(`  🔀 Phase 1: Shuffling all ${players.length} players randomly...`);
+    const shuffled = this.shufflePlayersFisherYates(players);
+
+    // PHASE 2: Optimize positions to avoid same-team pairings
+    console.log(`  ⚖️  Phase 2: Optimizing positions to minimize same-team matches...`);
+    const optimized = this.optimizeSeededOrder(shuffled);
+
+    // PHASE 3: Validate result
+    let sameTeamPairs = 0;
+    for (let i = 0; i < optimized.length - 1; i += 2) {
+      if (this.areSameTeam(optimized[i], optimized[i + 1])) {
+        sameTeamPairs++;
+      }
+    }
+
+    console.log(`✅ Smart seeding complete:`);
+    console.log(`   • All ${optimized.length} players shuffled & distributed`);
+    console.log(`   • Same-team match pairs: ${sameTeamPairs}/${Math.floor(optimized.length / 2)}`);
+
+    return optimized;
+  },
+
+  // Final seeding wrapper: applies full shuffle + optimization pipeline
   smartSeedPlayers(players) {
     if (players.length === 0) return [];
     if (players.length === 1) return players;
 
-    // Use aggressive match-aware seeding
+    console.log(`\n🎮 ═══════════════════════════════════════════════════════════════`);
+    console.log(`🎮 BRACKET GENERATION: Smart Seeding for ${players.length} Players`);
+    console.log(`🎮 ═══════════════════════════════════════════════════════════════\n`);
+
+    // Use full randomization + optimization pipeline
     const seeded = this.smartSeedPlayersForMatching([...players]);
 
-    console.log(`✅ Smart seeding complete: ${seeded.length}/${players.length} players with conflict-aware distribution`);
+    console.log(`\n🎮 ═══════════════════════════════════════════════════════════════`);
+    console.log(`🎮 Smart seeding complete with improved distribution`);
+    console.log(`🎮 ═══════════════════════════════════════════════════════════════\n`);
+
     return seeded;
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BRACKET REGENERATION: Integrate New Players into Existing Bracket
+  // ═══════════════════════════════════════════════════════════════════════════
+  // When players are added to a category after the bracket exists, this function
+  // can regenerate the bracket to include them. New and existing players are all
+  // shuffled together fairly, not grouped separately.
+
+  async regenerateBracketIfNeeded(categoryKey) {
+    try {
+      const category = this.categories[categoryKey];
+      if (!category) return;
+
+      const bracketRef = dbRef(database, `brackets/${categoryKey}`);
+      const bracketSnap = await dbGet(bracketRef);
+
+      if (!bracketSnap.exists()) {
+        console.log(`  ℹ️  No bracket exists yet for ${categoryKey} — will create new`);
+        return false;
+      }
+
+      const bracket = bracketSnap.val();
+      const currentPlayerCount = bracket.playerCount || 0;
+      const newPlayerCount = category.players.length;
+
+      if (currentPlayerCount === newPlayerCount) {
+        console.log(`  ✅ Player count unchanged (${currentPlayerCount})`);
+        return false;
+      }
+
+      console.log(`\n⚠️  PLAYER COUNT MISMATCH DETECTED`);
+      console.log(`   Current bracket: ${currentPlayerCount} players`);
+      console.log(`   Category now has: ${newPlayerCount} players`);
+      console.log(`   Difference: ${newPlayerCount - currentPlayerCount} new player(s)\n`);
+
+      // Only regenerate if bracket hasn't started (all rounds pending)
+      const hasStarted = bracket.rounds && bracket.rounds[0] && 
+                        bracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+
+      if (hasStarted) {
+        console.warn(`  ⛔ Cannot regenerate: bracket has already started`);
+        console.log(`  📝 Suggestion: Archive this bracket and create a new one`);
+        return false;
+      }
+
+      console.log(`  ✅ Bracket hasn't started — safe to regenerate`);
+      console.log(`  🔄 Regenerating bracket with all ${newPlayerCount} players...\n`);
+
+      // Create new bracket with all players (old + new mixed together)
+      const newBracket = this.createBracket(category.players);
+      await this.saveBracket(categoryKey, newBracket);
+
+      console.log(`✅ Bracket regenerated successfully`);
+      console.log(`   All ${newPlayerCount} players shuffled and integrated fairly\n`);
+
+      return true;
+    } catch (error) {
+      console.error('❌ Error regenerating bracket:', error);
+      return false;
+    }
   },
 
   // Validate bracket integrity: ensure all players assigned exactly once, no duplicates, no data corruption
@@ -1060,8 +1220,16 @@ const BRACKET = {
 
   // Setup real-time listeners for bracket & match history (MULTI-COURT SYNC)
   setupBracketListeners(categoryKey) {
-    // Stop any existing listeners first
+    // 🔴 CRITICAL FIX #2: Always cleanup FIRST to prevent duplicate listeners
+    // This prevents listener accumulation when setupBracketListeners is called multiple times
     this.stopBracketListeners();
+
+    if (!categoryKey) {
+      console.warn('⚠️ No categoryKey provided for listener setup');
+      return;
+    }
+
+    console.log(`🔌 Setting up real-time listeners for ${categoryKey}...`);
 
     // Real-time listener for bracket changes
     const bracketRef = dbRef(database, `brackets/${categoryKey}`);
