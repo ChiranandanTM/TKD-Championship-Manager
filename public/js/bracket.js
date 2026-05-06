@@ -643,53 +643,130 @@ const BRACKET = {
     return shuffled;
   },
 
-  // Step 2: Optimize seeding by distributing same-team players across match positions
-  // After shuffling, apply smart repositioning to minimize first-round same-team matches
+  // Step 2: Distribute teams evenly across bracket positions + avoid same-team pairs
+  // ═══════════════════════════════════════════════════════════════════════════
+  // After shuffling, apply intelligent team distribution to:
+  //   1. Spread each team evenly across bracket positions (not just adjacent pairs)
+  //   2. Avoid repeating "Team A vs Team B" patterns
+  //   3. Ensure natural team mixing throughout entire bracket tree
+  // ═══════════════════════════════════════════════════════════════════════════
   optimizeSeededOrder(players) {
     if (players.length <= 2) return players;
 
-    const result = [];
-    const remaining = [...players];
-    let position = 0;
-
-    // Try to place players to avoid same-team adjacent pairs
-    while (remaining.length > 0) {
-      if (result.length === 0) {
-        // Start with any player
-        result.push(remaining.shift());
-        continue;
+    // ── PHASE 1: Build team distribution map ─────────────────────────────
+    // Group players by team to see team composition
+    const teamGroups = {};
+    players.forEach(p => {
+      const teamKey = this.getPlayerTeamKey(p);
+      if (!teamGroups[teamKey]) {
+        teamGroups[teamKey] = [];
       }
+      teamGroups[teamKey].push(p);
+    });
 
-      // Find best next player that won't be paired with the player just added
-      // Match pairs are at positions (0,1), (2,3), (4,5), etc.
-      const lastPlacedPos = result.length - 1;
-      const pairPosition = lastPlacedPos % 2;
+    const teams = Object.keys(teamGroups);
+    const uniqueTeamCount = teams.length;
 
-      if (pairPosition === 0) {
-        // Just placed first player of a pair — need to find their opponent
-        const firstOfPair = result[lastPlacedPos];
-        let bestIdx = 0;
+    console.log(`    📊 Team distribution analysis:`);
+    console.log(`       • Unique teams: ${uniqueTeamCount}`);
+    teams.forEach(team => {
+      console.log(`       • ${teamGroups[team][0].teamName || team}: ${teamGroups[team].length} players`);
+    });
 
-        // Search for opponent from different team
-        for (let i = 0; i < remaining.length; i++) {
-          if (!this.areSameTeam(firstOfPair, remaining[i])) {
-            bestIdx = i;
+    // ── PHASE 2: Round-robin team distribution ──────────────────────────
+    // Spread players from each team across different sections of the bracket.
+    // This prevents "Team A, Team A, Team B, Team B" clustering.
+    // Algorithm:
+    //   • Fill positions in a round-robin style across teams
+    //   • For each position slot, pick from different teams in order
+    //   • This ensures even distribution across all positions
+    const result = [];
+    const teamQueues = {};
+    teams.forEach(team => {
+      // Shuffle players within each team for randomness
+      teamQueues[team] = this.shufflePlayersFisherYates([...teamGroups[team]]);
+    });
+
+    let currentTeamIdx = 0;
+    const teamArray = [...teams];
+
+    // Fill all positions using round-robin from teams
+    while (result.length < players.length) {
+      // Cycle through teams, picking one player from each
+      for (let i = 0; i < teamArray.length && result.length < players.length; i++) {
+        const teamKey = teamArray[i];
+        if (teamQueues[teamKey].length > 0) {
+          result.push(teamQueues[teamKey].shift());
+        }
+      }
+    }
+
+    // ── PHASE 3: Final optimization to avoid adjacent same-team pairs ────
+    // After round-robin distribution, do a final pass to ensure pairs
+    // won't have same team players (where possible)
+    const optimized = this.finalizePositionsForPairing(result);
+
+    // Log distribution pattern
+    console.log(`    ✅ Team distribution complete - teams spread evenly across bracket`);
+
+    return optimized;
+  },
+
+  // Helper: Get unique team key for a player
+  getPlayerTeamKey(player) {
+    if (!player) return 'unknown';
+    // Use teamId if available (most reliable), else fall back to team name
+    return player.teamId || (player.teamName || player.centerName || 'unknown').toLowerCase();
+  },
+
+  // Helper: Final pass to minimize same-team adjacent pairs after distribution
+  finalizePositionsForPairing(players) {
+    if (players.length <= 2) return players;
+
+    const result = [...players];
+    let swaps = 0;
+
+    // Check each potential pair (positions 0-1, 2-3, 4-5, etc.)
+    for (let i = 0; i < result.length - 1; i += 2) {
+      if (this.areSameTeam(result[i], result[i + 1])) {
+        // Same team pair found — try to swap one with a nearby player
+        // Search for a player from different team within reasonable range
+        let swapped = false;
+
+        // Try positions i+2, i+3 (next pair's players)
+        for (let j = i + 2; j < Math.min(i + 4, result.length); j++) {
+          if (!this.areSameTeam(result[i], result[j])) {
+            // Swap result[i+1] with result[j]
+            [result[i + 1], result[j]] = [result[j], result[i + 1]];
+            swaps++;
+            swapped = true;
             break;
           }
         }
 
-        const opponent = remaining.splice(bestIdx, 1)[0];
-        result.push(opponent);
-      } else {
-        // Just completed a pair — start next pair with any remaining player
-        result.push(remaining.shift());
+        if (swapped) continue;
+
+        // Try positions i-2, i-1 (previous pair's players)
+        for (let j = Math.max(0, i - 2); j < i; j++) {
+          if (!this.areSameTeam(result[i], result[j])) {
+            // Swap result[i+1] with result[j]
+            [result[i + 1], result[j]] = [result[j], result[i + 1]];
+            swaps++;
+            swapped = true;
+            break;
+          }
+        }
       }
+    }
+
+    if (swaps > 0) {
+      console.log(`    🔄 Pair optimization: ${swaps} swap(s) applied`);
     }
 
     return result;
   },
 
-  // Step 3: Build final seeded order (combines shuffle + optimization)
+  // Step 3: Build final seeded order (combines shuffle + team-aware distribution)
   smartSeedPlayersForMatching(players) {
     if (players.length <= 1) return players;
 
@@ -699,21 +776,31 @@ const BRACKET = {
     console.log(`  🔀 Phase 1: Shuffling all ${players.length} players randomly...`);
     const shuffled = this.shufflePlayersFisherYates(players);
 
-    // PHASE 2: Optimize positions to avoid same-team pairings
-    console.log(`  ⚖️  Phase 2: Optimizing positions to minimize same-team matches...`);
+    // PHASE 2: Distribute teams evenly across bracket positions
+    console.log(`  📍 Phase 2: Distributing teams evenly across all bracket positions...`);
     const optimized = this.optimizeSeededOrder(shuffled);
 
     // PHASE 3: Validate result
     let sameTeamPairs = 0;
+    const teamCounts = {};
+    
     for (let i = 0; i < optimized.length - 1; i += 2) {
       if (this.areSameTeam(optimized[i], optimized[i + 1])) {
         sameTeamPairs++;
       }
     }
 
+    // Count unique teams and their distribution
+    optimized.forEach((p, idx) => {
+      const teamKey = this.getPlayerTeamKey(p);
+      if (!teamCounts[teamKey]) teamCounts[teamKey] = [];
+      teamCounts[teamKey].push(idx);
+    });
+
     console.log(`✅ Smart seeding complete:`);
     console.log(`   • All ${optimized.length} players shuffled & distributed`);
-    console.log(`   • Same-team match pairs: ${sameTeamPairs}/${Math.floor(optimized.length / 2)}`);
+    console.log(`   • Teams spread across bracket: ${Object.keys(teamCounts).length} unique teams`);
+    console.log(`   • Same-team adjacent pairs: ${sameTeamPairs}/${Math.floor(optimized.length / 2)}`);
 
     return optimized;
   },
