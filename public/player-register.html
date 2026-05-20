@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player Register - Taekwondo Championship</title>
+    <!-- Favicon - Multiple sizes for better visibility -->
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Player registration form for the Taekwondo Championship — register athletes with their details, weight category, and payment status.">
+
+    <!-- NO PAGE PROTECTION - This page is publicly accessible -->
+
+    <link rel="preconnect" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="dns-prefetch" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script defer src="/js/modal.js"></script>
+</head>
+<body>
+    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 20px">
+        <div style="flex: 1;">
+            <button class="btn-secondary" onclick="window.history.back()">← Back</button>
+        </div>
+        <div style="text-align: center; flex: 2;">
+            <span style="color: var(--text-gray); font-size: 0.9em;">Public Registration</span>
+        </div>
+        <div style="flex: 1; text-align: right;">
+            <!-- No logout button for public page -->
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Championship Header (Dynamic) -->
+        <div id="championshipHeader"></div>
+
+        <!-- Registration Closed Warning -->
+        <div id="registrationClosedWarning" style="display: none;"></div>
+
+        <!-- Registration Form -->
+        <div class="section">
+            <h2 style="text-align: center; margin-bottom: 30px;">Player Register</h2>
+            <form id="registrationForm">
+                <!-- Form fields will be dynamically generated here -->
+            </form>
+        </div>
+    </div>
+
+    <div class="site-credit-footer">
+        <span class="credit-line">© Karnataka Taekwondo Association</span>
+        <span class="credit-line credit-owner">Built and Developed by Chiranandan T M</span>
+        <span class="credit-line credit-supporter">Co-Supporter: Sharan B N</span>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/form-config.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+    <script type="module" src="/js/public-registration.js"></script>
+    <script src="/js/custom-select.js"></script>
+</body>
+</html>

@@ -4,12 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Taekwondo Championship - Login</title>
+    <title>Coach Login - Taekwondo Championship</title>
     <!-- Favicon - Multiple sizes for better visibility -->
     <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
     <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
     <meta name="theme-color" content="#FFD700">
-    <meta name="description" content="Login portal for the Taekwondo Championship Manager — Admin, Team, and Referee access to manage players, brackets, and live matches.">
+    <meta name="description" content="Coach login for the Taekwondo Championship Manager — Manage teams and players.">
     <!-- Resource hints for faster CDN loading -->
     <link rel="preconnect" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
     <link rel="preconnect" href="https://www.gstatic.com">
@@ -60,41 +60,13 @@
     <div class="login-container">
         <div class="login-header">
             <h1>🥋 TAEKWONDO<br>CHAMPIONSHIP<br>MANAGER</h1>
-            <p
-                style="color: #00E5FF; font-size: 1.3rem; margin-top: 15px; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);">
-                Karnataka State Championship</p>
+            <p style="color: #00E5FF; font-size: 1.3rem; margin-top: 15px; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);">
+                Coach Login</p>
         </div>
 
-        <!-- Tab Navigation -->
-        <div class="login-tabs">
-            <button class="tab-btn active" onclick="switchTab('admin')" id="tabBtnAdmin">Admin</button>
-            <button class="tab-btn" onclick="switchTab('team')" id="tabBtnTeam">Coach</button>
-            <button class="tab-btn" onclick="switchTab('referee')" id="tabBtnReferee">Referee</button>
-        </div>
-
-        <!-- Admin Login Form -->
-        <div id="adminTab" class="tab-content active">
-            <form id="adminLoginForm" onsubmit="loginAdmin(event)">
-                <div class="form-group">
-                    <label for="adminEmail">Email</label>
-                    <input type="email" id="adminEmail" required placeholder="admin@tkd.com">
-                </div>
-                <div class="form-group">
-                    <label for="adminPassword">Password</label>
-                    <div class="pw-wrap">
-                        <input type="password" id="adminPassword" required placeholder="Enter password">
-                        <button type="button" class="pw-toggle" onclick="togglePw('adminPassword',this)">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                        </button>
-                    </div>
-                </div>
-                <button type="submit" class="btn-primary" style="width: 100%;">Login as Admin</button>
-            </form>
-        </div>
-
-        <!-- Team Login Form -->
-        <div id="teamTab" class="tab-content">
-            <form id="teamLoginForm" onsubmit="loginTeam(event)">
+        <!-- Coach Login Form (Full Width) -->
+        <div class="section">
+            <form id="coachLoginForm" onsubmit="loginTeam(event)">
                 <div class="form-group">
                     <label for="teamUsername">Username</label>
                     <input type="text" id="teamUsername" required placeholder="Enter team username">
@@ -109,26 +81,6 @@
                     </div>
                 </div>
                 <button type="submit" class="btn-primary" style="width: 100%;">Login as Coach</button>
-            </form>
-        </div>
-
-        <!-- Referee Login Form -->
-        <div id="refereeTab" class="tab-content">
-            <form id="refereeLoginForm" onsubmit="loginReferee(event)">
-                <div class="form-group">
-                    <label for="refereeId">Referee ID</label>
-                    <input type="text" id="refereeId" required placeholder="e.g. REF001">
-                </div>
-                <div class="form-group">
-                    <label for="refereePassword">Password</label>
-                    <div class="pw-wrap">
-                        <input type="password" id="refereePassword" required placeholder="Enter password">
-                        <button type="button" class="pw-toggle" onclick="togglePw('refereePassword',this)">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                        </button>
-                    </div>
-                </div>
-                <button type="submit" class="btn-primary" style="width: 100%;">Login as Referee</button>
             </form>
         </div>
 
@@ -247,91 +199,6 @@
                 });
             },
 
-            async loadUserRole(uid) {
-                try {
-                    console.log("🔍 Loading role for UID:", uid);
-                    const userRef = ref(database, `users/${uid}`);
-                    const snapshot = await get(userRef);
-
-                    console.log("📊 Snapshot exists?", snapshot.exists());
-
-                    if (snapshot.exists()) {
-                        const userData = snapshot.val();
-                        console.log("📦 User data:", userData);
-
-                        this.currentRole = userData.role;
-                        this.currentTeamId = userData.teamId || null;
-
-                        console.log("👤 Role:", this.currentRole);
-                        console.log("👤 Role type:", typeof this.currentRole);
-
-                        sessionStorage.setItem('userRole', this.currentRole);
-                        sessionStorage.setItem('userId', uid);
-                        if (this.currentTeamId) {
-                            sessionStorage.setItem('teamId', this.currentTeamId);
-                        }
-
-                        return this.currentRole;
-                    } else {
-                        // ── BOOTSTRAP: Firebase Auth succeeded but no DB record exists.
-                        // This happens on first login or after a database wipe.
-                        // Since only valid Firebase Auth credentials can reach here,
-                        // auto-create the admin record and allow login.
-                        console.log("⚠️ No DB record found — auto-creating admin entry for UID:", uid);
-                        try {
-                            await set(ref(database, `users/${uid}`), {
-                                role: 'admin',
-                                uid: uid,
-                                createdAt: new Date().toISOString()
-                            });
-                            console.log("✅ Admin record created in database");
-                        } catch (writeErr) {
-                            console.warn("⚠️ Could not write admin record:", writeErr.message);
-                        }
-                        this.currentRole = 'admin';
-                        sessionStorage.setItem('userRole', 'admin');
-                        sessionStorage.setItem('userId', uid);
-                        return 'admin';
-                    }
-
-                    return null;
-                } catch (error) {
-                    console.error("❌ Error loading user role:", error);
-                    return null;
-                }
-            },
-
-            async loginAdmin(email, password) {
-                try {
-                    console.log("🔐 Starting admin login...");
-                    console.log("📧 Email:", email);
-
-                    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-                    console.log("✅ Firebase Auth successful!");
-                    console.log("🆔 UID:", userCredential.user.uid);
-
-                    const role = await this.loadUserRole(userCredential.user.uid);
-                    console.log("🎭 Final role:", role);
-                    console.log("🎭 Role === 'admin':", role === 'admin');
-                    console.log("🎭 Role === 'judge':", role === 'judge');
-
-                    if (role !== 'admin' && role !== 'judge') {
-                        console.log("❌ Role check failed!");
-                        await signOut(auth);
-                        throw new Error("Access denied. Admin or Judge credentials required.");
-                    }
-
-                    // Store login page URL for logout redirect
-                    sessionStorage.setItem('loginPageUrl', window.location.href);
-
-                    console.log("✅ Login successful!");
-                    return { success: true, role, uid: userCredential.user.uid };
-                } catch (error) {
-                    console.error("❌ Admin login error:", error);
-                    throw new Error(error.message);
-                }
-            },
-
             async loginTeam(username, password) {
                 try {
                     const trimmedUsername = (username || '').trim().toLowerCase();
@@ -400,63 +267,15 @@
 
                 const path = window.location.pathname;
 
-                if (path.includes('index.html') || path === '/' || path === '') {
-                    if (this.currentRole === 'admin' || this.currentRole === 'judge') {
-                        window.location.href = window.location.origin + '/admin/dashboard.html';
-                    } else if (this.currentRole === 'team') {
+                if (path.includes('coach-login.html') || path === '/' || path === '') {
+                    if (this.currentRole === 'team') {
                         window.location.href = window.location.origin + '/team/dashboard.html';
-                    } else if (this.currentRole === 'referee') {
-                        window.location.href = window.location.origin + '/referee/dashboard.html';
                     }
                 }
-            },
-
-            getCurrentUser() {
-                return {
-                    uid: sessionStorage.getItem('userId'),
-                    role: sessionStorage.getItem('userRole'),
-                    teamId: sessionStorage.getItem('teamId')
-                };
             }
         };
 
         // Make functions global
-        window.switchTab = function (tab) {
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-
-            if (tab === 'admin') {
-                document.getElementById('tabBtnAdmin').classList.add('active');
-                document.getElementById('adminTab').classList.add('active');
-            } else if (tab === 'team') {
-                document.getElementById('tabBtnTeam').classList.add('active');
-                document.getElementById('teamTab').classList.add('active');
-            } else if (tab === 'referee') {
-                document.getElementById('tabBtnReferee').classList.add('active');
-                document.getElementById('refereeTab').classList.add('active');
-            }
-        };
-
-        window.loginAdmin = async function (event) {
-            event.preventDefault();
-
-            const email = document.getElementById('adminEmail').value;
-            const password = document.getElementById('adminPassword').value;
-
-            try {
-                UI.showLoading('Logging in...');
-                const result = await AUTH_MANAGER.loginAdmin(email, password);
-                UI.hideLoading();
-
-                if (result.success) {
-                    window.location.href = window.location.origin + '/admin/dashboard.html';
-                }
-            } catch (error) {
-                UI.hideLoading();
-                alert('Login failed: ' + error.message);
-            }
-        };
-
         window.loginTeam = async function (event) {
             event.preventDefault();
 
@@ -476,52 +295,6 @@
                 if (result.success) {
                     window.location.href = window.location.origin + '/team/dashboard.html';
                 }
-            } catch (error) {
-                UI.hideLoading();
-                alert('Login failed: ' + error.message);
-            }
-        };
-
-        window.loginReferee = async function (event) {
-            event.preventDefault();
-
-            const refId = document.getElementById('refereeId').value.trim();
-            const password = document.getElementById('refereePassword').value.trim();
-
-            if (!refId || !password) {
-                alert('❌ Please enter Referee ID and password');
-                return;
-            }
-
-            try {
-                UI.showLoading('Logging in...');
-
-                // Fetch referee data from Firebase directly (no auth module loaded yet)
-                const snap = await get(ref(database, `referees/${refId}`));
-                if (!snap.exists()) throw new Error('Invalid referee ID or password');
-
-                const data = snap.val();
-                if (data.password !== password) throw new Error('Invalid referee ID or password');
-
-                // Set session
-                sessionStorage.setItem('userRole', 'referee');
-                sessionStorage.setItem('userId', refId);
-                sessionStorage.setItem('refId', refId);
-                sessionStorage.setItem('courtNumber', data.courtNumber || '');
-                
-                // Store login page URL for logout redirect
-                sessionStorage.setItem('loginPageUrl', window.location.href);
-
-                // Sync users/{refId}
-                await set(ref(database, `users/${refId}`), {
-                    role: 'referee',
-                    refId: refId,
-                    courtNumber: data.courtNumber || '',
-                    updatedAt: new Date().toISOString()
-                });
-
-                UI.hideLoading();
-                window.location.href = window.location.origin + '/referee/dashboard.html';
             } catch (error) {
                 UI.hideLoading();
                 alert('Login failed: ' + error.message);

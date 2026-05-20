@@ -487,13 +487,14 @@ const REGISTRATION = {
 
         case 'image':
           // When editing, file is not required — player already has an existing photo
-          const imageRequired = this.editingPlayerId ? '' : requiredAttr;
+          // NOTE: File is NOT marked as required in HTML because it's hidden.
+          // Validation is done programmatically in submitForm() instead.
           fieldHTML += `
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
               <button type="button" class="btn-secondary" onclick="REGISTRATION.openCamera()" style="flex: 1;">📷 Capture Photo</button>
               <button type="button" class="btn-secondary" onclick="document.getElementById('${field.id}').click()" style="flex: 1;">📁 Upload Photo</button>
             </div>
-            <input type="file" id="${field.id}" name="${field.id}" accept="image/*" ${imageRequired} onchange="REGISTRATION.handleFileSelect(event)" style="display: none;">
+            <input type="file" id="${field.id}" name="${field.id}" accept="image/*" onchange="REGISTRATION.handleFileSelect(event)" style="display: none;">
             <video id="cameraVideo" style="display: none; width: 100%; max-width: 500px; border-radius: 8px; margin: 10px 0;"></video>
             <canvas id="cameraCanvas" style="display: none;"></canvas>
             <button type="button" id="captureBtn" class="btn-primary" onclick="REGISTRATION.capturePhoto()" style="display: none; width: 100%; margin: 10px 0;">📸 Capture Photo</button>

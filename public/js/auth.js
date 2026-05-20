@@ -120,6 +120,10 @@ const AUTH_MANAGER = {
         throw new Error("Access denied. Admin or Judge credentials required.");
       }
       
+      // Store the login page URL for logout redirect
+      const loginPageUrl = sessionStorage.getItem('loginPageUrl') || window.location.href;
+      sessionStorage.setItem('loginPageUrl', loginPageUrl);
+      
       return { success: true, role, uid: userCredential.user.uid };
     } catch (error) {
       console.error("❌ Admin login error:", error);
@@ -212,6 +216,10 @@ const AUTH_MANAGER = {
       sessionStorage.setItem('teamId', teamId);
       sessionStorage.setItem('teamName', teamData.teamName);
       
+      // Store the login page URL for logout redirect
+      const loginPageUrl = sessionStorage.getItem('loginPageUrl') || window.location.href;
+      sessionStorage.setItem('loginPageUrl', loginPageUrl);
+      
       // 🔐 SECURITY FIX #3: Add session expiration timeout (24 hours)
       const SESSION_EXPIRY_HOURS = 24;
       const sessionData = {
@@ -236,9 +244,14 @@ const AUTH_MANAGER = {
   async logout() {
     try {
       await signOut(auth);
+      
+      // Get the stored login page URL, default to index.html
+      const loginPageUrl = sessionStorage.getItem('loginPageUrl') || (window.location.origin + '/index.html');
+      
       sessionStorage.clear();
-      // FIXED: Use origin instead of absolute path
-      window.location.href = getLoginPath();
+      
+      // Redirect to the same login page user came from
+      window.location.href = loginPageUrl;
     } catch (error) {
       console.error("❌ Logout error:", error);
     }

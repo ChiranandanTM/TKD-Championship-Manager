@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Referee Login - Taekwondo Championship</title>
+    <!-- Favicon - Multiple sizes for better visibility -->
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Referee login for the Taekwondo Championship Manager — Manage live matches and scores.">
+    <!-- Resource hints for faster CDN loading -->
+    <link rel="preconnect" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://firebase.googleapis.com">
+    <link rel="dns-prefetch" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <!-- Preload critical resources -->
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <style>
+        body {
+            background-image: url('/assets/images/tkd-background.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+        }
+
+        .pw-wrap {
+            position: relative
+        }
+
+        .pw-wrap input {
+            padding-right: 44px
+        }
+
+        .pw-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            transition: color .2s
+        }
+
+        .pw-toggle:hover {
+            color: #FFD700
+        }
+    </style>
+</head>
+
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>🥋 TAEKWONDO<br>CHAMPIONSHIP<br>MANAGER</h1>
+            <p style="color: #00E5FF; font-size: 1.3rem; margin-top: 15px; text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);">
+                Referee Login</p>
+        </div>
+
+        <!-- Referee Login Form (Full Width) -->
+        <div class="section">
+            <form id="refereeLoginForm" onsubmit="loginReferee(event)">
+                <div class="form-group">
+                    <label for="refereeId">Referee ID</label>
+                    <input type="text" id="refereeId" required placeholder="e.g. REF001">
+                </div>
+                <div class="form-group">
+                    <label for="refereePassword">Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="refereePassword" required placeholder="Enter password">
+                        <button type="button" class="pw-toggle" onclick="togglePw('refereePassword',this)">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        </button>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary" style="width: 100%;">Login as Referee</button>
+            </form>
+        </div>
+
+        <div class="site-credit-footer">
+            <span class="credit-line">© Karnataka Taekwondo Association</span>
+            <span class="credit-line credit-owner">Built and Developed by Chiranandan T M</span>
+            <span class="credit-line credit-supporter">Co-Supporter: Sharan B N</span>
+        </div>
+    </div>
+
+    <!-- Password visibility toggle -->
+    <script>
+        function togglePw(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            
+            const eyeOpen = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+            const eyeClosed = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+            
+            btn.innerHTML = isHidden ? eyeClosed : eyeOpen;
+        }
+    </script>
+
+    <!-- Firebase SDK v11 -->
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+        import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
+        import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyC7NfS7RMv8C78KGJsPkQCeV9fzmJ86lDU",
+            authDomain: "taekowndo-championship.firebaseapp.com",
+            databaseURL: "https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "taekowndo-championship",
+            storageBucket: "taekowndo-championship.firebasestorage.app",
+            messagingSenderId: "747830683087",
+            appId: "1:747830683087:web:3a7461d1a54d475f1cdeba"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const database = getDatabase(app);
+        const storage = getStorage(app);
+
+        // Export for global use
+        window.firebaseApp = app;
+        window.auth = auth;
+        window.database = database;
+        window.storage = storage;
+        window.dbRef = ref;
+        window.dbSet = set;
+        window.dbGet = get;
+        window.dbUpdate = update;
+        window.dbRemove = remove;
+        window.dbOnValue = onValue;
+        window.dbPush = push;
+        window.dbQuery = query;
+        window.dbOrderByChild = orderByChild;
+        window.dbEqualTo = equalTo;
+        window.dbChild = child;
+        window.storageRef = storageRef;
+        window.uploadBytes = uploadBytes;
+        window.getDownloadURL = getDownloadURL;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.signOut = signOut;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+
+        console.log("✅ Firebase v9 initialized successfully");
+
+        // UI HELPER
+        window.UI = {
+            showLoading(message = 'Loading...') {
+                const existing = document.getElementById('loadingOverlay');
+                if (existing) existing.remove();
+
+                const overlay = document.createElement('div');
+                overlay.id = 'loadingOverlay';
+                overlay.className = 'loading-overlay';
+                overlay.innerHTML = `
+                    <div class="loading-spinner">
+                        <div class="spinner"></div>
+                        <p>${message}</p>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+            },
+
+            hideLoading() {
+                const overlay = document.getElementById('loadingOverlay');
+                if (overlay) overlay.remove();
+            }
+        };
+
+        // Make functions global
+        window.loginReferee = async function (event) {
+            event.preventDefault();
+
+            const refId = document.getElementById('refereeId').value.trim();
+            const password = document.getElementById('refereePassword').value.trim();
+
+            if (!refId || !password) {
+                alert('❌ Please enter Referee ID and password');
+                return;
+            }
+
+            try {
+                UI.showLoading('Logging in...');
+
+                // Fetch referee data from Firebase directly
+                const snap = await get(ref(database, `referees/${refId}`));
+                if (!snap.exists()) throw new Error('Invalid referee ID or password');
+
+                const data = snap.val();
+                if (data.password !== password) throw new Error('Invalid referee ID or password');
+
+                // Set session
+                sessionStorage.setItem('userRole', 'referee');
+                sessionStorage.setItem('userId', refId);
+                sessionStorage.setItem('refId', refId);
+                sessionStorage.setItem('courtNumber', data.courtNumber || '');
+                
+                // Store login page URL for logout redirect
+                sessionStorage.setItem('loginPageUrl', window.location.href);
+
+                // Sync users/{refId}
+                await set(ref(database, `users/${refId}`), {
+                    role: 'referee',
+                    refId: refId,
+                    courtNumber: data.courtNumber || '',
+                    updatedAt: new Date().toISOString()
+                });
+
+                UI.hideLoading();
+                window.location.href = window.location.origin + '/referee/dashboard.html';
+            } catch (error) {
+                UI.hideLoading();
+                alert('Login failed: ' + error.message);
+            }
+        };
+    </script>
+</body>
+
+</html>
