@@ -189,6 +189,85 @@
             }
         };
 
+        // SECURE LOGIN ATTEMPT PROTECTION
+        window.RATE_LIMITER = {
+            maxAttempts: 3,
+            lockTime: 60 * 1000,
+            
+            checkLimit() {
+                const stored = localStorage.getItem('loginAttempts');
+                if (stored) {
+                    const data = JSON.parse(stored);
+                    if (data.lockedUntil && Date.now() < data.lockedUntil) {
+                        this.enforceLock(data.lockedUntil);
+                        return false; 
+                    } else if (data.lockedUntil && Date.now() >= data.lockedUntil) {
+                        localStorage.removeItem('loginAttempts');
+                        return true;
+                    }
+                }
+                return true; 
+            },
+            
+            recordFailure() {
+                let data = { attempts: 0, lockedUntil: null };
+                const stored = localStorage.getItem('loginAttempts');
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (!parsed.lockedUntil || Date.now() >= parsed.lockedUntil) {
+                        data = parsed;
+                    }
+                }
+                
+                data.attempts += 1;
+                
+                if (data.attempts >= this.maxAttempts) {
+                    data.lockedUntil = Date.now() + this.lockTime;
+                    localStorage.setItem('loginAttempts', JSON.stringify(data));
+                    this.enforceLock(data.lockedUntil);
+                    return { locked: true, remaining: 0 };
+                }
+                
+                localStorage.setItem('loginAttempts', JSON.stringify(data));
+                return { locked: false, remaining: this.maxAttempts - data.attempts };
+            },
+            
+            reset() {
+                localStorage.removeItem('loginAttempts');
+            },
+            
+            enforceLock(lockedUntil) {
+                const buttons = document.querySelectorAll('button[type="submit"]');
+                const inputs = document.querySelectorAll('input');
+                
+                buttons.forEach(btn => {
+                    if (!btn.dataset.originalText) btn.dataset.originalText = btn.innerText;
+                    btn.disabled = true;
+                });
+                inputs.forEach(input => input.disabled = true);
+                
+                const updateTimer = () => {
+                    const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
+                    if (remaining <= 0) {
+                        buttons.forEach(btn => {
+                            btn.disabled = false;
+                            btn.innerText = btn.dataset.originalText;
+                        });
+                        inputs.forEach(input => input.disabled = false);
+                        localStorage.removeItem('loginAttempts');
+                    } else {
+                        buttons.forEach(btn => btn.innerText = `Try again in ${remaining}s`);
+                        setTimeout(updateTimer, 1000);
+                    }
+                };
+                updateTimer();
+            }
+        };
+
+        window.addEventListener('DOMContentLoaded', () => {
+            RATE_LIMITER.checkLimit();
+        });
+
         // AUTH MANAGER
         window.AUTH_MANAGER = {
             currentUser: null,
@@ -304,6 +383,11 @@
         // Make functions global
         window.loginAdmin = async function (event) {
             event.preventDefault();
+            
+            if (!RATE_LIMITER.checkLimit()) {
+                alert('Too many failed attempts. Please try again in 60 seconds.');
+                return;
+            }
 
             const email = document.getElementById('adminEmail').value;
             const password = document.getElementById('adminPassword').value;
@@ -314,11 +398,17 @@
                 UI.hideLoading();
 
                 if (result.success) {
+                    RATE_LIMITER.reset();
                     window.location.href = window.location.origin + '/admin/dashboard.html';
                 }
             } catch (error) {
                 UI.hideLoading();
-                alert('Login failed: ' + error.message);
+                const status = RATE_LIMITER.recordFailure();
+                if (status.locked) {
+                    setTimeout(() => alert('Too many failed attempts. Please try again in 60 seconds.'), 10);
+                } else {
+                    alert(`Invalid username or password. Attempts remaining: ${status.remaining}`);
+                }
             }
         };
     </script>

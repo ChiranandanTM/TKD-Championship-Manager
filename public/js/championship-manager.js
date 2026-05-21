@@ -557,6 +557,74 @@ const CHAMPIONSHIP_MANAGER = {
       console.error("❌ Error completing championship:", error);
       throw error;
     }
+  },
+
+  // Update championship details (name, location, description, date, organizer, status)
+  // Also syncs formConfig if this championship is currently active
+  async updateChampionshipDetails(champId, updatedData) {
+    try {
+      console.log('✏️ Updating championship details for:', champId, updatedData);
+
+      // 1. Update the /championships node
+      const champRef = dbRef(database, `championships/${champId}`);
+      const champSnap = await dbGet(champRef);
+      if (!champSnap.exists()) throw new Error('Championship not found');
+
+      const existing = champSnap.val();
+      const merged = {
+        ...existing,
+        name:        updatedData.name        !== undefined ? updatedData.name        : existing.name,
+        location:    updatedData.location    !== undefined ? updatedData.location    : existing.location,
+        description: updatedData.description !== undefined ? updatedData.description : existing.description,
+        date:        updatedData.date        !== undefined ? updatedData.date        : existing.date,
+        organizer:   updatedData.organizer   !== undefined ? updatedData.organizer   : existing.organizer,
+        status:      updatedData.status      !== undefined ? updatedData.status      : existing.status,
+        updatedAt:   Date.now(),
+        // keep nested championship object in sync too
+        championship: {
+          title:     updatedData.name        !== undefined ? updatedData.name        : (existing.championship?.title     || existing.name),
+          venue:     updatedData.location    !== undefined ? updatedData.location    : (existing.championship?.venue     || existing.location),
+          address:   updatedData.description !== undefined ? updatedData.description : (existing.championship?.address   || existing.description),
+          date:      updatedData.date        !== undefined ? updatedData.date        : (existing.championship?.date      || existing.date),
+          organizer: updatedData.organizer   !== undefined ? updatedData.organizer   : (existing.championship?.organizer || existing.organizer)
+        }
+      };
+
+      await dbSet(champRef, merged);
+      console.log('✅ /championships node updated');
+
+      // 2. Check if this is the currently active championship in formConfig
+      const configRef = dbRef(database, 'formConfig');
+      const configSnap = await dbGet(configRef);
+      if (configSnap.exists()) {
+        const config = configSnap.val();
+        const activeChampId = config?.championship?.champId;
+        if (activeChampId === champId) {
+          console.log('🔄 This is the active championship — syncing formConfig…');
+          config.championship = {
+            ...config.championship,
+            title:     merged.championship.title,
+            venue:     merged.championship.venue,
+            address:   merged.championship.address,
+            date:      merged.championship.date,
+            organizer: merged.championship.organizer,
+            champId:   champId
+          };
+          await dbSet(configRef, config);
+          console.log('✅ formConfig synced with updated championship details');
+
+          // Invalidate cache so next load picks up fresh data
+          if (typeof PERFORMANCE_CACHE !== 'undefined') {
+            try { PERFORMANCE_CACHE.invalidate('formConfig'); } catch (_) {}
+          }
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error('❌ Error updating championship details:', error);
+      throw error;
+    }
   }
 };
 

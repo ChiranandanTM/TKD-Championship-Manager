@@ -86,7 +86,13 @@ const TEAM_DEADLINE_MANAGER = {
                   id="toggle-btn-${team.id}">
                   ${isClosed ? '🔓 Reopen' : '🔒 Close'}
                 </button>
-                ${isAdmin ? `<button onclick="TEAM_DEADLINE_MANAGER.deleteTeam('${team.id}', '${team.teamName.replace(/'/g, "\\'")}')"
+                ${isAdmin ? `
+                  <button onclick="TEAM_DEADLINE_MANAGER.openEditTeam('${team.id}')"
+                    style="padding: 6px 14px; font-size: 0.85rem; background: var(--accent-cyan); color: var(--primary-black);
+                           border: none; border-radius: 6px; cursor: pointer; font-weight: 700;">
+                    ✏️ Edit
+                  </button>
+                  <button onclick="TEAM_DEADLINE_MANAGER.deleteTeam('${team.id}', '${team.teamName.replace(/'/g, "\\'")}')"
                   style="padding: 6px 14px; font-size: 0.85rem; background: var(--accent-red); color: var(--text-white);
                          border: none; border-radius: 6px; cursor: pointer; font-weight: 700; opacity: 0.8;"
                   title="⚠️ Delete this team and all associated players"
@@ -546,6 +552,152 @@ const TEAM_DEADLINE_MANAGER = {
       badge.textContent = q
         ? `${visible} of ${total} team${total !== 1 ? 's' : ''}`
         : `${total} team${total !== 1 ? 's' : ''}`;
+    }
+  },
+
+  // ─── Edit Team Features ──────────────────────────────────────────────────
+  async openEditTeam(teamId) {
+    if (typeof AUTH_MANAGER !== 'undefined') {
+      const user = AUTH_MANAGER.getCurrentUser();
+      if (user.role !== 'admin') {
+        if (typeof MODAL !== 'undefined') MODAL.error('❌ Only admins can edit teams.');
+        return;
+      }
+    }
+
+    this.createEditTeamModalHTML();
+
+    try {
+      const teamRef = dbRef(database, `teams/${teamId}`);
+      const snap = await dbGet(teamRef);
+      if (!snap.exists()) {
+        if (typeof MODAL !== 'undefined') MODAL.error('Team not found.');
+        return;
+      }
+      const t = snap.val();
+
+      document.getElementById('editTeamId').value = teamId;
+      document.getElementById('editTeamName').value = t.teamName || '';
+      document.getElementById('editTeamUsername').value = t.username || '';
+      document.getElementById('editTeamEmail').value = t.email || '';
+      document.getElementById('editTeamPassword').value = t.password || '';
+
+      document.getElementById('editTeamModal').style.display = 'flex';
+      document.getElementById('editTeamName').focus();
+    } catch (err) {
+      console.error('Error loading team for edit:', err);
+      if (typeof MODAL !== 'undefined') MODAL.error('Error loading team data.');
+    }
+  },
+
+  closeEditTeamModal() {
+    const modal = document.getElementById('editTeamModal');
+    if (modal) {
+      modal.style.display = 'none';
+      document.getElementById('editTeamForm').reset();
+    }
+  },
+
+  createEditTeamModalHTML() {
+    if (document.getElementById('editTeamModal')) return;
+
+    const modalHTML = `
+      <div id="editTeamModal" class="modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; align-items: center; justify-content: center;">
+        <div class="modal-content" style="background: var(--secondary-black); border: 2px solid var(--accent-cyan); border-radius: var(--border-radius); padding: 40px; width: 90%; max-width: 500px; box-shadow: 0 10px 40px rgba(0,229,255,0.3);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+            <h2 style="margin: 0; color: var(--accent-cyan);">✏️ Edit Team Details</h2>
+            <button onclick="TEAM_DEADLINE_MANAGER.closeEditTeamModal()" style="background: transparent; border: none; color: var(--accent-cyan); font-size: 28px; cursor: pointer; padding: 0; width: 30px; height: 30px;">×</button>
+          </div>
+
+          <form id="editTeamForm" style="display: flex; flex-direction: column; gap: 20px;">
+            <input type="hidden" id="editTeamId">
+            <div style="display: flex; flex-direction: column;">
+              <label style="color: var(--text-gray); margin-bottom: 8px; font-size: 0.95rem;">Team Name <span style="color: var(--accent-red);">*</span></label>
+              <input type="text" id="editTeamName" required style="padding: 12px; background: var(--primary-black); border: 2px solid var(--text-gray); border-radius: 6px; color: var(--text-white); font-size: 1rem;" />
+            </div>
+
+            <div style="display: flex; flex-direction: column;">
+              <label style="color: var(--text-gray); margin-bottom: 8px; font-size: 0.95rem;">Username <span style="color: var(--accent-red);">*</span></label>
+              <input type="text" id="editTeamUsername" required style="padding: 12px; background: var(--primary-black); border: 2px solid var(--text-gray); border-radius: 6px; color: var(--text-white); font-size: 1rem;" />
+            </div>
+
+            <div style="display: flex; flex-direction: column;">
+              <label style="color: var(--text-gray); margin-bottom: 8px; font-size: 0.95rem;">Email <span style="color: var(--accent-red);">*</span></label>
+              <input type="email" id="editTeamEmail" required style="padding: 12px; background: var(--primary-black); border: 2px solid var(--text-gray); border-radius: 6px; color: var(--text-white); font-size: 1rem;" />
+            </div>
+
+            <div style="display: flex; flex-direction: column;">
+              <label style="color: var(--text-gray); margin-bottom: 8px; font-size: 0.95rem;">Password <span style="color: var(--accent-red);">*</span></label>
+              <input type="text" id="editTeamPassword" required style="padding: 12px; background: var(--primary-black); border: 2px solid var(--text-gray); border-radius: 6px; color: var(--text-white); font-size: 1rem;" />
+            </div>
+
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+              <button type="submit" id="editTeamSubmitBtn" style="flex: 1; padding: 12px; background: var(--accent-cyan); color: var(--primary-black); border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">💾 Save Changes</button>
+              <button type="button" onclick="TEAM_DEADLINE_MANAGER.closeEditTeamModal()" style="flex: 1; padding: 12px; background: rgba(255,255,255,0.1); color: var(--text-white); border: none; border-radius: 6px; font-weight: bold; cursor: pointer;">❌ Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    document.getElementById('editTeamForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      TEAM_DEADLINE_MANAGER.submitEditTeamForm();
+    });
+
+    // Close on backdrop click
+    document.getElementById('editTeamModal').addEventListener('click', (e) => {
+      if (e.target.id === 'editTeamModal') TEAM_DEADLINE_MANAGER.closeEditTeamModal();
+    });
+  },
+
+  async submitEditTeamForm() {
+    const teamId = document.getElementById('editTeamId').value;
+    const teamName = document.getElementById('editTeamName').value.trim();
+    const username = document.getElementById('editTeamUsername').value.trim();
+    const email = document.getElementById('editTeamEmail').value.trim();
+    const password = document.getElementById('editTeamPassword').value.trim();
+
+    if (!teamName || !username || !email || !password) {
+      if (typeof MODAL !== 'undefined') MODAL.warning('All fields are required');
+      return;
+    }
+    if (password.length < 6) {
+      if (typeof MODAL !== 'undefined') MODAL.warning('Password must be at least 6 characters');
+      return;
+    }
+    if (!email.includes('@')) {
+      if (typeof MODAL !== 'undefined') MODAL.warning('Invalid email format');
+      return;
+    }
+
+    const submitBtn = document.getElementById('editTeamSubmitBtn');
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Saving...';
+
+    try {
+      const teamRef = dbRef(database, `teams/${teamId}`);
+      await dbUpdate(teamRef, {
+        teamName: teamName,
+        username: username,
+        email: email,
+        password: password
+      });
+
+      if (typeof MODAL !== 'undefined') {
+        MODAL.success('✅ Team details updated successfully!');
+      }
+
+      this.closeEditTeamModal();
+      await this.renderTeamsTable('teamsTableContainer');
+    } catch (err) {
+      console.error('Error updating team:', err);
+      if (typeof MODAL !== 'undefined') MODAL.error('Error: ' + err.message);
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = '💾 Save Changes';
     }
   }
 };
