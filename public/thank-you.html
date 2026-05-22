@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration Successful - Taekwondo Championship</title>
+    <!-- Favicon - Multiple sizes for better visibility -->
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/js/history-protection.js"></script>
+    <style>
+        .thank-you-container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 40px 20px;
+            text-align: center;
+            background: rgba(22, 33, 62, 0.9);
+            border: 2px solid var(--border-gold);
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+            backdrop-filter: blur(10px);
+        }
+        .success-icon {
+            font-size: 80px;
+            color: var(--success-green);
+            margin-bottom: 20px;
+            text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        }
+        .thank-you-title {
+            font-size: 2.2em;
+            color: var(--border-gold);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .thank-you-message {
+            font-size: 1.1em;
+            color: var(--text-white);
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        .close-btn {
+            background: var(--border-gold);
+            color: #000;
+            border: none;
+            padding: 12px 35px;
+            font-size: 1.1em;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+        }
+        .close-btn:hover {
+            background: #e6c200;
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
+        }
+    </style>
+</head>
+<body style="min-height: 100vh; margin: 0; display: flex; align-items: center; justify-content: center; padding: 20px;">
+    <div class="thank-you-container">
+        <div class="success-icon">✅</div>
+        <h1 class="thank-you-title">Successfully Registered</h1>
+        <p class="thank-you-message">
+            Your registration has been successfully submitted.<br>
+            The tournament administrator will review your details.
+        </p>
+        <div id="actionButtons" style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+            <button class="close-btn" onclick="closePage()">Close This Page</button>
+        </div>
+    </div>
+
+    <script>
+        // Initialize history protection for public user
+        function initializeThankYouPage() {
+            console.log('📄 Thank you page initializing...');
+            
+            // Mark user as public user (even if they were before)
+            HISTORY_PROTECTION.markPublicUser();
+            
+            // Protect this page with multiple history states
+            HISTORY_PROTECTION.protectCurrentPage();
+            
+            // Push multiple history barriers to prevent back navigation
+            for (let i = 0; i < 10; i++) {
+                history.pushState(
+                    { thankyouBarrier: true, index: i },
+                    '',
+                    window.location.href
+                );
+            }
+            
+            console.log('✅ Thank you page protected with history barriers');
+        }
+
+        // Handle back button attempts - keep user on this page
+        window.addEventListener('popstate', function(event) {
+            console.log('🔄 Back button detected, pushing new state...');
+            // Push a new state to prevent going back
+            history.pushState(null, null, window.location.href);
+        });
+        
+        // Initial setup on page load
+        window.addEventListener('load', initializeThankYouPage);
+        
+        // Also run immediately in case load fires before this script
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeThankYouPage);
+        } else {
+            initializeThankYouPage();
+        }
+
+        function closePage() {
+            console.log("Attempting to close page...");
+            
+            // Clear public user session when closing
+            HISTORY_PROTECTION.clearPublicSession();
+            
+            // Try to close the window/tab
+            window.close();
+            
+            // If window.close() doesn't work (browser security)
+            setTimeout(function() {
+                // If we are still here, window.close() likely failed
+                const message = document.querySelector('.thank-you-message');
+                if (!message.innerText.includes('manually')) {
+                    message.innerHTML += "<br><br><span style='color: var(--accent-cyan); font-weight: bold;'>Please close this tab/browser window manually.</span>";
+                }
+            }, 500);
+        }
+    </script>
+</body>
+</html> 

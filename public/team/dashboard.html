@@ -243,6 +243,7 @@
         <h1 class="page-title" id="teamTitle">🛡️ TEAM DASHBOARD</h1>
         <div class="team-buttons-container">
             <button class="btn-primary" id="registerBtn" onclick="window.location.href='/register.html'" style="border-radius:10px;font-weight:800;">➕ Register Player</button>
+            <button class="btn-primary" id="leaderboardBtn" onclick="window.open('/leaderboard.html','_blank')" style="border-radius:10px;font-weight:800;background:linear-gradient(135deg, #FFD700, #FFA500);color:#000;border:none;">🏆 Leaderboard</button>
             <button class="btn-danger team-logout-btn" onclick="UI.logout()" style="border-radius:10px;font-weight:700;padding:10px 18px;">Logout</button>
         </div>
     </div>
@@ -497,7 +498,7 @@
                             <div class="player-info-row"><span class="player-info-label">Age</span><span class="player-info-value">${player.age} yrs</span></div>
                             <div class="player-info-row"><span class="player-info-label">Weight</span><span class="td-val-weight">${player.weight} kg</span></div>
                             <div class="player-info-row"><span class="player-info-label">Center</span><span class="td-val-center">${player.centerName}</span></div>
-                            <div class="player-info-row"><span class="player-info-label">Payment</span><span class="${player.paymentStatus==='Paid'?'td-val-paid':'td-val-unpaid'}">${player.paymentStatus==='Paid'?'✅ Paid':'❌ Unpaid'}</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Phone</span><span class="player-info-value">${player.phoneNumber || 'N/A'}</span></div>
                         </div>
 
                         ${badgeRowHtml}

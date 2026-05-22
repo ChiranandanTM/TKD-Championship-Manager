@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Team Leaderboard - Taekwondo Championship</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <style>
+        body {
+            background-image: url('/assets/images/tkd-background.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .header-bar {
+            background: rgba(14, 18, 42, 0.85);
+            backdrop-filter: blur(15px);
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid rgba(255, 215, 0, 0.3);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .header-title h1 {
+            margin: 0;
+            font-size: 2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, #FFD700, #FFaa00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+        }
+
+        .live-badge {
+            background: rgba(255, 50, 50, 0.2);
+            color: #ff4444;
+            border: 1px solid #ff4444;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .leaderboard-wrapper {
+            background: linear-gradient(150deg, rgba(20, 25, 50, 0.9), rgba(10, 15, 30, 0.95));
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+
+        .leaderboard-table th {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 20px;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #888;
+            font-weight: 800;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .leaderboard-table th.center {
+            text-align: center;
+        }
+
+        .leaderboard-table td {
+            padding: 20px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            transition: background 0.2s;
+        }
+
+        .leaderboard-table tbody tr:hover td {
+            background: rgba(255, 215, 0, 0.05);
+        }
+
+        .leaderboard-table td.center {
+            text-align: center;
+        }
+
+        /* Rank Styling */
+        .rank {
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: #555;
+            text-align: center;
+            width: 80px;
+        }
+
+        tr.rank-1 .rank { color: #FFD700; text-shadow: 0 0 15px rgba(255, 215, 0, 0.5); font-size: 2rem; }
+        tr.rank-2 .rank { color: #C0C0C0; text-shadow: 0 0 15px rgba(192, 192, 192, 0.5); font-size: 1.8rem; }
+        tr.rank-3 .rank { color: #CD7F32; text-shadow: 0 0 15px rgba(205, 127, 50, 0.5); font-size: 1.6rem; }
+
+        /* Team Name */
+        .team-name {
+            font-size: 1.4rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+        
+        tr.rank-1 .team-name { color: #FFD700; }
+
+        /* Medals */
+        .medal-count {
+            font-size: 1.4rem;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .gold { color: #FFD700; }
+        .silver { color: #C0C0C0; }
+        .bronze { color: #CD7F32; }
+
+        /* Points */
+        .points-box {
+            background: rgba(0, 229, 255, 0.1);
+            color: #00E5FF;
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            display: inline-block;
+            font-size: 1.5rem;
+            font-weight: 900;
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.2);
+        }
+
+        /* Top 3 Highlight rows */
+        tr.rank-1 { background: linear-gradient(90deg, rgba(255, 215, 0, 0.1), transparent); }
+        tr.rank-2 { background: linear-gradient(90deg, rgba(192, 192, 192, 0.08), transparent); }
+        tr.rank-3 { background: linear-gradient(90deg, rgba(205, 127, 50, 0.05), transparent); }
+
+        .loader {
+            text-align: center;
+            padding: 60px;
+            font-size: 1.2rem;
+            color: #888;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 215, 0, 0.2);
+            border-top: 4px solid #FFD700;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .points-legend {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-top: 30px;
+            background: rgba(0,0,0,0.4);
+            padding: 15px;
+            border-radius: 12px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+        
+        .legend-item strong {
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <div class="header-title">
+            <h1>🏆 Best Team Leaderboard</h1>
+            <div class="live-badge">
+                <span style="display:inline-block;width:8px;height:8px;background:#ff4444;border-radius:50%"></span>
+                LIVE
+            </div>
+        </div>
+        <div style="color: #888; font-size: 0.9rem; font-weight: 600;">
+            Karnataka State Championship
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="leaderboard-wrapper">
+            <table class="leaderboard-table" id="leaderboardTable">
+                <thead>
+                    <tr>
+                        <th class="rank">Rank</th>
+                        <th>Team Name</th>
+                        <th class="center">🥇 Gold</th>
+                        <th class="center">🥈 Silver</th>
+                        <th class="center">🥉 Bronze</th>
+                        <th class="center" style="color: #00E5FF">Total Points</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboardBody">
+                    <tr>
+                        <td colspan="6" class="loader">
+                            <div class="spinner"></div>
+                            Calculating Live Scores...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="points-legend">
+            <div class="legend-item">🥇 Gold = <strong>7 pts</strong></div>
+            <div class="legend-item">🥈 Silver = <strong>3 pts</strong></div>
+            <div class="legend-item">🥉 Bronze = <strong>1 pt</strong></div>
+            <div class="legend-item"><em>Sorted by Total Points</em></div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script type="module" src="/js/leaderboard.js"></script>
+</body>
+</html>

@@ -6,6 +6,39 @@ function getLoginPath() {
   return window.location.origin + '/index.html';
 }
 
+// ════════════════════════════════════════════════════════════════════════════════
+// PAGE ACCESS VERIFICATION - Block unauthorized access before auth loads
+// ════════════════════════════════════════════════════════════════════════════════
+(function verifyPageAccessOnLoad() {
+  // Wait for HISTORY_PROTECTION to be available
+  const checkHistoryProtection = setInterval(() => {
+    if (typeof HISTORY_PROTECTION !== 'undefined') {
+      clearInterval(checkHistoryProtection);
+      
+      // Verify page access immediately
+      const currentPath = window.location.pathname;
+      const isPublicUser = HISTORY_PROTECTION.isPublicUser();
+      const isProtectedPage = HISTORY_PROTECTION.isProtectedPage(currentPath);
+      
+      console.log('🔐 AUTH.JS: Initial page access check', {
+        path: currentPath,
+        isPublicUser,
+        isProtectedPage
+      });
+      
+      // If public user trying to access protected page
+      if (isPublicUser && isProtectedPage) {
+        console.warn('❌ AUTH.JS: Public user blocked from protected page:', currentPath);
+        window.location.replace('/player-register.html');
+        return;
+      }
+    }
+  }, 50);
+  
+  // Timeout after 2 seconds if HISTORY_PROTECTION not loaded
+  setTimeout(() => clearInterval(checkHistoryProtection), 2000);
+})();
+
 // AUTH MANAGER - NO IMPORTS!
 const AUTH_MANAGER = {
   currentUser: null,

@@ -352,8 +352,8 @@ const BRACKET = {
       console.log(`   Added: ${playerCountDiff > 0 ? '+' : ''}${playerCountDiff} player(s)\n`);
 
       // Check if bracket has started
-      const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] && 
-                        this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+      const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] &&
+        this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
 
       if (!hasStarted) {
         console.log(`✅ Bracket hasn't started — regenerating with all players integrated...\n`);
@@ -447,8 +447,8 @@ const BRACKET = {
       console.log(`   Added: ${playerCountDiff > 0 ? '+' : ''}${playerCountDiff} player(s)\n`);
 
       // Check if bracket has started
-      const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] && 
-                        this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+      const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] &&
+        this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
 
       if (!hasStarted) {
         console.log(`✅ Bracket hasn't started — regenerating with all players integrated...\n`);
@@ -783,7 +783,7 @@ const BRACKET = {
     // PHASE 3: Validate result
     let sameTeamPairs = 0;
     const teamCounts = {};
-    
+
     for (let i = 0; i < optimized.length - 1; i += 2) {
       if (this.areSameTeam(optimized[i], optimized[i + 1])) {
         sameTeamPairs++;
@@ -859,8 +859,8 @@ const BRACKET = {
       console.log(`   Difference: ${newPlayerCount - currentPlayerCount} new player(s)\n`);
 
       // Only regenerate if bracket hasn't started (all rounds pending)
-      const hasStarted = bracket.rounds && bracket.rounds[0] && 
-                        bracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+      const hasStarted = bracket.rounds && bracket.rounds[0] &&
+        bracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
 
       if (hasStarted) {
         console.warn(`  ⛔ Cannot regenerate: bracket has already started`);

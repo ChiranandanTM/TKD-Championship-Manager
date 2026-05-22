@@ -1113,9 +1113,9 @@ const REGISTRATION = {
       }
     }
 
-    // Payment status (now a select field)
-    const paymentStatusSelect = document.getElementById('paymentStatus');
-    data.paymentStatus = paymentStatusSelect ? paymentStatusSelect.value : 'Not Paid';
+    // Phone number
+    const phoneInput = document.getElementById('phoneNumber');
+    data.phoneNumber = phoneInput ? phoneInput.value : '';
 
     console.log('✅ Final collected data:', data);
     return data;

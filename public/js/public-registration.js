@@ -844,9 +844,9 @@ const PUBLIC_REGISTRATION = {
       }
     }
 
-    // Payment status
-    const paymentStatusSelect = document.getElementById('paymentStatus');
-    data.paymentStatus = paymentStatusSelect ? paymentStatusSelect.value : 'Not Paid';
+    // Phone number
+    const phoneInput = document.getElementById('phoneNumber');
+    data.phoneNumber = phoneInput ? phoneInput.value : '';
 
     console.log('✅ Form data collected:', data);
     return data;
@@ -1058,16 +1058,16 @@ const PUBLIC_REGISTRATION = {
       console.log(`✅ VERIFICATION PASSED: Player confirmed in database with correct team assignment`);
       // ═══════════════════════════════════════════════════════════════════════════
 
-      const regMsg = `✅ Player registered successfully!\n\nPlayer: ${formData.playerName}\nTeam: ${verifiedTeamName}\nID: ${uniquePlayerId}\n\nRedirecting to homepage...`;
+      const regMsg = `✅ Player registered successfully!\n\nPlayer: ${formData.playerName}\nTeam: ${verifiedTeamName}\nID: ${uniquePlayerId}\n\nRedirecting to thank you page...`;
       if (typeof MODAL !== 'undefined') {
         MODAL.success(regMsg);
       } else {
         alert(regMsg);
       }
 
-      // Redirect to home
+      // Redirect to thank you page
       setTimeout(() => {
-        window.location.href = window.location.origin + '/index.html';
+        window.location.href = window.location.origin + '/thank-you.html';
       }, 2000);
 
     } catch (error) {

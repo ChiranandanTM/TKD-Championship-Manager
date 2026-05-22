@@ -25,7 +25,7 @@ const FORM_CONFIG = {
       { id: 'weightCategory', label: 'Weight Category', type: 'text', required: true, readonly: true, order: 10 },
       { id: 'district', label: 'District', type: 'text', required: true, order: 11 },
       { id: 'taluk', label: 'Taluk', type: 'text', required: true, order: 12 },
-      { id: 'paymentStatus', label: 'Payment Status', type: 'select', options: ['Not Paid', 'Paid'], required: false, order: 14 },
+      { id: 'phoneNumber', label: 'Phone Number', type: 'tel', required: true, order: 13, info: 'Enter 10-digit phone number' },
       // ageCategory and playerCategory are auto-calculated from DOB — never shown as manual selects
       { id: 'ageCategory', label: 'Age Category', type: 'hidden', required: false, order: 99 },
       { id: 'playerCategory', label: 'Player Category', type: 'hidden', required: false, order: 99 },
@@ -78,19 +78,12 @@ const FORM_CONFIG = {
           };
         }
         
-        // Migrate old paymentStatus field if needed
+        // Ensure phoneNumber field is properly configured
         if (config.fields) {
-          const paymentStatusField = config.fields.find(f => f.id === 'paymentStatus');
-          if (paymentStatusField) {
-            // Update old checkbox-single type to select
-            if (paymentStatusField.type === 'checkbox-single') {
-              paymentStatusField.type = 'select';
-            }
-            // Ensure both options are present
-            if (!paymentStatusField.options || paymentStatusField.options.length < 2) {
-              paymentStatusField.options = ['Not Paid', 'Paid'];
-              await this.saveConfig(config); // Save the update
-            }
+          const phoneField = config.fields.find(f => f.id === 'phoneNumber');
+          if (phoneField && phoneField.type !== 'tel') {
+            phoneField.type = 'tel';
+            phoneField.required = true;
           }
         }
 
