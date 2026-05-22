@@ -746,29 +746,17 @@ const REGISTRATION = {
     }
   },
 
-  // Capture photo from camera
-  // Compress image to max 400x400px, JPEG quality 0.75 — reduces Firebase storage usage
-  compressImage(file) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-        const MAX = 400;
-        let w = img.width, h = img.height;
-        if (w > h) { if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; } }
-        else { if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; } }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        canvas.toBlob((blob) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve({ blob, dataUrl: reader.result });
-          reader.readAsDataURL(blob);
-        }, 'image/jpeg', 0.75);
-      };
-      img.src = url;
-    });
+  // Compress and optimize image using advanced image optimizer
+  // Automatically targets ~200KB size while maintaining quality
+  // Handles EXIF orientation, multiple formats, and adaptive quality
+  async compressImage(file) {
+    const result = await IMAGE_OPTIMIZER.optimizeImage(file);
+    if (result.error) {
+      console.error(result.error);
+      // Fallback: return original file
+      return { blob: file, dataUrl: await IMAGE_OPTIMIZER.fileToDataUrl(file) };
+    }
+    return { blob: result.blob, dataUrl: result.dataUrl };
   },
 
   capturePhoto() {

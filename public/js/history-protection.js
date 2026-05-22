@@ -13,6 +13,7 @@ const HISTORY_PROTECTION = {
     '/admin/dashboard.html',
     '/team/dashboard.html',
     '/referee/dashboard.html',
+    '/register.html',
     '/'
   ],
 
@@ -39,8 +40,12 @@ const HISTORY_PROTECTION = {
 
     // Mark if user is on a public page
     if (this.isPublicPage(currentPath)) {
-      this.markPublicUser();
-      console.log('✅ User is on public page:', currentPath);
+      if (!this.hasValidSession()) {
+        this.markPublicUser();
+        console.log('✅ User is on public page:', currentPath);
+      } else {
+        this.clearPublicSession();
+      }
     }
 
     // Protect against back navigation to protected pages

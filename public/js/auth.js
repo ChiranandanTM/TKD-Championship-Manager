@@ -19,15 +19,21 @@ function getLoginPath() {
       const currentPath = window.location.pathname;
       const isPublicUser = HISTORY_PROTECTION.isPublicUser();
       const isProtectedPage = HISTORY_PROTECTION.isProtectedPage(currentPath);
+      const hasValidSession = HISTORY_PROTECTION.hasValidSession();
       
       console.log('🔐 AUTH.JS: Initial page access check', {
         path: currentPath,
         isPublicUser,
-        isProtectedPage
+        isProtectedPage,
+        hasValidSession
       });
       
+      // If user has a valid authenticated session, clear any stale public user flags
+      if (hasValidSession && isPublicUser) {
+        HISTORY_PROTECTION.clearPublicSession();
+      }
       // If public user trying to access protected page
-      if (isPublicUser && isProtectedPage) {
+      else if (isPublicUser && isProtectedPage && !hasValidSession) {
         console.warn('❌ AUTH.JS: Public user blocked from protected page:', currentPath);
         window.location.replace('/player-register.html');
         return;
