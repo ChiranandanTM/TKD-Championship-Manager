@@ -486,10 +486,11 @@ const TEAM_DEADLINE_MANAGER = {
       }
       console.log(`✅ Prepared cleanup for ${categoryResultsModified} category results`);
 
-      // Step 4: Delete all players in a batch
+      // Step 4: Delete all players and their images in a batch
       console.log('🗑️ Deleting players...');
       playersToDelete.forEach(playerId => {
         bracketsToUpdate[`players/${playerId}`] = null;
+        bracketsToUpdate[`playerImages/${playerId}`] = null;
       });
 
       // Step 5: Delete the team record

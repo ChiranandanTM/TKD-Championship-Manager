@@ -452,6 +452,10 @@ const PUBLIC_REGISTRATION = {
           fieldHTML += `<input type="date" id="${field.id}" name="${field.id}" ${requiredAttr}>`;
           break;
 
+        case 'tel':
+          fieldHTML += `<input type="tel" id="${field.id}" name="${field.id}" maxlength="10" pattern="\\d{10}" inputmode="numeric" placeholder="10-digit phone number" title="Phone number must be exactly 10 digits" ${requiredAttr}>`;
+          break;
+
         case 'select':
           fieldHTML += `<select id="${field.id}" name="${field.id}" ${requiredAttr}>`;
           fieldHTML += `<option value="">-- Select ${field.label || field.id} --</option>`;
@@ -498,7 +502,7 @@ const PUBLIC_REGISTRATION = {
             <canvas id="cameraCanvas" style="display: none;"></canvas>
             <button type="button" id="captureBtn" class="btn-primary" onclick="PUBLIC_REGISTRATION.capturePhoto()" style="display: none; width: 100%; margin: 10px 0;">📸 Capture Photo</button>
             <button type="button" id="stopCameraBtn" class="btn-secondary" onclick="PUBLIC_REGISTRATION.stopCamera()" style="display: none; width: 100%; margin: 10px 0;">❌ Close Camera</button>
-            <div id="imagePreview" style="width: 100%; max-width: 300px; height: 300px; border: 2px dashed #FFD700; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 10px 0; color: #666; overflow: hidden;">
+            <div id="imagePreview" style="width: 100%; max-width: 300px; height: auto; border: 2px dashed #FFD700; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 10px 0; color: #666; overflow: visible;">
               <span>Image preview will appear here</span>
             </div>
           `;
@@ -738,7 +742,7 @@ const PUBLIC_REGISTRATION = {
   },
 
   // Compress and optimize image using advanced image optimizer
-  // Automatically targets ~200KB size while maintaining quality
+  // Automatically targets ~50KB-80KB size while maintaining quality
   // Handles EXIF orientation, multiple formats, and adaptive quality
   async compressImage(file) {
     const result = await IMAGE_OPTIMIZER.optimizeImage(file);
@@ -776,10 +780,11 @@ const PUBLIC_REGISTRATION = {
         const reader = new FileReader();
         reader.onload = () => {
           const dataUrl = reader.result;
+          // Store original file - will be compressed during submission
           this.currentImageFile = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' });
           this.currentImageURL = dataUrl;
-          preview.style.cssText = 'width:100%;max-width:300px;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;overflow:hidden;background:#000;min-height:100px;';
-          preview.innerHTML = `<img src="${dataUrl}" alt="Player Photo" style="max-width:100%;max-height:300px;width:auto;height:auto;object-fit:contain;display:block;">`;
+          preview.style.cssText = 'width:100%;max-width:300px;height:auto;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;background:#000;padding:10px;';
+          preview.innerHTML = `<img src="${dataUrl}" alt="Player Photo" style="max-width:100%;height:auto;object-fit:contain;display:block;border-radius:4px;">`;
           console.log('✅ Photo captured successfully');
         };
         reader.readAsDataURL(blob);
@@ -796,13 +801,18 @@ const PUBLIC_REGISTRATION = {
   handleFileSelect(event) {
     const file = event.target.files[0];
     if (file && file.type.startsWith('image/')) {
-      this.compressImage(file).then(({ blob, dataUrl }) => {
-        this.currentImageFile = new File([blob], file.name, { type: 'image/jpeg' });
-        this.currentImageURL = dataUrl;
+      // Store original file - will be compressed during submission
+      this.currentImageFile = file;
+      
+      // Show preview of original image (no compression)
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.currentImageURL = reader.result;
         const preview = document.getElementById('imagePreview');
-        preview.style.cssText = 'width:100%;max-width:300px;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;overflow:hidden;background:#000;min-height:100px;';
-        preview.innerHTML = `<img src="${dataUrl}" alt="Player Photo" style="max-width:100%;max-height:300px;width:auto;height:auto;object-fit:contain;display:block;">`;
-      });
+        preview.style.cssText = 'width:100%;max-width:300px;height:auto;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;background:#000;padding:10px;';
+        preview.innerHTML = `<img src="${reader.result}" alt="Player Photo" style="max-width:100%;height:auto;object-fit:contain;display:block;border-radius:4px;">`;
+      };
+      reader.readAsDataURL(file);
     }
   },
 
@@ -938,6 +948,14 @@ const PUBLIC_REGISTRATION = {
         throw new Error('❌ Weight: Please enter a valid weight value');
       }
 
+      // ── VALIDATE PHONE NUMBER: Must be exactly 10 digits ──────────────────────
+      const phoneNumber = (formData.phoneNumber || '').replace(/\D/g, ''); // Remove non-digits
+      if (!phoneNumber || phoneNumber.length !== 10) {
+        throw new Error('❌ Phone Number: Must be exactly 10 digits');
+      }
+      formData.phoneNumber = phoneNumber; // Store cleaned phone number
+      // ────────────────────────────────────────────────────────────────────────
+
       // ═══════════════════════════════════════════════════════════════════════════
       // BACKEND VALIDATION: Re-derive age category from DOB
       // This ensures age category ALWAYS computed from DOB, never from form
@@ -978,11 +996,11 @@ const PUBLIC_REGISTRATION = {
         }
       }, 30000); // 30 second timeout
 
-      // Upload image if needed
+      // Upload image if needed (stored separately in playerImages/, not in player record)
+      let _uploadedImageUrl = null;
       if (this.currentImageFile) {
         submitBtn.textContent = 'Uploading image...';
-        const imageUrl = await this.uploadImage(this.currentImageFile);
-        formData.playerImage = imageUrl;
+        _uploadedImageUrl = await this.uploadImage(this.currentImageFile);
       }
 
       // ═══════════════════════════════════════════════════════════════════════════
@@ -1025,8 +1043,19 @@ const PUBLIC_REGISTRATION = {
       console.log(`✅ UNIQUE ID GENERATED: ${uniquePlayerId}`);
       console.log(`✅ CONCURRENT-SAFE WRITE: Saving player ${formData.playerName} to team ${formData.teamId}`);
 
+      // Sanitize before saving
+      Object.keys(formData).forEach(key => {
+        if (formData[key] === undefined) delete formData[key];
+      });
+      delete formData.playerImage; // Ensure image is never written into the player record
+
       // Write to database with unique ID
       await dbSet(newPlayerRef, formData);
+
+      // Write image to dedicated playerImages/ path (keeps players/ image-free)
+      if (_uploadedImageUrl) {
+        await dbSet(dbRef(database, `playerImages/${uniquePlayerId}`), _uploadedImageUrl);
+      }
 
       clearTimeout(timeout);
       console.log(`✅ REGISTRATION COMPLETE: Player ${uniquePlayerId} successfully saved`);

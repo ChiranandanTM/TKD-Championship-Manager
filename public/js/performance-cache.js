@@ -12,8 +12,8 @@ const PERFORMANCE_CACHE = {
     weightCategories: 15 * 60 * 1000,   // 15 min
     players:           2 * 60 * 1000,   // 2 min
     teams:             5 * 60 * 1000,   // 5 min
-    brackets:          1 * 60 * 1000,   // 1 min
-    matchHistory:      1 * 60 * 1000,   // 1 min
+    brackets:          5 * 60 * 1000,   // 5 min
+    matchHistory:      5 * 60 * 1000,   // 5 min
     championship:     10 * 60 * 1000,   // 10 min
   },
 

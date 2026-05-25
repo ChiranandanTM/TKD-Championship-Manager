@@ -2,17 +2,17 @@
 // ADVANCED IMAGE OPTIMIZER MODULE
 // ============================================
 // Automatically optimizes player profile images after upload
-// Target: ~200KB or lower while maintaining visual quality
+// Target: ~50KB-80KB or lower while maintaining visual quality
 // Supports: JPG, JPEG, PNG, WEBP
 
 const IMAGE_OPTIMIZER = {
   // Configuration
   config: {
-    maxFileSizeTarget: 200 * 1024,      // 200KB target
-    maxDimensions: 600,                 // Max 600x600px for display quality
+    maxFileSizeTarget: 80 * 1024,       // 80KB target
+    maxDimensions: 500,                 // Max 500x500px for display quality
     minDimensions: 200,                 // Min 200x200px
-    initialQuality: 0.80,               // Start at 80% quality
-    minQuality: 0.60,                   // Don't go below 60% quality
+    initialQuality: 0.75,               // Start at 75% quality
+    minQuality: 0.30,                   // Don't go below 30% quality
     supportedFormats: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
     qualityStep: 0.05,                  // Adjust quality by 5% steps
   },
@@ -215,7 +215,7 @@ const IMAGE_OPTIMIZER = {
 
         // Check if already small enough
         if (file.size <= this.config.maxFileSizeTarget) {
-          console.log(`✅ Image already optimized (${(file.size / 1024).toFixed(2)}KB < 200KB target)`);
+          console.log(`✅ Image already optimized (${(file.size / 1024).toFixed(2)}KB < 80KB target)`);
           return resolve({ blob: file, dataUrl: await this.fileToDataUrl(file), optimized: false });
         }
 

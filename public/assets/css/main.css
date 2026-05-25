@@ -464,6 +464,7 @@ input[type="text"],
 input[type="number"],
 input[type="date"],
 input[type="email"],
+input[type="tel"],
 input[type="password"],
 textarea {
   width: 100%;
@@ -903,7 +904,7 @@ button:disabled,
 .image-preview {
   width: 100%;
   max-width: 400px;
-  height: 400px;
+  height: auto;
   margin: 0 auto var(--spacing-md);
   background: var(--primary-black);
   border: 2px solid var(--text-gray);
@@ -911,12 +912,12 @@ button:disabled,
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .image-preview img {
   max-width: 100%;
-  max-height: 100%;
+  height: auto;
   object-fit: contain;
 }
 
@@ -1970,6 +1971,7 @@ button:disabled,
   input[type="number"],
   input[type="date"],
   input[type="email"],
+  input[type="tel"],
   input[type="password"],
   select,
   textarea {

@@ -47,8 +47,17 @@ const REGISTRATION = {
       const playerRef = dbRef(database, `players/${playerId}`);
       const snapshot = await dbGet(playerRef);
       if (snapshot.exists()) {
+        const data = snapshot.val();
+        // Load image from dedicated playerImages/ path (new format).
+        // Fall back to legacy playerImage field already in data if present.
+        if (!data.playerImage) {
+          try {
+            const imgSnap = await dbGet(dbRef(database, `playerImages/${playerId}`));
+            if (imgSnap.exists()) data.playerImage = imgSnap.val();
+          } catch (_) {}
+        }
         // Store in memory - avoids sessionStorage quota error from large base64 images
-        this._editPlayerData = snapshot.val();
+        this._editPlayerData = data;
         console.log('✅ Player data loaded into memory');
       }
     } catch (error) {
@@ -336,8 +345,8 @@ const REGISTRATION = {
       this.currentImageURL = playerData.playerImage;
       const preview = document.getElementById('imagePreview');
       if (preview) {
-        preview.style.cssText = 'width:100%;max-width:300px;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;overflow:hidden;background:#000;';
-        preview.innerHTML = `<img src="${playerData.playerImage}" alt="Player Photo" style="max-width:100%;max-height:300px;width:auto;height:auto;object-fit:contain;display:block;">`;
+        preview.style.cssText = 'width:100%;max-width:300px;height:auto;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;background:#000;padding:10px;';
+        preview.innerHTML = `<img src="${playerData.playerImage}" alt="Player Photo" style="max-width:100%;height:auto;object-fit:contain;display:block;border-radius:4px;">`;
       }
     }
   },
@@ -452,6 +461,10 @@ const REGISTRATION = {
           fieldHTML += `<input type="date" id="${field.id}" name="${field.id}" ${requiredAttr}>`;
           break;
 
+        case 'tel':
+          fieldHTML += `<input type="tel" id="${field.id}" name="${field.id}" maxlength="10" pattern="\\d{10}" inputmode="numeric" placeholder="10-digit phone number" title="Phone number must be exactly 10 digits" ${requiredAttr}>`;
+          break;
+
         case 'select':
           fieldHTML += `<select id="${field.id}" name="${field.id}" ${requiredAttr}>`;
           fieldHTML += `<option value="">-- Select ${field.label || field.id} --</option>`;
@@ -498,7 +511,7 @@ const REGISTRATION = {
             <video id="cameraVideo" style="display: none; width: 100%; max-width: 500px; border-radius: 8px; margin: 10px 0;"></video>
             <canvas id="cameraCanvas" style="display: none;"></canvas>
             <button type="button" id="captureBtn" class="btn-primary" onclick="REGISTRATION.capturePhoto()" style="display: none; width: 100%; margin: 10px 0;">📸 Capture Photo</button>
-            <div id="imagePreview" style="width: 100%; max-width: 300px; height: 300px; border: 2px dashed #FFD700; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 10px 0; color: #666; overflow: hidden;">
+            <div id="imagePreview" style="width: 100%; max-width: 300px; height: auto; border: 2px dashed #FFD700; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin: 10px 0; color: #666; overflow: visible; background: #000;">
               <span>Image preview will appear here</span>
             </div>
           `;
@@ -747,7 +760,7 @@ const REGISTRATION = {
   },
 
   // Compress and optimize image using advanced image optimizer
-  // Automatically targets ~200KB size while maintaining quality
+  // Automatically targets ~50KB-80KB size while maintaining quality
   // Handles EXIF orientation, multiple formats, and adaptive quality
   async compressImage(file) {
     const result = await IMAGE_OPTIMIZER.optimizeImage(file);
@@ -775,11 +788,12 @@ const REGISTRATION = {
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result;
+        // Store original file - will be compressed during submission
         this.currentImageFile = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' });
         this.currentImageURL = dataUrl;
-        // Show full photo without cropping
-        preview.style.cssText = 'width:100%;max-width:300px;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;overflow:hidden;background:#000;min-height:100px;';
-        preview.innerHTML = `<img src="${dataUrl}" alt="Player Photo" style="max-width:100%;max-height:300px;width:auto;height:auto;object-fit:contain;display:block;">`;
+        // Show full photo preview without compression
+        preview.style.cssText = 'width:100%;max-width:300px;height:auto;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;background:#000;padding:10px;';
+        preview.innerHTML = `<img src="${dataUrl}" alt="Player Photo" style="max-width:100%;height:auto;object-fit:contain;display:block;border-radius:4px;">`;
       };
       reader.readAsDataURL(blob);
       // Stop camera
@@ -790,18 +804,22 @@ const REGISTRATION = {
     }, 'image/jpeg', 0.75);
   },
 
-  // Handle file select — compress before storing, show full image without cropping
+  // Handle file select — show original full image in preview, compression happens on submit
   handleFileSelect(event) {
     const file = event.target.files[0];
     if (file && file.type.startsWith('image/')) {
-      this.compressImage(file).then(({ blob, dataUrl }) => {
-        this.currentImageFile = new File([blob], file.name, { type: 'image/jpeg' });
-        this.currentImageURL = dataUrl;
+      // Store original file - will be compressed during submission
+      this.currentImageFile = file;
+      
+      // Show preview of original image (no compression)
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.currentImageURL = reader.result;
         const preview = document.getElementById('imagePreview');
-        // Show full photo without zooming/cropping
-        preview.style.cssText = 'width:100%;max-width:300px;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;overflow:hidden;background:#000;min-height:100px;';
-        preview.innerHTML = `<img src="${dataUrl}" alt="Player Photo" style="max-width:100%;max-height:300px;width:auto;height:auto;object-fit:contain;display:block;">`;
-      });
+        preview.style.cssText = 'width:100%;max-width:300px;height:auto;border:2px dashed #FFD700;border-radius:8px;display:flex;align-items:center;justify-content:center;margin:10px 0;background:#000;padding:10px;';
+        preview.innerHTML = `<img src="${reader.result}" alt="Player Photo" style="max-width:100%;height:auto;object-fit:contain;display:block;border-radius:4px;">`;
+      };
+      reader.readAsDataURL(file);
     }
   },
 
@@ -905,6 +923,14 @@ const REGISTRATION = {
       // Collect form data first
       const formData = this.collectFormData();
 
+      // ── VALIDATE PHONE NUMBER: Must be exactly 10 digits ──────────────────────
+      const phoneNumber = (formData.phoneNumber || '').replace(/\D/g, ''); // Remove non-digits
+      if (!phoneNumber || phoneNumber.length !== 10) {
+        throw new Error('Phone number must be exactly 10 digits.');
+      }
+      formData.phoneNumber = phoneNumber; // Store cleaned phone number
+      // ────────────────────────────────────────────────────────────────────────
+
       // ── BACKEND VALIDATION: Re-derive ageCategory from DOB ──────────────────
       // This ensures the age category is ALWAYS computed from the date of birth,
       // regardless of what may be stored in any hidden input on the page.
@@ -957,11 +983,11 @@ const REGISTRATION = {
         }
       }, 30000); // 30 second timeout
 
-      // Upload new image if one was selected for editing
+      // Upload new image if one was selected (stored separately in playerImages/, not in player record)
+      let _uploadedImageUrl = null;
       if (this.currentImageFile) {
         submitBtn.textContent = 'Uploading image...';
-        const imageUrl = await this.uploadImage(this.currentImageFile);
-        formData.playerImage = imageUrl;
+        _uploadedImageUrl = await this.uploadImage(this.currentImageFile);
       }
 
       // ────────────────────────────────────────────────────────────────────────
@@ -1005,12 +1031,26 @@ const REGISTRATION = {
         }
 
         formData.status = existingData.status; // Keep existing status
-        if (existingData.playerImage && !this.currentImageFile) {
-          formData.playerImage = existingData.playerImage; // Keep existing image if not updated
-        }
+        // playerImage is stored in playerImages/ — never include in player record
+
+        // Sanitize before saving
+        Object.keys(formData).forEach(key => {
+          if (formData[key] === undefined) delete formData[key];
+        });
+        delete formData.playerImage; // Ensure image is never written into the player record
 
         const playerRef = dbRef(database, `players/${this.editingPlayerId}`);
         await dbSet(playerRef, formData);
+
+        // Persist image to playerImages/ path (new image or migrate legacy record)
+        const imgRef = dbRef(database, `playerImages/${this.editingPlayerId}`);
+        if (_uploadedImageUrl) {
+          await dbSet(imgRef, _uploadedImageUrl);
+        } else if (existingData.playerImage) {
+          // Migrate: move image out of player record into dedicated path
+          await dbSet(imgRef, existingData.playerImage);
+        }
+
         clearTimeout(timeout);
         const updateMsg = '✅ Player information updated successfully!';
         if (typeof MODAL !== 'undefined') {
@@ -1021,13 +1061,25 @@ const REGISTRATION = {
       } else {
         // ── CREATE: New player - bind to current authenticated team ──
         formData.status = 'pending';
+        delete formData.playerImage; // Ensure image is never written into the player record
 
         const playersRef = dbRef(database, 'players');
         const newPlayerRef = dbPush(playersRef);
-        
+
         console.log(`✅ SECURITY: Creating new player ${newPlayerRef.key} for team ${currentTeamId}`);
-        
+
+        // Sanitize before saving
+        Object.keys(formData).forEach(key => {
+          if (formData[key] === undefined) delete formData[key];
+        });
+
         await dbSet(newPlayerRef, formData);
+
+        // Write image to dedicated playerImages/ path (keeps player record image-free)
+        if (_uploadedImageUrl) {
+          await dbSet(dbRef(database, `playerImages/${newPlayerRef.key}`), _uploadedImageUrl);
+        }
+
         clearTimeout(timeout);
 
         const regMsg = '✅ Player registered successfully!';

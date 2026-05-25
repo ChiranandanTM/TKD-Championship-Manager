@@ -68,6 +68,7 @@ const PLAYER_MANAGER = {
 
         const cleanupUpdates = {};
         cleanupUpdates[`players/${playerId}`] = null;
+        cleanupUpdates[`playerImages/${playerId}`] = null;
 
         // Clean bracket references so no ghost IDs remain
         try {
@@ -231,9 +232,10 @@ const PLAYER_MANAGER = {
       }
       console.log(`✅ Prepared cleanup for ${categoryResultsModified} category results`);
 
-      // Step 6: Delete the player record
+      // Step 6: Delete the player record and image
       console.log('🗑️ Deleting player record...');
       updates[`players/${playerId}`] = null;
+      updates[`playerImages/${playerId}`] = null;
 
       // Step 7: Execute all deletions in a single batch operation
       console.log('💾 Executing batch delete operation...');

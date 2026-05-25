@@ -29,6 +29,7 @@ const BRACKET = {
   categoryStatuses: {},
   categoriesRenderRequestId: 0,
   _teamNameCache: null,  // { teamId → teamName } lookup built once per session
+  editingSlot: null,     // { matchId, slot } when inline edit form is open
 
   // Category images mapping
   categoryImages: {
@@ -167,7 +168,6 @@ const BRACKET = {
       }
 
       this.categories[categoryKey].players.push(player);
-      console.log(`✅ Player ${player.playerName} categorized under ${categoryKey}`);
     });
   },
 
@@ -256,10 +256,28 @@ const BRACKET = {
     const renderRequestId = ++this.categoriesRenderRequestId;
 
     try {
-      const categoryPromises = Object.keys(this.categories).map(async (key) => {
+      // One request for all bracket statuses instead of one per category
+      const bracketsSnap = await dbGet(dbRef(database, 'brackets'));
+      const allBrackets = bracketsSnap.exists() ? bracketsSnap.val() : {};
+
+      // Ignore stale async renders and keep latest filter result on screen.
+      if (renderRequestId !== this.categoriesRenderRequestId) return;
+
+      const categoryCards = Object.keys(this.categories).map((key) => {
         const cat = this.categories[key];
         const playerCount = cat.players.length;
-        const status = await this.getBracketStatus(key);
+
+        const bracketData = allBrackets[key];
+        let status;
+        if (!bracketData) {
+          status = 'Pending';
+        } else if (bracketData.status === 'complete') {
+          status = 'Completed';
+        } else if (bracketData.status === 'live') {
+          status = 'Live';
+        } else {
+          status = 'Pending';
+        }
 
         // Store status for later filtering
         this.categoryStatuses[key] = status;
@@ -300,11 +318,6 @@ const BRACKET = {
         `;
       });
 
-      const categoryCards = await Promise.all(categoryPromises);
-
-      // Ignore stale async renders and keep latest filter result on screen.
-      if (renderRequestId !== this.categoriesRenderRequestId) return;
-
       const visibleCards = categoryCards.filter(card => card !== null);
 
       if (visibleCards.length === 0) {
@@ -334,9 +347,6 @@ const BRACKET = {
       }
       return;
     }
-
-    await this.loadPlayers();
-    this.categorizePlayers();
 
     console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
 
@@ -1480,6 +1490,13 @@ const BRACKET = {
     // Use expected total rounds (not just built rounds) so Round 1 does not
     // get mislabeled as Final while later rounds are still not generated.
     const totalRounds = this.getExpectedTotalRounds(this.currentBracket);
+    // Compute sequential match numbers across all rounds
+    let globalMatchNum = 1;
+    const matchNumMap = {};
+    this.currentBracket.rounds.forEach(round => {
+      round.forEach(match => { matchNumMap[match.matchId] = globalMatchNum++; });
+    });
+
     this.currentBracket.rounds.forEach((round, roundIndex) => {
       // Get the actual round number from the first match in this round
       const actualRoundNumber = round[0]?.round || (roundIndex + 1);
@@ -1492,7 +1509,7 @@ const BRACKET = {
       `;
 
       round.forEach(match => {
-        html += this.renderMatch(match, roundIndex);
+        html += this.renderMatch(match, roundIndex, matchNumMap[match.matchId]);
       });
 
       // Render the bye-player card for this round (if any)
@@ -1500,7 +1517,7 @@ const BRACKET = {
       const roundBye = byePlayers[String(roundIndex)];
       if (roundBye) {
         const roundComplete = round.every(m => m.status === 'completed');
-        html += this.renderByeCard(roundBye, roundComplete);
+        html += this.renderByeCard(roundBye, roundComplete, roundIndex);
       }
 
       html += `
@@ -1517,12 +1534,18 @@ const BRACKET = {
   },
 
   // Render a bye-player card for the given round
-  renderByeCard(player, roundIsComplete) {
+  renderByeCard(player, roundIsComplete, roundIndex) {
     const label = roundIsComplete
       ? '\u2705 Advanced via BYE to next round'
       : '\u23f3 BYE \u2014 waiting for all matches in this round to finish';
+    const draggable = !roundIsComplete
+      ? `draggable="true" ondragstart="BRACKET.onDragStartBye(event,'${player.id}',${roundIndex})" style="cursor:grab;"`
+      : '';
+    const dragHint = !roundIsComplete
+      ? `<div style="margin-top:8px;font-size:0.78rem;color:var(--accent-cyan);opacity:0.8;">\ud83e\udd1a Drag to fill an empty slot</div>`
+      : '';
     return `
-      <div class="match bye-card">
+      <div class="match bye-card" ${draggable}>
         <div class="match-players">
           <div class="player">
             <span class="player-name">${player.playerName}</span>
@@ -1532,15 +1555,17 @@ const BRACKET = {
         <div class="match-completed-info">
           <span class="winner-badge" style="background:rgba(255,165,0,0.15);color:#ffa500;border:1px solid #ffa500;">${label}</span>
         </div>
+        ${dragHint}
       </div>
     `;
   },
 
   // Render individual match
-  renderMatch(match, roundIndex) {
+  renderMatch(match, roundIndex, matchNumber) {
     const player1 = match.player1;
     const player2 = match.player2;
-    const isPending = match.status === 'pending' && player1 && player2;
+    const isPendingStatus = match.status === 'pending';
+    const canStartMatch = isPendingStatus && player1 && player2;
     const isInProgress = match.status === 'in-progress';
     const isCompleted = match.status === 'completed';
 
@@ -1552,25 +1577,78 @@ const BRACKET = {
       </div>
     ` : '';
 
+    // Helper: render one player slot with edit/delete/replace actions
+    const renderSlot = (player, slotClass, slotName) => {
+      const isWinner = match.winner === player?.id;
+      const isEliminated = match.eliminated === player?.id;
+      const isEditing = this.editingSlot &&
+        this.editingSlot.matchId === match.matchId &&
+        this.editingSlot.slot === slotName;
+
+      if (isEditing) {
+        const curName = player ? player.playerName : '';
+        const curTeam = player ? (player.centerName || '') : '';
+        return `
+          <div class="player ${slotClass}">
+            <div class="player-edit-form">
+              <input type="text" id="edit_name_${match.matchId}_${slotName}"
+                     value="${curName.replace(/"/g, '&quot;')}"
+                     placeholder="Player Name"
+                     onkeydown="if(event.key==='Enter'){BRACKET.saveEditPlayer('${match.matchId}','${slotName}')}else if(event.key==='Escape'){BRACKET.cancelEdit()}">
+              <input type="text" id="edit_team_${match.matchId}_${slotName}"
+                     value="${curTeam.replace(/"/g, '&quot;')}"
+                     placeholder="Team / Club (optional)"
+                     onkeydown="if(event.key==='Enter'){BRACKET.saveEditPlayer('${match.matchId}','${slotName}')}else if(event.key==='Escape'){BRACKET.cancelEdit()}">
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <button class="player-action-btn" style="background:rgba(0,200,80,0.15);border-color:var(--success-green);color:var(--success-green);"
+                        onclick="BRACKET.saveEditPlayer('${match.matchId}','${slotName}')">✓ Save</button>
+                <button class="player-action-btn" style="background:rgba(255,23,68,0.1);border-color:var(--accent-red);color:var(--accent-red);"
+                        onclick="BRACKET.cancelEdit()">✕ Cancel</button>
+              </div>
+            </div>
+          </div>`;
+      }
+
+      const isDropTarget = !player && isPendingStatus;
+      const dropAttrs = isDropTarget
+        ? `ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="BRACKET.onDropByeToSlot(event,'${match.matchId}','${slotName}')"`
+        : '';
+
+      const actionBtns = isPendingStatus ? `
+        <div class="player-actions" onclick="event.stopPropagation()">
+          ${player ? `
+            <button class="player-action-btn edit-btn" onclick="BRACKET.startEditPlayer('${match.matchId}','${slotName}')" title="Edit player">✏️</button>
+            <button class="player-action-btn delete-btn" onclick="BRACKET.deletePlayerFromMatch('${match.matchId}','${slotName}')" title="Remove player">🗑️</button>
+          ` : `
+            <button class="player-action-btn fill-btn" onclick="BRACKET.startEditPlayer('${match.matchId}','${slotName}')" title="Manually add player">+ Fill Slot</button>
+          `}
+        </div>` : '';
+
+      return `
+        <div class="player ${slotClass} ${isWinner ? 'winner' : ''} ${isEliminated ? 'eliminated' : ''} ${isDropTarget ? 'drop-target' : ''}"
+             ${dropAttrs}>
+          <span class="player-name">
+            ${player ? player.playerName : (isDropTarget ? '<span style="color:var(--accent-cyan);font-style:italic;font-size:0.85rem;">Drop BYE player here</span>' : '<span class="bye">BYE</span>')}
+          </span>
+          <span class="player-center">${player ? (player.centerName || '') : ''}</span>
+          ${actionBtns}
+        </div>`;
+    };
+
     let html = `
       <div class="match ${match.status}${isSameTeamMatch ? ' same-team-match' : ''}" data-match-id="${match.matchId}">
+        ${matchNumber ? `<div class="match-number-badge">Match ${matchNumber}</div>` : ''}
         <div class="match-players">
-          <div class="player player-blue ${match.winner === player1?.id ? 'winner' : ''} ${match.eliminated === player1?.id ? 'eliminated' : ''}">
-            <span class="player-name">${player1 ? player1.playerName : '<span class="bye">BYE</span>'}</span>
-            <span class="player-center">${player1 ? (player1.centerName || '') : ''}</span>
-          </div>
-
+          ${renderSlot(player1, 'player-blue', 'player1')}
           <div class="vs">VS</div>
-
-          <div class="player player-red ${match.winner === player2?.id ? 'winner' : ''} ${match.eliminated === player2?.id ? 'eliminated' : ''}">
-            <span class="player-name">${player2 ? player2.playerName : '<span class="bye">BYE</span>'}</span>
-            <span class="player-center">${player2 ? (player2.centerName || '') : ''}</span>
-          </div>
+          ${renderSlot(player2, 'player-red', 'player2')}
         </div>
 
         ${sameTeamWarning}
 
-        ${isPending ? `
+        ${canStartMatch ? `
           <div style="margin-top: 12px;">
             <label style="display: block; font-size: 0.9rem; color: var(--accent-cyan); margin-bottom: 6px; font-weight: 700;">🏟️ Court Number</label>
             <select id="court_${match.matchId}" style="width: 100%; padding: 8px 12px; background: var(--secondary-black); border: 1px solid var(--accent-cyan); color: var(--text-white); border-radius: 6px; font-size: 1rem; margin-bottom: 10px;">
@@ -1973,7 +2051,7 @@ const BRACKET = {
     return rankings;
   },
 
-  // Download fixture bracket as PDF (portrait, left-to-right bracket like image)
+  // Download fixture bracket as PDF — landscape A3, professional navy style
   downloadFixturePDF() {
     if (typeof window.jspdf === 'undefined' && typeof jsPDF === 'undefined') {
       MODAL.error('PDF library not loaded. Please refresh and try again.');
@@ -1985,357 +2063,748 @@ const BRACKET = {
     }
 
     try {
+      const { jsPDF } = window.jspdf || window;
       const cat = this.categories[this.currentCategory];
       const champTitle = document.title.replace(' - Bracket Management', '').trim() || 'Tournament';
-      const categoryLabel = cat.gender + ' | ' + cat.ageCategory + ' | ' + cat.weightCategory;
+      const categoryLabel = `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`;
 
-      // Firebase-safe array conversion
-      const toArr = (o) => Array.isArray(o) ? o : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
-      const rounds = toArr(this.currentBracket.rounds).map(r => toArr(r));
-      const expectedCounts = toArr(this.currentBracket.expectedRoundMatchCounts || []);
-      const totalRounds = Math.max(rounds.length, expectedCounts.length);
-      const r1Matches = rounds[0] || [];
-      const byePlayers = this.currentBracket.byePlayers || {};
+      const toArr = o => Array.isArray(o) ? o
+        : Object.keys(o).sort((a,b)=>Number(a)-Number(b)).map(k=>o[k]);
+      const rounds       = toArr(this.currentBracket.rounds).map(r=>toArr(r));
+      const expectedCnts = toArr(this.currentBracket.expectedRoundMatchCounts || []);
+      const totalRounds  = Math.max(rounds.length, expectedCnts.length);
 
-      // ── TOTAL SLOTS = R1 match player rows + 1 bye row if there is a R1 bye ──
-      // Each R1 match occupies 2 rows; the bye player occupies 1 extra row.
+      // ── PAGE SETUP (A3 landscape, mm) ────────────────────────────────
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
+      const PW = 420, PH = 297;
+      const ML = 8, MR = 8, MT = 8, MB = 12;
+      const W  = PW - ML - MR;
+
+      const r1Matches   = rounds[0] || [];
+      const byePlayers  = this.currentBracket.byePlayers || {};
       const r1ByePlayer = byePlayers['0'] || null;
-      const r1MatchSlots = r1Matches.length * 2;
-      const totalSlots = r1MatchSlots + (r1ByePlayer ? 1 : 0);
 
-      const { jsPDF } = window.jspdf || window;
+      // Colors [R,G,B]
+      const NAVY  = [23, 48, 94];
+      const WHITE = [255, 255, 255];
+      const LINE  = [26, 58, 107];
+      const LTBG  = [235, 240, 248];
+      const ADVBG = [224, 237, 255];
+      const GREEN = [21, 87, 36];
+      const GOLD  = [201, 168, 76];
+      const GRAY  = [80, 80, 80];
 
-      // ── PAGE SETUP ───────────────────────────────────────────────────
-      const PW = 595.28, PH = 841.89;
-      const ML = 48, MR = 24, MT = 60, MB = 30;
+      // Draw helpers
+      const sf = c => doc.setFillColor(c[0], c[1], c[2]);
+      const ss = c => doc.setDrawColor(c[0], c[1], c[2]);
+      const st = c => doc.setTextColor(c[0], c[1], c[2]);
+      const ln = (x1, y1, x2, y2, lw, c) => {
+        ss(c || LINE); doc.setLineWidth(lw || 0.3); doc.line(x1, y1, x2, y2);
+      };
+      const txt = (t, x, y, sz, bold, col, align) => {
+        doc.setFontSize(sz || 9);
+        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        st(col || [0, 0, 0]);
+        doc.text(String(t), x, y, { align: align || 'left', baseline: 'middle' });
+      };
+      // Player cell: bg fill + 3-sided border (top, left, bottom — open right)
+      const drawCell = (x, y, w, h, name, bg, bold) => {
+        sf(bg || LTBG); doc.rect(x, y, w, h, 'F');
+        ln(x, y, x + w, y, 0.35);         // top
+        ln(x, y, x, y + h, 0.35);         // left
+        ln(x, y + h, x + w, y + h, 0.35); // bottom
+        if (name) {
+          const s = doc.splitTextToSize(name, w - 3)[0];
+          txt(s, x + 2, y + h / 2, 7.5, bold || false, [25, 25, 25], 'left');
+        }
+      };
+      const drawSeed = (x, y, w, h, seed) => {
+        sf(NAVY); doc.rect(x, y, w, h, 'F');
+        if (seed != null) txt(String(seed), x + w / 2, y + h / 2, 6.5, true, WHITE, 'center');
+      };
+      const drawJunc = (cx, cy, sz, label) => {
+        const hs = sz / 2;
+        sf(NAVY); doc.rect(cx - hs, cy - hs, sz, sz, 'F');
+        if (label != null) txt(String(label), cx, cy, 5, true, WHITE, 'center');
+      };
 
-      const BW = 108, BH = 26;
-      const LW = 1.2;
+      // Layout
+      const HEADER_H  = 20, GOLD_LINE = 0.8, LABEL_H = 8, FOOTER_H = 10;
+      const CONTENT_TOP = MT + HEADER_H + GOLD_LINE + LABEL_H + 1;
+      const CONTENT_H   = PH - CONTENT_TOP - MB - FOOTER_H;
+      const SEED_W = 6, ARM_W = 11, JUNC_SZ = 4.5, CHAMP_W = 32;
+      const ROUND_W = (W - SEED_W - totalRounds * ARM_W - CHAMP_W) / totalRounds;
+      const roundX  = ri => ML + SEED_W + ri * (ROUND_W + ARM_W);
+      const armCX   = ri => roundX(ri) + ROUND_W + ARM_W / 2;
 
-      const drawW = PW - ML - MR;
-      const GAP = Math.max(16, (drawW - totalRounds * BW) / Math.max(totalRounds, 1));
-      const colStep = BW + GAP;
+      const numM   = r1Matches.length;
+      const matchH = CONTENT_H / Math.max(numM, 1);
+      const pH     = Math.min(matchH * 0.40, 9.5);
+      const r1p1Y  = mi => CONTENT_TOP + mi * matchH;
+      const r1p2Y  = mi => CONTENT_TOP + mi * matchH + pH;
 
-      const drawH = PH - MT - MB;
-      const rowH = drawH / totalSlots;
-
-      // Y position of the bye player box — one row below the last R1 match slot
-      const byeSlotY = r1ByePlayer ? MT + r1MatchSlots * rowH + BH / 2 : null;
-
-      // ── COMPUTE midY FOR EVERY ROUND ─────────────────────────────────
-      // midY[ri][mi] = vertical centre (y) of match mi in round ri.
-      // For round 0, each match mid is the average of its two player slot rows.
-      // The bye player in round 0 is appended as an extra "single-slot" entry
-      // at the end so that round-1 mids can pair correctly (the bye mid pairs
-      // with the last real match mid to produce the last R2 match mid).
-      const midY = [];
-      const r0mids = r1Matches.map((m, mi) => {
-        const cy1 = MT + (mi * 2) * rowH + BH / 2;
-        const cy2 = MT + (mi * 2 + 1) * rowH + BH / 2;
-        return (cy1 + cy2) / 2;
-      });
-      // Append the bye player's Y as the last entry in round-0 mids
-      if (r1ByePlayer && byeSlotY !== null) {
-        r0mids.push(byeSlotY);
-      }
-      midY.push(r0mids);
-
+      // Junction Y[ri][mi] — recursive midpoint
+      const jY = [];
+      jY.push(r1Matches.map((_, mi) => CONTENT_TOP + mi * matchH + pH)); // at P1/P2 boundary
       for (let ri = 1; ri < totalRounds; ri++) {
-        const prev = midY[ri - 1];
-        const count = (expectedCounts[ri] !== undefined)
-          ? expectedCounts[ri]
-          : Math.ceil(prev.length / 2);
-        const mids = [];
-        for (let mi = 0; mi < count; mi++) {
-          const a = prev[mi * 2];
-          const b = prev[mi * 2 + 1];
-          mids.push(b !== undefined ? (a + b) / 2 : a);
+        const prev = jY[ri - 1];
+        const cnt  = expectedCnts[ri] !== undefined ? expectedCnts[ri] : Math.ceil(prev.length / 2);
+        const cur  = [];
+        for (let mi = 0; mi < cnt; mi++) {
+          const a = prev[mi * 2], b = prev[mi * 2 + 1];
+          cur.push(b !== undefined ? (a + b) / 2 : a);
         }
-        midY.push(mids);
+        jY.push(cur);
       }
 
-      // ── BUILD FLAT SLOT LIST FROM R1 ────────────────────────────────
-      const slots = [];
-      r1Matches.forEach(m => {
-        slots.push(m.player1 || null);
-        slots.push(m.player2 || null);
-      });
-
-      // ── CREATE DOC ───────────────────────────────────────────────────
-      const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
-      doc.setFillColor(255, 255, 255);
-      doc.rect(0, 0, PW, PH, 'F');
-
-      function trunc(str, maxPx) {
-        if (!str) return '';
-        let t = String(str);
-        while (t.length > 1 && doc.getTextWidth(t) > maxPx - 5) t = t.slice(0, -1);
-        return t.length < String(str).length ? t + '.' : t;
+      // Cell span bounds spT[ri][mi] / spB[ri][mi]
+      const spT = [], spB = [];
+      spT.push(r1Matches.map((_, mi) => r1p1Y(mi)));
+      spB.push(r1Matches.map((_, mi) => r1p2Y(mi) + pH));
+      for (let ri = 1; ri < totalRounds; ri++) {
+        const pT = spT[ri - 1], pB = spB[ri - 1];
+        const cnt = expectedCnts[ri] !== undefined ? expectedCnts[ri] : Math.ceil(pT.length / 2);
+        const tops = [], bots = [];
+        for (let mi = 0; mi < cnt; mi++) {
+          const fA = mi * 2, fB = mi * 2 + 1;
+          tops.push(pT[fA] !== undefined ? pT[fA] : pT[pT.length - 1]);
+          bots.push(pB[fB] !== undefined ? pB[fB] : pB[fA]);
+        }
+        spT.push(tops); spB.push(bots);
       }
 
-      function drawBox(x, cy, label, bold, dashed, teamName) {
-        doc.setLineWidth(LW);
-        if (dashed) {
-          doc.setLineDashPattern([3, 3], 0);
-          doc.setDrawColor(160, 100, 0);
-          doc.setFillColor(255, 245, 220);
-        } else {
-          doc.setLineDashPattern([], 0);
-          doc.setDrawColor(0, 0, 0);
-          doc.setFillColor(255, 255, 255);
-        }
-        doc.rect(x, cy - BH / 2, BW, BH, 'FD');
-        doc.setLineDashPattern([], 0);
-        if (label) {
-          doc.setFont('helvetica', bold ? 'bold' : 'normal');
-          doc.setTextColor(dashed ? 130 : 0, dashed ? 70 : 0, 0);
-          doc.setFontSize(8);
-          const nameY = teamName ? cy - 2 : cy + 3;
-          doc.text(trunc(label, BW), x + 4, nameY);
-          if (teamName) {
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(6.5);
-            doc.setTextColor(dashed ? 160 : 90, dashed ? 100 : 90, dashed ? 0 : 90);
-            doc.text(trunc(teamName, BW), x + 4, cy + 7);
-          }
-        }
-      }
+      // ── HEADER ────────────────────────────────────────────────────────
+      sf(NAVY); doc.rect(ML, MT, W, HEADER_H, 'F');
+      txt(champTitle.toUpperCase(), PW / 2, MT + HEADER_H * 0.37, 16, true, WHITE, 'center');
+      txt(categoryLabel.toUpperCase(), PW / 2, MT + HEADER_H * 0.74, 9, false, [160, 185, 220], 'center');
+      sf(GOLD); doc.rect(ML, MT + HEADER_H, W, GOLD_LINE, 'F');
 
-      // ── HEADER ───────────────────────────────────────────────────────
-      let title = champTitle;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(13);
-      doc.setTextColor(0, 0, 0);
-      doc.text(title, ML, 18);
-
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(20, 20, 20);
-      doc.text(categoryLabel, ML, 31);
-
-      doc.setFontSize(8);
-      doc.setTextColor(50, 50, 50);
-      doc.text('Single Elimination  |  ' + (this.currentBracket.playerCount || totalSlots) + ' Players', ML, 42);
-      doc.text(new Date().toLocaleDateString('en-IN'), PW - MR, 18, { align: 'right' });
-
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(1.0);
-      doc.line(ML, MT - 7, PW - MR, MT - 7);
-
-      // ── ROUND LABELS ─────────────────────────────────────────────────
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.setTextColor(0, 0, 0);
+      // ── ROUND LABELS ──────────────────────────────────────────────────
+      const labelY = MT + HEADER_H + GOLD_LINE + LABEL_H / 2 + 0.5;
       for (let ri = 0; ri < totalRounds; ri++) {
-        const cx = ML + ri * colStep + BW / 2;
-        doc.text(this.getRoundName(ri, totalRounds), cx, MT - 10, { align: 'center' });
+        const rn  = (rounds[ri] && rounds[ri][0]) ? rounds[ri][0].round : ri + 1;
+        txt(this.getRoundName(ri, totalRounds, rn).toUpperCase(),
+            roundX(ri) + ROUND_W / 2, labelY, 7.5, true, NAVY, 'center');
       }
+      txt('CHAMPION', ML + SEED_W + totalRounds * (ROUND_W + ARM_W) + CHAMP_W / 2,
+          labelY, 7.5, true, NAVY, 'center');
+      ln(ML, MT + HEADER_H + GOLD_LINE + LABEL_H, ML + W,
+         MT + HEADER_H + GOLD_LINE + LABEL_H, 0.25, [180, 180, 180]);
 
-      // ── DRAW R1 PLAYER BOXES (normal slots) ──────────────────────────
-      slots.forEach((player, si) => {
-        const cy = MT + si * rowH + BH / 2;
-        drawBox(ML, cy, player ? player.playerName : null, false, false, player ? player.teamName : null);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(80, 80, 80);
-        doc.text(String(si + 1), ML - 4, cy + 3, { align: 'right' });
-      });
-
-      // ── DRAW BYE PLAYER BOX (Round 1 column, below all match slots) ──
-      if (r1ByePlayer && byeSlotY !== null) {
-        drawBox(ML, byeSlotY, r1ByePlayer.playerName, false, true, r1ByePlayer.teamName);
-        // Label "BYE" tag to the right of the slot number
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(7);
-        doc.setTextColor(80, 80, 80);
-        doc.text(String(slots.length + 1), ML - 4, byeSlotY + 3, { align: 'right' });
-
-        // Draw dashed bye-flow line: straight across from bye box to the
-        // corresponding slot in Round 2 (the last slot of R2 match that
-        // receives this bye player).
-        // byePlayers['0'] advances into round index 1 (R2).
-        // After buildNextRound the bye player ends up as the last advancing
-        // player, so they fill the last slot of the last R2 match.
-        if (midY[1] && midY[1].length > 0) {
-          // The bye player's mid was appended as the last entry in r0mids.
-          // midY[1] is computed by pairing adjacent r0mids entries, so the
-          // last R2 match mid = average(r0mids[last-1], r0mids[last]) which
-          // already accounts for the bye slot.  We use that as the destination.
-          const r2LastMatchIdx = midY[1].length - 1;
-          const destY = midY[1][r2LastMatchIdx];
-
-          const bxX2 = ML + colStep;
-          const fromX = ML + BW;
-          const midX = fromX + GAP / 2;
-          const endX = bxX2;
-
-          doc.setLineDashPattern([4, 3], 0);
-          doc.setDrawColor(180, 110, 0);
-          doc.setLineWidth(1.0);
-          doc.line(fromX, byeSlotY, midX, byeSlotY);    // out of bye box
-          doc.line(midX, byeSlotY, midX, destY);         // vertical drop to R2 row
-          doc.line(midX, destY, endX, destY);            // horizontal into R2 box
-          doc.setLineDashPattern([], 0);
-
-          // Arrow tip
-          doc.setFillColor(180, 110, 0);
-          doc.triangle(endX, destY, endX - 5, destY - 3, endX - 5, destY + 3, 'F');
-
-          // "BYE" label alongside the dashed line
-          doc.setFont('helvetica', 'italic');
-          doc.setFontSize(6.5);
-          doc.setTextColor(160, 100, 0);
-          doc.text('BYE', midX + 3, Math.min(byeSlotY, destY) + Math.abs(byeSlotY - destY) / 2 - 1);
-        }
-      }
-
-      // ── DRAW R1 → R2 CONNECTORS (normal matches only) ────────────────
+      // ── R1 MATCHES ────────────────────────────────────────────────────
+      let globalMatchNum = 1;
       doc.setLineDashPattern([], 0);
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(LW);
-      const r2MatchCount = (midY[1] || []).length;
-      r1Matches.forEach((m, mi) => {
-        const cy1 = MT + (mi * 2) * rowH + BH / 2;
-        const cy2 = MT + (mi * 2 + 1) * rowH + BH / 2;
-        const fromX = ML + BW;
-        const spineX = fromX + GAP / 2;
-        const nextY = midY[0][mi];
-        const nextX = ML + colStep;
 
-        doc.line(fromX, cy1, spineX, cy1);
-        doc.line(spineX, cy1, spineX, cy2);
-        doc.line(fromX, cy2, spineX, cy2);
-        if (totalRounds > 1 && mi < r2MatchCount * 2) {
-          doc.line(spineX, nextY, nextX, nextY);
-        }
+      r1Matches.forEach((match, mi) => {
+        const yP1 = r1p1Y(mi), yP2 = r1p2Y(mi), jy = CONTENT_TOP + mi * matchH + pH;
+        const x = roundX(0), ax = armCX(0);
+        drawSeed(ML, yP1, SEED_W, pH, mi * 2 + 1);
+        drawSeed(ML, yP2, SEED_W, pH, mi * 2 + 2);
+        const gapH = matchH - 2 * pH;
+        if (gapH > 0.1) { sf(NAVY); doc.rect(ML, yP2 + pH, SEED_W, gapH, 'F'); }
+        const n1 = match.player1
+          ? match.player1.playerName + (match.player1.centerName ? ` (${match.player1.centerName})` : '') : 'BYE';
+        const n2 = match.player2
+          ? match.player2.playerName + (match.player2.centerName ? ` (${match.player2.centerName})` : '') : 'BYE';
+        drawCell(x, yP1, ROUND_W, pH, n1);
+        drawCell(x, yP2, ROUND_W, pH, n2);
+        ln(x + ROUND_W, yP1 + pH / 2, ax, yP1 + pH / 2);
+        ln(x + ROUND_W, yP2 + pH / 2, ax, yP2 + pH / 2);
+        ln(ax, yP1 + pH / 2, ax, yP2 + pH / 2);
+        drawJunc(ax, jy, JUNC_SZ, globalMatchNum++);
       });
 
-      // ── DRAW ROUNDS 2+ BOXES + CONNECTORS ────────────────────────────
-      for (let ri = 1; ri < totalRounds; ri++) {
-        const bxX = ML + ri * colStep;
-        const prevMids = midY[ri - 1];
-        const curMids = midY[ri];
-
-        curMids.forEach((cy, mi) => {
-          const match = (rounds[ri] || [])[mi] || {};
-          const p1 = match.player1 || null;
-          const p2 = match.player2 || null;
-          const winner = match.winner || null;
-
-          const feedA = prevMids[mi * 2];
-          const feedB = prevMids[mi * 2 + 1];
-          const topY = feedA !== undefined ? feedA : cy - rowH / 2;
-          const botY = feedB !== undefined ? feedB : cy + rowH / 2;
-
-          const isWin1 = p1 && winner === p1.id;
-          const isWin2 = p2 && winner === p2.id;
-
-          // Check if either slot belongs to a bye player in this round
-          const roundByePlayer = byePlayers[String(ri)] || null;
-          const topIsBye = roundByePlayer && p1 && p1.id === roundByePlayer.id;
-          const botIsBye = roundByePlayer && p2 && p2.id === roundByePlayer.id;
-
-          // ── Final round: one winner box centred at cy, not two slots ──
-          if (ri === totalRounds - 1) {
-            const champPlayer = winner
-              ? (p1 && p1.id === winner ? p1 : p2)
-              : null;
-            drawBox(bxX, cy, champPlayer ? champPlayer.playerName : null, !!champPlayer, false, champPlayer ? champPlayer.teamName : null);
-            if (champPlayer) {
-              doc.setLineDashPattern([], 0);
-              doc.setFillColor(210, 245, 210);
-              doc.setDrawColor(0, 0, 0);
-              doc.setLineWidth(LW);
-              doc.rect(bxX, cy - BH / 2, BW, BH, 'FD');
-              doc.setFont('helvetica', 'bold');
-              doc.setTextColor(0, 100, 0);
-              doc.setFontSize(8);
-              const champNameY = champPlayer.teamName ? cy - 2 : cy + 3;
-              doc.text(trunc(champPlayer.playerName, BW), bxX + 4, champNameY);
-              if (champPlayer.teamName) {
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(6.5);
-                doc.setTextColor(0, 100, 0);
-                doc.text(trunc(champPlayer.teamName, BW), bxX + 4, cy + 7);
-              }
-            }
-            return; // skip two-slot drawing for the Final
-          }
-
-          drawBox(bxX, topY, p1 ? p1.playerName : null, isWin1, topIsBye && !isWin1, p1 ? p1.teamName : null);
-          drawBox(bxX, botY, p2 ? p2.playerName : null, isWin2, botIsBye && !isWin2, p2 ? p2.teamName : null);
-
-          // Winner highlight — green fill
-          if (isWin1 || isWin2) {
-            const wy = isWin1 ? topY : botY;
-            const wp = isWin1 ? p1 : p2;
-            doc.setLineDashPattern([], 0);
-            doc.setFillColor(210, 245, 210);
-            doc.setDrawColor(0, 0, 0);
-            doc.setLineWidth(LW);
-            doc.rect(bxX, wy - BH / 2, BW, BH, 'FD');
-            doc.setFont('helvetica', 'bold');
-            doc.setTextColor(0, 100, 0);
-            doc.setFontSize(8);
-            const winNameY = wp.teamName ? wy - 2 : wy + 3;
-            doc.text(trunc(wp.playerName, BW), bxX + 4, winNameY);
-            if (wp.teamName) {
-              doc.setFont('helvetica', 'normal');
-              doc.setFontSize(6.5);
-              doc.setTextColor(0, 100, 0);
-              doc.text(trunc(wp.teamName, BW), bxX + 4, wy + 7);
-            }
-          }
-
-          // Connectors to next round
-          if (ri < totalRounds - 1) {
-            doc.setLineDashPattern([], 0);
-            const spineX = bxX + BW + GAP / 2;
-            const nextX = bxX + colStep;
-            const nextY = curMids[mi];
-            doc.setDrawColor(0, 0, 0);
-            doc.setLineWidth(LW);
-            doc.line(bxX + BW, topY, spineX, topY);
-            doc.line(spineX, topY, spineX, botY);
-            doc.line(bxX + BW, botY, spineX, botY);
-            doc.line(spineX, nextY, nextX, nextY);
-          }
-        });
+      if (r1ByePlayer) {
+        const br = CONTENT_TOP + numM * matchH;
+        drawSeed(ML, br, SEED_W, pH, numM * 2 + 1);
+        drawCell(roundX(0), br, ROUND_W, pH,
+          r1ByePlayer.playerName + (r1ByePlayer.centerName ? ` (${r1ByePlayer.centerName})` : '') + ' — BYE',
+          [245, 240, 220]);
       }
 
-      // ── CHAMPION LINE ─────────────────────────────────────────────────
-      const lastRound = rounds[totalRounds - 1] || [];
-      const finalMatch = lastRound[0] || {};
-      if (finalMatch.status === 'completed' && finalMatch.winner) {
-        const champ = (finalMatch.player1 && finalMatch.player1.id === finalMatch.winner)
-          ? finalMatch.player1 : finalMatch.player2;
-        if (champ) {
-          const champY = midY[totalRounds - 1][0] + BH;
-          doc.setLineDashPattern([], 0);
-          doc.setFont('helvetica', 'bold');
-          doc.setFontSize(9);
-          doc.setTextColor(0, 100, 0);
-          doc.text('🏆 Champion: ' + champ.playerName, ML + (totalRounds - 0.5) * colStep, champY + 14, { align: 'center' });
+      // ── LATER ROUNDS ──────────────────────────────────────────────────
+      for (let ri = 1; ri < totalRounds; ri++) {
+        const isFinal   = ri === totalRounds - 1;
+        const x         = roundX(ri);
+        const ax        = armCX(ri);
+        const prevAX    = armCX(ri - 1);
+        const matchList = rounds[ri] || [];
+
+        if (isFinal) {
+          const fm      = matchList[0] || {};
+          const sfCount = jY[ri - 1].length;
+          for (let fi = 0; fi < Math.min(sfCount, 2); fi++) {
+            const prevJY  = jY[ri - 1][fi];
+            const cellTop = prevJY - pH / 2;
+            ln(prevAX + JUNC_SZ / 2, prevJY, x, prevJY);    // input arm
+            const fp = fi === 0 ? fm.player1 : fm.player2;
+            const isW = fp && fm.winner && fp.id === fm.winner;
+            const pname = fp ? fp.playerName + (fp.centerName ? ` (${fp.centerName})` : '') : '';
+            drawCell(x, cellTop, ROUND_W, pH, pname, isW ? [210, 245, 210] : LTBG, isW);
+            ln(x + ROUND_W, prevJY, ax, prevJY);              // output arm
+          }
+          const finY1 = sfCount >= 1 ? jY[ri - 1][0] : jY[ri][0];
+          const finY2 = sfCount >= 2 ? jY[ri - 1][1] : finY1;
+          ln(ax, finY1, ax, finY2);             // spine between finalist arms
+          drawJunc(ax, jY[ri][0], JUNC_SZ, null);
+
+          // Champion section
+          const champX    = ax + JUNC_SZ / 2 + 2;
+          const champBoxW = CHAMP_W - 4;
+          const champJY   = jY[ri][0];
+          const champ = fm.winner
+            ? ((fm.player1 && fm.player1.id === fm.winner) ? fm.player1 : fm.player2) : null;
+          if (champ) {
+            sf(GREEN); doc.rect(champX, champJY - 5, champBoxW, 10, 'F');
+            ln(champX, champJY - 5, champX + champBoxW, champJY - 5, 0.4, GREEN);
+            ln(champX, champJY + 5, champX + champBoxW, champJY + 5, 0.4, GREEN);
+            txt(champ.playerName, champX + champBoxW / 2, champJY, 8, true, WHITE, 'center');
+          } else {
+            ln(ax + JUNC_SZ / 2, champJY, champX + champBoxW, champJY, 0.3, LINE);
+            txt('CHAMPION', champX + champBoxW / 2, champJY, 8, true, NAVY, 'center');
+          }
+
+        } else {
+          const cnt = jY[ri].length;
+          for (let mi = 0; mi < cnt; mi++) {
+            const jy    = jY[ri][mi];
+            const match = matchList[mi] || {};
+            const pjA   = jY[ri - 1][mi * 2];
+            const pjB   = jY[ri - 1][mi * 2 + 1];
+
+            // Horizontal input arms from previous junction boxes
+            if (pjA !== undefined) ln(prevAX + JUNC_SZ / 2, pjA, x, pjA);
+            if (pjB !== undefined) ln(prevAX + JUNC_SZ / 2, pjB, x, pjB);
+
+            // Vertical spine at column left edge connecting the two incoming arms
+            if (pjA !== undefined && pjB !== undefined) ln(x, pjA, x, pjB, 0.35);
+
+            // Compact player cell centered at junction Y
+            const cellTop = jy - pH / 2;
+            let pname = '', isBold = false;
+            if (match.winner) {
+              const wp = (match.player1 && match.player1.id === match.winner)
+                ? match.player1 : match.player2;
+              if (wp) { pname = wp.playerName + (wp.centerName ? ` (${wp.centerName})` : ''); isBold = true; }
+            }
+            drawCell(x, cellTop, ROUND_W, pH, pname, isBold ? ADVBG : LTBG, isBold);
+
+            // Outgoing arm + junction box
+            ln(x + ROUND_W, jy, ax, jy);
+            drawJunc(ax, jy, JUNC_SZ, globalMatchNum++);
+          }
         }
       }
 
       // ── FOOTER ────────────────────────────────────────────────────────
-      doc.setLineDashPattern([], 0);
-      doc.setDrawColor(0, 0, 0);
-      doc.setLineWidth(0.8);
-      doc.line(ML, PH - MB + 4, PW - MR, PH - MB + 4);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(60, 60, 60);
-      doc.text(title + '  |  ' + categoryLabel, ML, PH - MB + 13);
-      doc.text('Generated: ' + new Date().toLocaleString('en-IN'), PW - MR, PH - MB + 13, { align: 'right' });
+      const footerY = PH - MB - FOOTER_H / 2;
+      ln(ML, PH - MB - FOOTER_H, ML + W, PH - MB - FOOTER_H, 0.3, [150, 150, 150]);
+      txt(`${champTitle}  |  ${categoryLabel}`, ML, footerY, 7, false, GRAY, 'left');
+      txt(`Generated: ${new Date().toLocaleDateString('en-IN')}`, ML + W, footerY, 7, false, GRAY, 'right');
 
       const safeKey = this.currentCategory.replace(/[^a-zA-Z0-9]/g, '_');
-      doc.save('Fixture_' + safeKey + '.pdf');
+      doc.save(`Fixture_${safeKey}_${new Date().toISOString().slice(0, 10)}.pdf`);
 
     } catch (err) {
       console.error('PDF error:', err);
       MODAL.error('Error generating PDF: ' + err.message);
+    }
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PLAYER MANAGEMENT: Edit, Delete, Replace, Drag-and-Drop
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Open inline edit form for a player slot
+  startEditPlayer(matchId, slot) {
+    this.editingSlot = { matchId, slot };
+    this.renderBracket();
+    // Focus the name input after render
+    setTimeout(() => {
+      const input = document.getElementById(`edit_name_${matchId}_${slot}`);
+      if (input) { input.focus(); input.select(); }
+    }, 50);
+  },
+
+  // Cancel inline edit
+  cancelEdit() {
+    this.editingSlot = null;
+    this.renderBracket();
+  },
+
+  // Save edited / replaced player data
+  async saveEditPlayer(matchId, slot) {
+    const nameInput = document.getElementById(`edit_name_${matchId}_${slot}`);
+    const teamInput = document.getElementById(`edit_team_${matchId}_${slot}`);
+    const newName = nameInput ? nameInput.value.trim() : '';
+    const newTeam = teamInput ? teamInput.value.trim() : '';
+
+    if (!newName) {
+      MODAL.warning('Player name cannot be empty.');
+      return;
+    }
+
+    const match = this.findMatch(matchId);
+    if (!match) return;
+
+    if (match[slot]) {
+      // Edit existing player
+      match[slot].playerName = newName;
+      match[slot].centerName = newTeam;
+      match[slot].teamName = newTeam;
+    } else {
+      // Fill empty slot with a manually entered player
+      match[slot] = {
+        id: `manual_${matchId}_${slot}_${Date.now()}`,
+        playerName: newName,
+        centerName: newTeam,
+        teamName: newTeam
+      };
+    }
+
+    this.editingSlot = null;
+    await this.saveBracket(this.currentCategory, this.currentBracket);
+    this.renderBracket();
+  },
+
+  // Remove a player from a match slot (slot becomes empty / drop-zone)
+  async deletePlayerFromMatch(matchId, slot) {
+    const match = this.findMatch(matchId);
+    if (!match) return;
+    const player = match[slot];
+    if (!player) return;
+
+    const confirmed = await MODAL.showConfirm(
+      `Remove "${player.playerName}" from this match? The slot will become empty — you can drop a BYE player or fill it manually.`
+    );
+    if (!confirmed) return;
+
+    match[slot] = null;
+    await this.saveBracket(this.currentCategory, this.currentBracket);
+    this.renderBracket();
+  },
+
+  // Drag-start handler for a BYE player card
+  onDragStartBye(event, playerId, roundIndex) {
+    event.dataTransfer.setData('byePlayerId', String(playerId));
+    event.dataTransfer.setData('byeRoundIndex', String(roundIndex));
+    event.dataTransfer.effectAllowed = 'move';
+  },
+
+  // Drop handler: place a dragged BYE player into an empty match slot
+  async onDropByeToSlot(event, matchId, slot) {
+    event.preventDefault();
+    event.currentTarget.classList.remove('drag-over');
+
+    const playerId = event.dataTransfer.getData('byePlayerId');
+    const roundIndex = parseInt(event.dataTransfer.getData('byeRoundIndex'), 10);
+
+    if (!playerId || isNaN(roundIndex)) return;
+
+    const byePlayers = this.currentBracket.byePlayers || {};
+    const byePlayer = byePlayers[String(roundIndex)];
+
+    if (!byePlayer || String(byePlayer.id) !== playerId) {
+      MODAL.warning('BYE player not found. Please try again.');
+      return;
+    }
+
+    const match = this.findMatch(matchId);
+    if (!match || match.status !== 'pending') {
+      MODAL.warning('Cannot place player in a started or completed match.');
+      return;
+    }
+
+    if (match[slot]) {
+      MODAL.warning('This slot is already occupied. Delete the current player first.');
+      return;
+    }
+
+    match[slot] = byePlayer;
+    delete this.currentBracket.byePlayers[String(roundIndex)];
+
+    await this.saveBracket(this.currentCategory, this.currentBracket);
+    this.renderBracket();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FIXTURE EXCEL DOWNLOAD
+  // Two sheets: "Fixture" (visual bracket grid) + "Match Schedule" (ties)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  downloadFixtureExcel() {
+    if (typeof XLSX === 'undefined') {
+      MODAL.error('Excel library not loaded. Please refresh the page and try again.');
+      return;
+    }
+    if (!this.currentBracket) {
+      MODAL.warning('No bracket loaded.');
+      return;
+    }
+
+    try {
+      const cat = this.categories[this.currentCategory];
+      const champTitle = document.title.replace(' - Bracket Management', '').trim() || 'Tournament';
+      const categoryLabel = `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`;
+
+      const toArr = o => Array.isArray(o) ? o
+        : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
+
+      const rounds       = toArr(this.currentBracket.rounds).map(r => toArr(r));
+      const byePlayers   = this.currentBracket.byePlayers || {};
+      const expectedCnts = toArr(this.currentBracket.expectedRoundMatchCounts || []);
+      const totalRounds  = Math.max(rounds.length, expectedCnts.length);
+      const r1Matches    = rounds[0] || [];
+      const r1ByePlayer  = byePlayers['0'] || null;
+
+      // ── Layout constants ─────────────────────────────────────────────
+      // 4 rows per R1 match: P1 row, spacer row, P2 row, gap/junction row
+      const ROWS_PER_MATCH = 4;
+      const HEADER = 3; // title + subtitle + column headers
+
+      // ── Colour palette ───────────────────────────────────────────────
+      const NAVY   = '17305E';
+      const WHITE  = 'FFFFFF';
+      const DKLINE = '1A3A6B'; // bracket line colour
+      const LTGRAY = 'E8ECF0'; // player row background
+      const BYGRAY = 'F0F0E8'; // bye row background
+      const CHAMGN = '155724'; // champion green fill
+
+      // ── Border helpers ───────────────────────────────────────────────
+      const bk = (style) => ({ style, color:{ rgb: DKLINE } });
+      const th = bk('thin');
+      const md = bk('medium');
+      const tk = bk('thick');
+      const none = undefined;
+
+      // Build a border object (pass undefined for sides to omit)
+      const mkBorder = (t, r, b, l) => {
+        const o = {};
+        if (t) o.top    = t;
+        if (r) o.right  = r;
+        if (b) o.bottom = b;
+        if (l) o.left   = l;
+        return o;
+      };
+
+      // ── Fill helper (SheetJS requires patternType:'solid') ───────────
+      const fgFill = (hex) => ({ patternType:'solid', fgColor:{ rgb: hex } });
+
+      // ── Shared cell styles ───────────────────────────────────────────
+      const S = {
+        title:  { font:{bold:true,sz:14,color:{rgb:NAVY}},
+                  alignment:{horizontal:'left',vertical:'center'} },
+        sub:    { font:{sz:9,color:{rgb:'555555'}},
+                  alignment:{vertical:'center'} },
+        hdr:    { font:{bold:true,sz:9,color:{rgb:WHITE}},
+                  fill:fgFill(NAVY),
+                  alignment:{horizontal:'center',vertical:'center'},
+                  border:mkBorder(md,md,md,md) },
+        // Seed number cell: dark navy, white bold
+        seed:   { font:{bold:true,sz:8,color:{rgb:WHITE}},
+                  fill:fgFill(NAVY),
+                  alignment:{horizontal:'center',vertical:'center'},
+                  border:mkBorder(th,th,th,th) },
+        // Player name cell: light gray bg, 3-sided border (open right toward arm)
+        pname:  { font:{sz:9,color:{rgb:'111111'}},
+                  fill:fgFill(LTGRAY),
+                  alignment:{vertical:'center',wrapText:false},
+                  border:mkBorder(md,none,md,md) },
+        // Bye player cell
+        bye:    { font:{sz:9,color:{rgb:'887700'},italic:true},
+                  fill:fgFill(BYGRAY),
+                  alignment:{vertical:'center'},
+                  border:mkBorder(th,none,th,th) },
+        // Arm/spacer row — no content, just specific border sides
+        arm_p1: { fill:fgFill(WHITE), border:mkBorder(none,md,md,none) },
+        arm_sp: { fill:fgFill(WHITE), border:mkBorder(md,none,md,none) },
+        arm_p2: { fill:fgFill(WHITE), border:mkBorder(md,md,none,none) },
+        // Junction box: dark navy fill + all medium borders + white match# text
+        junc:   { font:{bold:true,sz:8,color:{rgb:WHITE}},
+                  fill:fgFill(NAVY),
+                  alignment:{horizontal:'center',vertical:'center'},
+                  border:mkBorder(md,md,md,md) },
+        // Later-round player merged cell (winner advancing)
+        adv:    { font:{bold:true,sz:9,color:{rgb:'111111'}},
+                  fill:fgFill('EAF4FF'),
+                  alignment:{horizontal:'left',vertical:'center',wrapText:false},
+                  border:mkBorder(md,none,md,md) },
+        tbd:    { font:{sz:9,color:{rgb:'AAAAAA'},italic:true},
+                  fill:fgFill('F7F7F7'),
+                  alignment:{vertical:'center'},
+                  border:mkBorder(th,none,th,th) },
+        // Champion final cell: dark green, white, all-bordered
+        champ:  { font:{bold:true,sz:11,color:{rgb:WHITE}},
+                  fill:fgFill(CHAMGN),
+                  alignment:{horizontal:'center',vertical:'center',wrapText:false},
+                  border:mkBorder(tk,tk,tk,tk) },
+        // Junction boxes for later rounds
+        juncLR: { font:{bold:true,sz:8,color:{rgb:WHITE}},
+                  fill:fgFill(NAVY),
+                  alignment:{horizontal:'center',vertical:'center'},
+                  border:mkBorder(md,md,md,md) },
+        navyBg: { fill:fgFill(NAVY) },
+        blank:  { fill:fgFill(WHITE) }
+      };
+
+      // ── Column layout ────────────────────────────────────────────────
+      // Per round ri:
+      //   nameCol(ri) = 1 + ri * 2   (wide player name)
+      //   armCol(ri)  = 2 + ri * 2   (narrow arm/junction)
+      // Final round (ri = totalRounds-1): only nameCol exists (champion)
+      const nameCol = ri => 1 + ri * 2;
+      const armCol  = ri => 2 + ri * 2;
+      // Total columns: seed(1) + 2 per round but last round has no arm = totalRounds*2
+      const totalCols = 1 + totalRounds * 2 - 1; // = totalRounds*2
+
+      // ── Row span computation (4 rows per R1 match) ───────────────────
+      // slotTop[ri][mi] / slotBot[ri][mi] = first/last sheet row of match mi in round ri
+      const slotTop = [], slotBot = [];
+
+      // R1: each match occupies ROWS_PER_MATCH rows
+      const r0tops = r1Matches.map((_, mi) => HEADER + ROWS_PER_MATCH * mi);
+      const r0bots = r1Matches.map((_, mi) => HEADER + ROWS_PER_MATCH * mi + ROWS_PER_MATCH - 1);
+      // BYE player at R1 occupies a single extra row after all matches
+      if (r1ByePlayer) {
+        r0tops.push(HEADER + r1Matches.length * ROWS_PER_MATCH);
+        r0bots.push(HEADER + r1Matches.length * ROWS_PER_MATCH);
+      }
+      slotTop.push(r0tops);
+      slotBot.push(r0bots);
+
+      for (let ri = 1; ri < totalRounds; ri++) {
+        const pTop = slotTop[ri - 1], pBot = slotBot[ri - 1];
+        const cnt  = expectedCnts[ri] !== undefined
+          ? expectedCnts[ri]
+          : Math.ceil(pTop.length / 2);
+        const tops = [], bots = [];
+        for (let mi = 0; mi < cnt; mi++) {
+          const fA = mi * 2, fB = mi * 2 + 1;
+          tops.push(pTop[fA] !== undefined ? pTop[fA] : pTop[pTop.length - 1]);
+          bots.push(pBot[fB] !== undefined ? pBot[fB] : pBot[fA]);
+        }
+        slotTop.push(tops);
+        slotBot.push(bots);
+      }
+
+      const totalDataRows = r1Matches.length * ROWS_PER_MATCH + (r1ByePlayer ? 1 : 0);
+      const totalRows = HEADER + totalDataRows;
+
+      const ws = {};
+      ws['!ref']    = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:totalRows, c:totalCols} });
+      ws['!merges'] = [];
+
+      const enc    = (r, c) => XLSX.utils.encode_cell({ r, c });
+      const setCell = (r, c, v, s) => {
+        ws[enc(r, c)] = { v: v ?? '', t: typeof v === 'number' ? 'n' : 's', s: s || {} };
+      };
+      const mergeSet = (r1x, c1x, r2x, c2x, v, s) => {
+        if (r1x < r2x || c1x < c2x)
+          ws['!merges'].push({ s:{r:r1x,c:c1x}, e:{r:r2x,c:c2x} });
+        setCell(r1x, c1x, v, s);
+      };
+
+      // ── Row 0: Title ─────────────────────────────────────────────────
+      mergeSet(0, 0, 0, totalCols, `${champTitle}  |  ${categoryLabel}`, S.title);
+
+      // ── Row 1: Subtitle + date ────────────────────────────────────────
+      mergeSet(1, 0, 1, totalCols - 1,
+        `Single Elimination Bracket  •  ${this.currentBracket.playerCount || (r1Matches.length * 2)} Players`, S.sub);
+      setCell(1, totalCols, new Date().toLocaleDateString('en-IN'), S.sub);
+
+      // ── Row 2: Column headers ─────────────────────────────────────────
+      setCell(2, 0, '#', S.hdr); // seed column header
+      for (let ri = 0; ri < totalRounds; ri++) {
+        const nc  = nameCol(ri);
+        const rn  = (rounds[ri] && rounds[ri][0]) ? rounds[ri][0].round : ri + 1;
+        const lbl = this.getRoundName(ri, totalRounds, rn);
+        const isFinalRd = ri === totalRounds - 1;
+        // Merge name + arm columns under one header (except final round has no arm)
+        if (isFinalRd) {
+          setCell(2, nc, lbl, S.hdr);
+        } else {
+          mergeSet(2, nc, 2, armCol(ri), lbl, S.hdr);
+        }
+      }
+
+      // ── R1: 4 rows per match ──────────────────────────────────────────
+      // Row layout per match mi:
+      //   base+0 : P1 row  (seed, name, arm_p1)
+      //   base+1 : spacer  (seed, empty, arm_sp)
+      //   base+2 : P2 row  (seed, name, arm_p2)
+      //   base+3 : gap/junction (empty, empty, junc with match#)
+
+      let globalMatchNum = 1;
+
+      r1Matches.forEach((match, mi) => {
+        const base  = HEADER + ROWS_PER_MATCH * mi;
+        const rowP1 = base;
+        const rowSp = base + 1;
+        const rowP2 = base + 2;
+        const rowGp = base + 3;
+
+        const p1   = match.player1;
+        const p2   = match.player2;
+        const mn   = globalMatchNum++;
+        const seed1 = mi * 2 + 1;
+        const seed2 = mi * 2 + 2;
+
+        // Seed # column (col 0): navy fill entire 4-row block
+        setCell(rowP1, 0, seed1, S.seed);
+        setCell(rowSp, 0, '',    S.navyBg);
+        setCell(rowP2, 0, seed2, S.seed);
+        setCell(rowGp, 0, '',    S.navyBg);
+
+        // Player name cells (col 1 = nameCol(0))
+        const n1   = p1 ? p1.playerName + (p1.centerName ? ` (${p1.centerName})` : '') : 'BYE';
+        const n2   = p2 ? p2.playerName + (p2.centerName ? ` (${p2.centerName})` : '') : 'BYE';
+        setCell(rowP1, nameCol(0), n1, p1 ? S.pname : S.bye);
+        setCell(rowSp, nameCol(0), '',  S.blank);
+        setCell(rowP2, nameCol(0), n2,  p2 ? S.pname : S.bye);
+        setCell(rowGp, nameCol(0), '',  S.blank);
+
+        // Arm/junction column (col 2 = armCol(0))
+        // P1 row:  right + bottom borders (arm going right + spine going down)
+        setCell(rowP1, armCol(0), '', S.arm_p1);
+        // spacer:  top + bottom borders (spine passing through)
+        setCell(rowSp, armCol(0), '', S.arm_sp);
+        // P2 row:  top + right borders (spine arriving + arm going right)
+        setCell(rowP2, armCol(0), '', S.arm_p2);
+        // Gap row: junction box with match number
+        setCell(rowGp, armCol(0), mn, S.junc);
+      });
+
+      // R1 BYE player (single row, no arm)
+      if (r1ByePlayer) {
+        const br = HEADER + r1Matches.length * ROWS_PER_MATCH;
+        setCell(br, 0, r1Matches.length * 2 + 1, S.seed);
+        const bn = r1ByePlayer.playerName +
+          (r1ByePlayer.centerName ? ` (${r1ByePlayer.centerName})` : '') + '  —  BYE';
+        setCell(br, nameCol(0), bn, S.bye);
+      }
+
+      // ── Later rounds: merged player cells + arm/junction ─────────────
+      for (let ri = 1; ri < totalRounds; ri++) {
+        const isFinalRd = ri === totalRounds - 1;
+        const matchesInRound = rounds[ri] || [];
+        const nc  = nameCol(ri);
+        const ac  = armCol(ri);
+
+        slotTop[ri].forEach((top, mi) => {
+          const bot   = slotBot[ri][mi];
+          const match = matchesInRound[mi] || {};
+          const mn    = isFinalRd ? null : globalMatchNum++;
+
+          // Determine player text + style
+          let pname = '', style = S.tbd;
+          if (match.winner) {
+            const wp = (match.player1 && match.player1.id === match.winner)
+              ? match.player1 : match.player2;
+            if (wp) {
+              pname = wp.playerName + (wp.centerName ? ` (${wp.centerName})` : '');
+              style = isFinalRd ? S.champ : S.adv;
+            }
+          } else if (match.player1 && !match.player2) {
+            pname = match.player1.playerName +
+              (match.player1.centerName ? ` (${match.player1.centerName})` : '');
+            style = isFinalRd ? S.champ : S.adv;
+          } else if (match.player1 || match.player2) {
+            pname = 'TBD'; style = S.tbd;
+          }
+
+          // Player name — merged across full span
+          mergeSet(top, nc, bot, nc, pname, style);
+
+          // Arm column logic for non-final rounds
+          if (!isFinalRd) {
+            // The junction box goes at the last row of this match's span
+            // Arm borders go in rows above the junction
+            const juncRow = bot;
+            const midRow  = Math.floor((top + bot) / 2);
+
+            // Top half: arm from top toward center-right
+            for (let r = top; r <= midRow; r++) {
+              if (r === top) {
+                setCell(r, ac, '', S.arm_p1); // right+bottom
+              } else if (r < midRow) {
+                setCell(r, ac, '', S.arm_sp); // top+bottom (spine)
+              } else {
+                setCell(r, ac, '', S.arm_sp); // top+bottom
+              }
+            }
+            // Bottom half: spine downward to junction
+            for (let r = midRow + 1; r < juncRow; r++) {
+              setCell(r, ac, '', S.arm_sp); // top+bottom (spine)
+            }
+            // Junction box at last row
+            setCell(juncRow, ac, mn, S.juncLR);
+
+            // Fill seed col for this round's span with navy
+            for (let r = top; r <= bot; r++) {
+              setCell(r, 0, '', S.navyBg);
+            }
+          }
+        });
+      }
+
+      // ── Column widths ─────────────────────────────────────────────────
+      const colWidths = [{ wch: 3 }]; // col 0: seed (narrow navy)
+      for (let ri = 0; ri < totalRounds; ri++) {
+        colWidths.push({ wch: 26 }); // name column
+        if (ri < totalRounds - 1) {
+          colWidths.push({ wch: 5 }); // arm/junction column
+        }
+      }
+      ws['!cols'] = colWidths;
+
+      // ── Row heights ───────────────────────────────────────────────────
+      ws['!rows'] = [{ hpt: 26 }, { hpt: 13 }, { hpt: 18 }];
+      for (let ri = 0; ri < r1Matches.length; ri++) {
+        ws['!rows'].push({ hpt: 18 }); // P1 row
+        ws['!rows'].push({ hpt: 8  }); // spacer
+        ws['!rows'].push({ hpt: 18 }); // P2 row
+        ws['!rows'].push({ hpt: 10 }); // gap/junction
+      }
+      if (r1ByePlayer) ws['!rows'].push({ hpt: 18 });
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Fixture');
+
+      // ── SHEET 2: MATCH SCHEDULE ───────────────────────────────────────
+      const tiesRows = [[
+        'Match No.', 'Round',
+        'Blue Corner (Player 1)', 'VS', 'Red Corner (Player 2)',
+        'Court', 'Winner', 'Notes'
+      ]];
+      let schedMatchNum = 1;
+      rounds.forEach((round, ri) => {
+        const actualRn  = round[0]?.round || (ri + 1);
+        const roundName = this.getRoundName(ri, totalRounds, actualRn);
+        round.forEach(match => {
+          if (!match.player1 && !match.player2) return;
+          const p1     = match.player1 ? match.player1.playerName : 'BYE';
+          const p2     = match.player2 ? match.player2.playerName : 'BYE';
+          const winner = match.winner
+            ? ((match.player1 && match.player1.id === match.winner)
+                ? match.player1.playerName
+                : (match.player2 ? match.player2.playerName : ''))
+            : '';
+          const court = match.courtNumber ? `Court ${match.courtNumber}` : '';
+          tiesRows.push([schedMatchNum++, roundName, p1, 'VS', p2, court, winner, '']);
+        });
+      });
+      const wsTies = XLSX.utils.aoa_to_sheet(tiesRows);
+      wsTies['!cols'] = [
+        {wch:10},{wch:18},{wch:28},{wch:5},{wch:28},{wch:12},{wch:28},{wch:20}
+      ];
+      XLSX.utils.book_append_sheet(wb, wsTies, 'Match Schedule');
+
+      const safeKey = this.currentCategory.replace(/[^a-zA-Z0-9]/g, '_');
+      XLSX.writeFile(wb, `Fixture_${safeKey}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+    } catch (err) {
+      console.error('Excel fixture error:', err);
+      MODAL.error('Error generating Excel: ' + err.message);
     }
   },
 

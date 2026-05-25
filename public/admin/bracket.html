@@ -98,6 +98,28 @@
         .bye-card::before { background:#FFA500!important; }
         .match-actions { display:flex; flex-direction:column; gap:0; }
         .winner-selection { margin-bottom:4px; }
+
+        /* Sequential match number badge */
+        .match-number-badge { display:inline-block; font-size:0.72rem; font-weight:800; color:var(--border-gold); background:rgba(255,215,0,0.12); border:1px solid rgba(255,215,0,0.35); border-radius:5px; padding:2px 8px; margin-bottom:8px; letter-spacing:0.5px; }
+
+        /* Player action buttons (edit / delete / fill) */
+        .player { position:relative; }
+        .player-actions { display:flex; gap:4px; margin-left:auto; align-items:center; opacity:0; transition:opacity 0.15s; flex-shrink:0; }
+        .player:hover .player-actions { opacity:1; }
+        .player-action-btn { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:var(--text-white); border-radius:5px; padding:3px 7px; font-size:0.78rem; cursor:pointer; transition:all 0.15s; line-height:1.4; white-space:nowrap; }
+        .player-action-btn:hover { background:rgba(255,215,0,0.12); border-color:var(--border-gold); }
+        .player-action-btn.delete-btn:hover { background:rgba(255,23,68,0.18); border-color:var(--accent-red); color:var(--accent-red); }
+        .player-action-btn.fill-btn { font-size:0.75rem; background:rgba(0,229,255,0.08); border-color:var(--accent-cyan); color:var(--accent-cyan); opacity:1!important; }
+        .player-action-btn.fill-btn:hover { background:rgba(0,229,255,0.18); }
+
+        /* Inline edit form inside a player slot */
+        .player-edit-form { width:100%; display:flex; flex-direction:column; gap:5px; }
+        .player-edit-form input { width:100%; background:rgba(0,0,0,0.55); border:1.5px solid var(--accent-cyan); color:var(--text-white); border-radius:6px; padding:6px 10px; font-size:0.88rem; box-sizing:border-box; }
+        .player-edit-form input:focus { outline:none; border-color:var(--border-gold); }
+
+        /* Drop-zone slot for drag-and-drop BYE player */
+        .drop-target { border-style:dashed!important; border-color:rgba(0,229,255,0.45)!important; background:rgba(0,229,255,0.05)!important; min-height:44px; }
+        .drop-target.drag-over { border-color:var(--border-gold)!important; background:rgba(255,215,0,0.08)!important; }
     </style>
 </head>
 

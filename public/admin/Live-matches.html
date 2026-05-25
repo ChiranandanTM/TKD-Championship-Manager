@@ -417,23 +417,7 @@
             }
         };
 
-        // ── AUTO REFRESH (Every 5 seconds) ─────────────────────────────────────
-        // Hard refresh to keep Live Match page always up-to-date
-        // This ensures real-time data is always fresh without manual intervention
-        console.log('⚡ Live Match page auto-refresh initialized (5-second interval)');
-        
-        let isRefreshing = false;
-        setInterval(function() {
-            // Prevent multiple simultaneous refreshes
-            if (isRefreshing) return;
-            
-            isRefreshing = true;
-            console.log('🔄 Live Match hard refresh triggered at', new Date().toLocaleTimeString('en-IN'));
-            
-            // Hard refresh the page to get latest match data
-            // Using true parameter forces cache bypass
-            location.reload(true);
-        }, 5000);
+        // Real-time updates are handled by the dbOnValue listener above — no polling needed.
     </script>
 </body>
 </html>

@@ -659,6 +659,17 @@
                 // Sort by submission date
                 players.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
+                // Load player images from dedicated playerImages/ path.
+                // Legacy players may still have playerImage in their record — use that as fallback.
+                await Promise.all(players.map(async (player) => {
+                    if (!player.playerImage) {
+                        try {
+                            const imgSnap = await dbGet(dbRef(database, `playerImages/${player.id}`));
+                            if (imgSnap.exists()) player.playerImage = imgSnap.val();
+                        } catch (_) {}
+                    }
+                }));
+
                 teamPlayers = players;
                 populateAgeCategoryFilterOptions();
                 renderPlayersList();
