@@ -167,7 +167,7 @@ const AUTH_MANAGER = {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const role = await this.loadUserRole(userCredential.user.uid);
-      
+
       if (role !== 'admin' && role !== 'judge') {
         await signOut(auth);
         throw new Error("Access denied. Admin or Judge credentials required.");

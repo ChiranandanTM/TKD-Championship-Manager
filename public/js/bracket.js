@@ -24,6 +24,7 @@ const BRACKET = {
   pendingCategoryData: null,
   bracketListener: null,
   historyListener: null,
+  categoriesListener: null,
   currentFilter: 'all',
   currentCategoryFilter: 'all',
   categoryStatuses: {},
@@ -43,6 +44,7 @@ const BRACKET = {
     await this.loadPlayers();
     this.categorizePlayers();
     this.renderCategories();
+    this.setupCategoriesListener();
     console.log('✅ Bracket initialized with categories:', Object.keys(this.categories).length);
   },
 
@@ -385,16 +387,26 @@ const BRACKET = {
       await this.fixBracketConflicts();
     }
 
-    // Mark bracket as "Live" when opening (only if not already completed)
-    if (!this.isCategoryComplete()) {
+    // Determine and persist bracket status before entering the view
+    if (this.isCategoryComplete()) {
+      // Correct any stale status to 'complete' (e.g. after a crash left it as 'pending')
+      if (this.currentBracket.status !== 'complete') {
+        this.currentBracket.status = 'complete';
+        await this.saveBracket(categoryKey, this.currentBracket);
+      }
+      console.log(`✅ Bracket ${categoryKey} is COMPLETED`);
+    } else {
+      // Mark as live so other users' category lists update in real time
       this.currentBracket.status = 'live';
       await this.saveBracket(categoryKey, this.currentBracket);
       console.log(`📍 Bracket ${categoryKey} marked as LIVE`);
-    } else {
-      console.log(`✅ Bracket ${categoryKey} is already COMPLETED, status unchanged`);
     }
 
     await this.loadMatchHistory(categoryKey);
+
+    // Pause the categories-level listener — we no longer need it while inside
+    // the bracket view, and it avoids re-render churn during active matches.
+    this.stopCategoriesListener();
 
     // Start real-time listeners for multi-court synchronization
     this.setupBracketListeners(categoryKey);
@@ -480,16 +492,23 @@ const BRACKET = {
       await this.fixBracketConflicts();
     }
 
-    // Mark bracket as "Live" when opening (only if not already completed)
-    if (!this.isCategoryComplete()) {
+    // Determine and persist bracket status before entering the view
+    if (this.isCategoryComplete()) {
+      if (this.currentBracket.status !== 'complete') {
+        this.currentBracket.status = 'complete';
+        await this.saveBracket(categoryKey, this.currentBracket);
+      }
+      console.log(`✅ Bracket ${categoryKey} is COMPLETED`);
+    } else {
       this.currentBracket.status = 'live';
       await this.saveBracket(categoryKey, this.currentBracket);
       console.log(`📍 Bracket ${categoryKey} marked as LIVE`);
-    } else {
-      console.log(`✅ Bracket ${categoryKey} is already COMPLETED, status unchanged`);
     }
 
     await this.loadMatchHistory(categoryKey);
+
+    // Pause the categories-level listener while inside the bracket view
+    this.stopCategoriesListener();
 
     // Start real-time listeners for multi-court synchronization
     this.setupBracketListeners(categoryKey);
@@ -1399,6 +1418,151 @@ const BRACKET = {
     }
   },
 
+  // Setup real-time listener on the brackets node so ALL users see status changes
+  // (Live / Pending / Completed) in the categories list without refreshing.
+  // Debounced to 500 ms to avoid flooding re-renders during active matches.
+  setupCategoriesListener() {
+    this.stopCategoriesListener();
+    let debounceTimer = null;
+    const bracketsRef = dbRef(database, 'brackets');
+    this.categoriesListener = dbOnValue(bracketsRef, () => {
+      // Skip if the user is currently inside the bracket view
+      const bracketContainer = document.getElementById('bracketContainer');
+      if (bracketContainer && bracketContainer.style.display === 'block') return;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => this.renderCategories(), 500);
+    });
+    console.log('✅ Categories real-time listener active');
+  },
+
+  // Tear down the categories listener (called when entering bracket view)
+  stopCategoriesListener() {
+    if (this.categoriesListener) {
+      this.categoriesListener();
+      this.categoriesListener = null;
+      console.log('✅ Categories listener stopped');
+    }
+  },
+
+  // Ensure the championship history node for champId has its top-level metadata
+  // (timestamp + championship details) so loadArchivedChampionships() can list it.
+  // Uses dbUpdate so existing data/brackets and data/matchHistory are untouched.
+  async _ensureChampionshipHistoryMeta(champId) {
+    try {
+      const metaRef = dbRef(database, `championshipHistory/${champId}/timestamp`);
+      const snap = await dbGet(metaRef);
+      if (snap.exists()) return; // already initialised
+      const configSnap = await dbGet(dbRef(database, 'formConfig'));
+      const champData = configSnap.exists() ? (configSnap.val().championship || {}) : {};
+      await dbUpdate(dbRef(database, `championshipHistory/${champId}`), {
+        timestamp: new Date().toISOString(),
+        championship: champData
+      });
+      console.log(`✅ Championship history metadata initialised for ${champId}`);
+    } catch (err) {
+      console.warn('⚠️ Could not write championship history metadata:', err);
+    }
+  },
+
+  // Get current championship ID from formConfig
+  async getCurrentChampionshipId() {
+    try {
+      const configRef = dbRef(database, 'formConfig');
+      const snap = await dbGet(configRef);
+      if (snap.exists() && snap.val().championship && snap.val().championship.champId) {
+        return snap.val().championship.champId;
+      }
+      return null;
+    } catch (error) {
+      console.warn('⚠️ Could not fetch current championship ID:', error);
+      return null;
+    }
+  },
+
+  // Save bracket to championship history
+  async saveBracketToChampionshipHistory(categoryKey, bracket) {
+    try {
+      const champId = await this.getCurrentChampionshipId();
+      if (!champId) {
+        console.warn('⚠️ No active championship - bracket not saved to history');
+        return;
+      }
+
+      // Ensure top-level metadata exists so the entry appears in the history list
+      await this._ensureChampionshipHistoryMeta(champId);
+
+      // Create lean bracket data (same as main saveBracket)
+      const leanBracket = {
+        playerCount: bracket.playerCount,
+        currentRound: bracket.currentRound,
+        status: bracket.status,
+        createdAt: bracket.createdAt,
+        byePlayers: bracket.byePlayers || {},
+        byeHistory: bracket.byeHistory || {},
+        expectedRoundMatchCounts: bracket.expectedRoundMatchCounts || [],
+        rounds: bracket.rounds.map(round =>
+          round.map(match => {
+            const leanMatch = {
+              matchId: match.matchId,
+              round: match.round,
+              status: match.status
+            };
+            if (match.player1) leanMatch.player1 = match.player1;
+            if (match.player2) leanMatch.player2 = match.player2;
+            if (match.winner !== null) leanMatch.winner = match.winner;
+            if (match.eliminated !== null) leanMatch.eliminated = match.eliminated;
+            if (match.startTime) leanMatch.startTime = match.startTime;
+            if (match.endTime) leanMatch.endTime = match.endTime;
+            if (match.courtNumber) leanMatch.courtNumber = match.courtNumber;
+            return leanMatch;
+          })
+        )
+      };
+
+      const champHistoryRef = dbRef(database, `championshipHistory/${champId}/data/brackets/${categoryKey}`);
+      await dbSet(champHistoryRef, leanBracket);
+      console.log(`✅ Bracket saved to championship history (${champId}/${categoryKey})`);
+    } catch (error) {
+      console.warn('⚠️ Error saving bracket to championship history:', error);
+      // Don't throw - this should not block the main save operation
+    }
+  },
+
+  // Save match to championship history
+  async saveMatchToChampionshipHistory(categoryKey, match) {
+    try {
+      const champId = await this.getCurrentChampionshipId();
+      if (!champId) {
+        console.warn('⚠️ No active championship - match not saved to history');
+        return;
+      }
+
+      // Ensure top-level metadata exists so the entry appears in the history list
+      await this._ensureChampionshipHistoryMeta(champId);
+
+      const matchId = match.matchId;
+      const historyEntry = {
+        matchId: match.matchId,
+        round: match.round,
+        player1: match.player1,
+        player2: match.player2,
+        winner: match.winner,
+        eliminated: match.eliminated,
+        status: match.status,
+        startTime: match.startTime,
+        endTime: match.endTime,
+        savedAt: new Date().toISOString()
+      };
+
+      const champHistoryRef = dbRef(database, `championshipHistory/${champId}/data/matchHistory/${categoryKey}/${matchId}`);
+      await dbSet(champHistoryRef, historyEntry);
+      console.log(`✅ Match saved to championship history (${champId}/${categoryKey}/${matchId})`);
+    } catch (error) {
+      console.warn('⚠️ Error saving match to championship history:', error);
+      // Don't throw - this should not block the main save operation
+    }
+  },
+
   // Save bracket to Firebase
   async saveBracket(categoryKey, bracket) {
     try {
@@ -1434,6 +1598,11 @@ const BRACKET = {
       const bracketRef = dbRef(database, `brackets/${categoryKey}`);
       await dbSet(bracketRef, leanBracket);
       console.log("✅ Bracket saved (optimized)");
+
+      // Also save to championship history (fire-and-forget with error handling)
+      this.saveBracketToChampionshipHistory(categoryKey, bracket).catch(err => 
+        console.error('❌ Failed to save bracket to championship history:', err)
+      );
     } catch (error) {
       console.error("❌ Error saving bracket:", error);
       if (error.message.includes('too large')) {
@@ -1462,6 +1631,11 @@ const BRACKET = {
       const historyRef = dbRef(database, `matchHistory/${categoryKey}/${matchId}`);
       await dbSet(historyRef, historyEntry);
       console.log("✅ Match saved to history (Firebase)");
+
+      // Also save to championship history (fire-and-forget with error handling)
+      this.saveMatchToChampionshipHistory(categoryKey, match).catch(err =>
+        console.error('❌ Failed to save match to championship history:', err)
+      );
     } catch (error) {
       console.error("❌ Error saving to history:", error);
     }
@@ -1979,8 +2153,10 @@ const BRACKET = {
     this.currentBracket = null;
     this.matchHistory = [];
 
-    // Refresh category list to update status display
-    this.renderCategories();
+    // Refresh category list to update status display, then resume real-time
+    // listening so any other user's bracket opens/closes appear immediately.
+    await this.renderCategories();
+    this.setupCategoriesListener();
   },
 
   // Check if every round has been built and every match is completed

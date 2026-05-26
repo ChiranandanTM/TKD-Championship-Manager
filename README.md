@@ -32,9 +32,12 @@ This is a complete championship operations platform built for Taekwondo events. 
 - [16. Performance Notes](#16-performance-notes)
 - [17. Security Notes](#17-security-notes)
 - [18. Troubleshooting](#18-troubleshooting)
-- [19. Roadmap Ideas](#19-roadmap-ideas)
-- [20. Recent Updates (May 2026)](#20-recent-updates-may-2026)
-- [21. Credits](#21-credits)
+- [19. Bracket Export Tools](#19-bracket-export-tools)
+- [20. Roadmap Ideas](#20-roadmap-ideas)
+- [21. Recent Updates (May 2026)](#21-recent-updates-may-2026)
+- [22. Credits](#22-credits)
+
+> **Latest commit:** `bracket-pdf-generator` — May 25 2026
 
 ## 1. Project Summary
 
@@ -64,7 +67,7 @@ Primary capabilities:
 | Live Match Ops | Live and pending match views with frequent updates. |
 | Standings | Championship standings and medal-oriented tracking. |
 | Admin Tools | Team creation, form editor, weight category editor, championship management. |
-| Export | PDF fixtures and Excel result export in bracket workflows. |
+| Export | PDF fixtures (landscape A3), Excel fixture sheets, and Excel result export in bracket workflows. |
 | Caching | Service worker plus runtime cache strategies for faster repeat loads. |
 
 ## 3. Role Access Matrix
@@ -126,7 +129,11 @@ flowchart LR
 ├── CHANGES_SUMMARY.md
 ├── COMPREHENSIVE_AUDIT_REPORT.md
 ├── IMPLEMENTATION_GUIDE.md
+├── DOCUMENTATION_INDEX.md
+├── START_HERE.md
 ├── README.md
+├── TKD_Bracket_Template.xlsx       # Pre-generated blank 16-player bracket template
+├── generate_bracket_template.py    # Python script to regenerate the Excel template
 ├── functions/                      # currently empty
 └── public/
     ├── index.html
@@ -188,7 +195,7 @@ flowchart LR
 | `public/js/category-logic.js` | Age and weight category functions |
 | `public/js/form-config.js` | Form configuration loading/saving and defaults, phone number field configuration |
 | `public/js/history-protection.js` | Browser history protection module, session tracking, history barriers, popstate handling |
-| `public/js/bracket.js` | Bracket rendering, match progression, exports |
+| `public/js/bracket.js` | Bracket rendering (v3.0), match progression, PDF/Excel fixture export, Excel results export |
 | `public/js/championship-manager.js` | Archive, restore, create, and championship data operations |
 | `public/js/player-manager.js` | Player deletion and related cleanup workflows |
 | `public/js/team-deadline-manager.js` | Team deadline and lock management |
@@ -229,6 +236,7 @@ When changing Firebase credentials, update both places.
 - `users`
 - `teams`
 - `players`
+- `playerImages`                  — dedicated node for player profile images (base64); keyed by playerId
 - `brackets`
 - `currentMatch`
 - `matchResults`
@@ -470,7 +478,7 @@ The application includes an advanced image optimization system that automaticall
 4. Compressed image is stored in database
 
 **Optimization Targets:**
-- Target file size: ~200KB or lower
+- Target file size: ~50–80KB (tightened from the original 200KB target)
 - Maximum dimensions: 600x600px
 - Minimum dimensions: 200x200px
 - Quality range: 60-80% (maintains visual clarity)
@@ -543,12 +551,12 @@ Unsupported formats are rejected with helpful error messages.
 
 **Configuration:**
 ```javascript
-maxFileSizeTarget: 200KB   // Target compressed size
-maxDimensions: 600px       // Maximum width/height
-minDimensions: 200px       // Minimum width/height
-initialQuality: 80%        // Starting quality
-minQuality: 60%            // Lowest acceptable quality
-qualityStep: 5%            // Adjustment granularity
+maxFileSizeTarget: 50–80KB  // Target compressed size (tightened May 2026)
+maxDimensions: 600px        // Maximum width/height
+minDimensions: 200px        // Minimum width/height
+initialQuality: 80%         // Starting quality
+minQuality: 60%             // Lowest acceptable quality
+qualityStep: 5%             // Adjustment granularity
 ```
 
 ### Performance Impact
@@ -627,7 +635,7 @@ Current optimizations include:
 - CSS and rendering optimizations
 - resource preconnect/preload for critical paths
 
-## 16. Security Notes
+## 17. Security Notes
 
 This project is operational and currently includes permissive rules on certain nodes for event throughput and simplicity.
 
@@ -705,7 +713,28 @@ The browser history protection system adds an additional security layer:
 - Check browser console network tab - confirm `history-protection.js` is loading.
 - Test in incognito/private mode to ensure sessionStorage is working.
 
-## 19. Roadmap Ideas
+## 19. Bracket Export Tools
+
+### Client-side exports (from `/admin/bracket.html`)
+
+| Button | Output | Library |
+| --- | --- | --- |
+| Download Fixture PDF | `Fixture_<category>_<date>.pdf` (landscape A3) | jsPDF (CDN) |
+| Download Fixture Excel | `Fixture_<category>_<date>.xlsx` | SheetJS/XLSX (CDN) |
+| Export Results | `Results_<category>_<date>.xlsx` (auto on bracket complete) | SheetJS/XLSX (CDN) |
+
+### Standalone bracket template generator
+
+The file `generate_bracket_template.py` is a local Python utility that produces `TKD_Bracket_Template.xlsx` — a professionally styled blank 16-player single-elimination bracket. Run it when you need to update or customize the template:
+
+```bash
+pip install openpyxl
+python generate_bracket_template.py
+```
+
+The script outputs `TKD_Bracket_Template.xlsx` in the current directory (landscape A3, navy/gold color scheme, seeded match layout).
+
+## 20. Roadmap Ideas
 
 - Consolidate all pages to a single Firebase SDK version.
 - Add environment-driven config instead of inline credentials.
@@ -717,10 +746,43 @@ The browser history protection system adds an additional security layer:
 - Implement device fingerprinting for additional security.
 - Implement WebP conversion for better image compression.
 - Add batch image optimization for legacy player records.
+- Migrate player images from legacy `playerImage` inline field to the new `playerImages/` node for all historical records.
 
-## 20. Recent Updates (May 2026)
+## 21. Recent Updates (May 2026)
 
-### Features Added
+### May 25 — Bracket PDF Generator & v3.0 Engine
+
+#### Bracket Engine v3.0
+- ✅ Full player shuffle via Fisher-Yates algorithm (all players mixed fairly)
+- ✅ Smart position optimization to minimize same-team first-round matches
+- ✅ Automatic bracket regeneration when new players are added (before bracket starts)
+- ✅ Fallback to same-team pairings only when mathematically unavoidable
+
+#### Export Capabilities
+- ✅ **Download Fixture PDF** — professional landscape A3 PDF generated client-side via jsPDF
+- ✅ **Download Fixture Excel** — bracket fixture sheet exported as `.xlsx` via SheetJS
+- ✅ **Export Results Excel** — auto-prompted when all matches in a category complete; exports match outcomes
+- ✅ `TKD_Bracket_Template.xlsx` — pre-generated blank 16-player bracket template (in repo root)
+- ✅ `generate_bracket_template.py` — Python script (openpyxl) to regenerate the blank template
+
+#### Player Images
+- ✅ Player images now stored in dedicated `playerImages/<playerId>` Firebase node
+- ✅ Legacy `playerImage` field inside player record still supported as fallback
+- ✅ Team dashboard and registration form both load from new path with fallback
+
+#### UX Improvements
+- ✅ Password visibility toggle (eye icon) added to all login forms
+- ✅ Live matches page — replaced 5-second hard-refresh polling with real-time `dbOnValue` listener
+- ✅ Phone field in form builder now uses `type="tel"` with 10-digit validation
+- ✅ Image preview container fixed to `height: auto` (no clipping of portrait images)
+
+#### Storage
+- ✅ Image compression target tightened from ~200KB to ~50–80KB
+
+---
+
+### May 22 — Form Fixes, Image Optimizer, History Protection
+
 - ✅ Browser history protection system for public users
 - ✅ Public registration form (`/player-register.html`)
 - ✅ Post-registration thank you page with history protection
@@ -729,35 +791,17 @@ The browser history protection system adds an additional security layer:
 - ✅ Phone number field added to all registration forms
 - ✅ Payment status field removed from all forms
 - ✅ Advanced image optimization with adaptive quality
-- ✅ Smart image compression (targets ~200KB)
 - ✅ EXIF orientation preservation
 - ✅ Support for JPG/JPEG/PNG/WEBP formats
-
-### Security Enhancements
 - ✅ 4-layer browser history protection system
 - ✅ Pre-authentication page access verification
 - ✅ Session-based user tracking
 - ✅ History barrier creation for public users
 - ✅ Auto-redirect on unauthorized access attempts
-- ✅ Image format validation before processing
-- ✅ File size validation (max 50MB)
+- ✅ Adaptive image quality compression (binary search algorithm)
+- ✅ Comprehensive audit completed, performance optimizations applied
 
-### Storage Optimizations
-- ✅ Adaptive image quality compression
-- ✅ Binary search algorithm for optimal file size
-- ✅ Reduced database storage requirements
-- ✅ Improved page load times
-- ✅ Mobile-optimized image delivery
-
-### Code Quality
-- ✅ Comprehensive audit completed
-- ✅ Performance optimizations applied
-- ✅ Cross-browser testing verified
-- ✅ Mobile device support verified
-- ✅ Advanced image optimization module
-- ✅ Full documentation updated
-
-## 21. Credits
+## 22. Credits
 
 - Built and developed by Chiranandan T M
 - Co-supporter: Sharan B N

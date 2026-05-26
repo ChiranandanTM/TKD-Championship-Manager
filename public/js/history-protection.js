@@ -104,7 +104,7 @@ const HISTORY_PROTECTION = {
    * Setup listener for popstate events (back/forward button)
    */
   setupHistoryListener() {
-    window.addEventListener('popstate', (event) => {
+    window.addEventListener('popstate', () => {
       console.log('📍 Pop state event triggered');
       this.handleHistoryNavigation();
     });

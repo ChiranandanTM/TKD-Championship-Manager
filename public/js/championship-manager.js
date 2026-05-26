@@ -16,12 +16,13 @@ const CHAMPIONSHIP_MANAGER = {
 
       try {
         const testRef = dbRef(database, '.info/connected');
-        const unsubscribe = dbOnValue(testRef, (snap) => {
-          if (unsubscribe) unsubscribe();
+        let unsubscribe;
+        unsubscribe = dbOnValue(testRef, (snap) => {
           clearTimeout(timer);
           const isConnected = snap.val() === true;
           console.log(`📡 Database ${isConnected ? 'ONLINE' : 'OFFLINE'}`);
           resolve(isConnected);
+          setTimeout(() => { if (unsubscribe) unsubscribe(); }, 0);
         });
       } catch (e) {
         clearTimeout(timer);
