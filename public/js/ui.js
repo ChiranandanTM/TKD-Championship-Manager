@@ -54,7 +54,7 @@ const UI = {
   initPageProtection(requiredRoles) {
     // 🔐 Check session expiration first
     if (!this.validateSessionExpiry()) return;
-    
+
     const user = AUTH_MANAGER.getCurrentUser();
     const userRole = user.role;
 
@@ -65,6 +65,42 @@ const UI = {
         alert('Access Denied: You do not have permission to access this page.');
       }
       window.location.href = window.location.origin + '/index.html';
+      return;
+    }
+
+    if (userRole === 'admin') {
+      this._purgePasswordTextFields();
+    }
+  },
+
+  // Removes any plaintext passwordText fields that may exist in Firebase from old data.
+  // Runs silently in the background whenever an admin page loads.
+  async _purgePasswordTextFields() {
+    try {
+      const [teamsSnap, refsSnap] = await Promise.all([
+        dbGet(dbRef(database, 'teams')),
+        dbGet(dbRef(database, 'referees'))
+      ]);
+      const updates = {};
+      if (teamsSnap.exists()) {
+        teamsSnap.forEach(child => {
+          if (child.val().passwordText !== undefined) {
+            updates['teams/' + child.key + '/passwordText'] = null;
+          }
+        });
+      }
+      if (refsSnap.exists()) {
+        refsSnap.forEach(child => {
+          if (child.val().passwordText !== undefined) {
+            updates['referees/' + child.key + '/passwordText'] = null;
+          }
+        });
+      }
+      if (Object.keys(updates).length > 0) {
+        await dbUpdate(dbRef(database), updates);
+      }
+    } catch (_) {
+      // non-critical, silent
     }
   },
 
@@ -206,6 +242,7 @@ const UI = {
         password: await hashPassword(password),
         createdAt: new Date().toISOString()
       });
+      localStorage.setItem('pw_team_' + newTeamId, password);
 
       // Create user role entry
       const userRef = dbRef(database, `users/${newTeamId}`);

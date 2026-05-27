@@ -85,8 +85,31 @@ const AUTH_MANAGER = {
   currentTeamId: null,
 
   init() {
+    // ── Proactive token refresh every 45 min ─────────────────────────────────
+    // Firebase Auth tokens expire after 60 minutes. Browser background
+    // throttling can delay the SDK's own refresh timer, so we do it manually
+    // to guarantee the token is always fresh during long working sessions.
+    setInterval(() => {
+      if (auth.currentUser) {
+        auth.currentUser.getIdToken(true).catch(() => {});
+      }
+    }, 45 * 60 * 1000);
+
+    // ── Keep currentUser reference fresh on every token refresh ──────────────
+    // onIdTokenChanged fires whenever the token is issued or silently renewed.
+    // This guarantees this.currentUser always holds the latest user object so
+    // any code that calls auth.currentUser gets a non-stale reference.
+    if (typeof onIdTokenChanged === 'function') {
+      onIdTokenChanged(auth, (user) => {
+        if (user) this.currentUser = user;
+      });
+    }
+
     onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // Cancel any pending null-state debounce timer
+        if (this._authNullTimer) { clearTimeout(this._authNullTimer); this._authNullTimer = null; }
+
         this.currentUser = user;
 
         // If a team session is already active in sessionStorage (DB-auth teams),
@@ -113,11 +136,30 @@ const AUTH_MANAGER = {
         await this.loadUserRole(user.uid);
         this.redirectBasedOnRole();
       } else {
+        const sessionRole = sessionStorage.getItem('userRole');
+
+        // For admin/judge: debounce the null state by 4 seconds before treating
+        // it as a genuine sign-out. The Firebase SDK can emit null very briefly
+        // during token refresh edge cases (network hiccup, browser throttle).
+        // Clearing the session immediately would redirect the user to login for
+        // no real reason. If auth.currentUser is STILL null after 4 s, it is a
+        // genuine sign-out and we clear state then.
+        if (sessionRole === 'admin' || sessionRole === 'judge') {
+          this._authNullTimer = setTimeout(() => {
+            this._authNullTimer = null;
+            if (!auth.currentUser) {
+              this.currentUser = null;
+              this.currentRole = null;
+              this.currentTeamId = null;
+            }
+          }, 4000);
+          return; // keep session alive until timer fires
+        }
+
         this.currentUser = null;
         // Do NOT wipe the team session — team users authenticated via DB, not Firebase Auth.
         // Firebase Auth fires with null for team users; clearing currentRole here would
         // cause getCurrentUser to return an inconsistent state vs sessionStorage.
-        const sessionRole = sessionStorage.getItem('userRole');
         if (sessionRole !== 'team' && sessionRole !== 'referee') {
           // Only clear if it's NOT a team/referee session (i.e., admin/judge who genuinely signed out)
           this.currentRole = null;

@@ -9,7 +9,10 @@
       ".indexOn": ["username", "email", "createdAt"],
       "$teamId": {
         ".read": true,
-        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        "passwordText": {
+          ".validate": false
+        }
       }
     },
 
@@ -35,6 +38,9 @@
       "$refId": {
         ".read": true,
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        "passwordText": {
+          ".validate": false
+        },
         "assignedRefs": {
           ".read": true,
           ".write": "auth != null"

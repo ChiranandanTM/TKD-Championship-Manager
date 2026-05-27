@@ -4,6 +4,11 @@
 // and globally close/open registration
 // ============================================
 
+async function _tdmHashPassword(plain) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('TKDCM:' + plain));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 const TEAM_DEADLINE_MANAGER = {
 
   // Render the Registered Teams section with deadline controls
@@ -64,6 +69,7 @@ const TEAM_DEADLINE_MANAGER = {
             <td style="padding: 14px 16px; font-weight: 700; color: var(--border-gold);">${team.teamName || '—'}</td>
             <td style="padding: 14px 16px; font-family: monospace; color: var(--accent-cyan);">${team.username || '—'}</td>
             <td style="padding: 14px 16px; color: var(--text-gray);">${team.email || '—'}</td>
+            <td style="padding: 14px 16px; font-family: monospace; color: var(--accent-cyan);">${localStorage.getItem('pw_team_' + team.id) || '—'}</td>
             <td style="padding: 14px 16px; color: var(--text-gray); font-size: 0.9rem;">${createdAt}</td>
             <td style="padding: 14px 16px;">${statusHtml}</td>
             <td style="padding: 14px 16px;">
@@ -150,6 +156,7 @@ const TEAM_DEADLINE_MANAGER = {
                 <th style="padding: 14px 16px; text-align: left; color: var(--border-gold); font-size: 0.95rem;">Team Name</th>
                 <th style="padding: 14px 16px; text-align: left; color: var(--border-gold); font-size: 0.95rem;">Username</th>
                 <th style="padding: 14px 16px; text-align: left; color: var(--border-gold); font-size: 0.95rem;">Email</th>
+                <th style="padding: 14px 16px; text-align: left; color: var(--border-gold); font-size: 0.95rem;">Password</th>
                 <th style="padding: 14px 16px; text-align: left; color: var(--border-gold); font-size: 0.95rem;">Created</th>
                 <th style="padding: 14px 16px; text-align: left; color: var(--border-gold); font-size: 0.95rem;">Status</th>
                 <th style="padding: 14px 16px; text-align: left; color: var(--border-gold); font-size: 0.95rem;">Deadline</th>
@@ -581,7 +588,7 @@ const TEAM_DEADLINE_MANAGER = {
       document.getElementById('editTeamName').value = t.teamName || '';
       document.getElementById('editTeamUsername').value = t.username || '';
       document.getElementById('editTeamEmail').value = t.email || '';
-      document.getElementById('editTeamPassword').value = t.password || '';
+      document.getElementById('editTeamPassword').value = localStorage.getItem('pw_team_' + teamId) || '';
 
       document.getElementById('editTeamModal').style.display = 'flex';
       document.getElementById('editTeamName').focus();
@@ -684,8 +691,9 @@ const TEAM_DEADLINE_MANAGER = {
         teamName: teamName,
         username: username,
         email: email,
-        password: password
+        password: await _tdmHashPassword(password)
       });
+      localStorage.setItem('pw_team_' + teamId, password);
 
       if (typeof MODAL !== 'undefined') {
         MODAL.success('✅ Team details updated successfully!');

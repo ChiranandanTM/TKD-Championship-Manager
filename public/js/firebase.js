@@ -1,6 +1,6 @@
 // FIREBASE v11 - Modular SDK with persistence + performance optimizations
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, onIdTokenChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
 import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child, goOnline, goOffline, connectDatabaseEmulator } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
 
@@ -20,11 +20,16 @@ const database = getDatabase(app);
 const storage = getStorage(app);
 
 // ── Keep connection alive on visibility change ────────────────────────────────
-// When tab becomes hidden, Firebase may drop the connection.
-// Re-connect when user comes back to avoid stale reads.
+// When tab becomes hidden, Firebase drops the WebSocket. When the user returns,
+// re-connect the database AND force-refresh the auth token. Without the token
+// refresh, ops that require auth fail with PERMISSION_DENIED if the 60-minute
+// token expired while the browser was in background / device was asleep.
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     goOnline(database);
+    if (auth.currentUser) {
+      auth.currentUser.getIdToken(true).catch(() => {});
+    }
   }
 });
 
@@ -33,6 +38,13 @@ const connectedRef = ref(database, '.info/connected');
 let connectionBanner = null;
 onValue(connectedRef, (snap) => {
   const isConnected = snap.val() === true;
+  if (isConnected) {
+    // Refresh auth token whenever the database reconnects. Covers network drops
+    // where the token may have aged past its 60-minute expiry while offline.
+    if (auth.currentUser) {
+      auth.currentUser.getIdToken(true).catch(() => {});
+    }
+  }
   if (!isConnected) {
     // Show offline banner after 3s delay (avoid flashing on brief drops)
     if (!connectionBanner) {
@@ -94,6 +106,7 @@ window.getDownloadURL = getDownloadURL;
 window.signInWithEmailAndPassword = signInWithEmailAndPassword;
 window.signOut = signOut;
 window.onAuthStateChanged = onAuthStateChanged;
+window.onIdTokenChanged = onIdTokenChanged;
 window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
 window.dbGoOnline = goOnline;
 window.dbGoOffline = goOffline;

@@ -258,7 +258,7 @@
                 <label for="refPasswordInput">Password <span style="color:var(--accent-red)">*</span></label>
                 <input type="password" id="refPasswordInput" placeholder="Set login password">
                 <small id="refPasswordHint" style="color:#888;font-size:0.82rem;margin-top:4px;display:none;">
-                    Leave blank to keep existing password
+                    Showing current password. Edit to change it.
                 </small>
             </div>
 
@@ -332,6 +332,7 @@
                     createdAt: now,
                     updatedAt: now
                 });
+                localStorage.setItem('pw_ref_' + tid, password.trim());
                 await dbSet(dbRef(database, 'users/' + tid), {
                     role: 'referee',
                     refId: tid,
@@ -360,7 +361,10 @@
                 this._requireAdmin();
                 opts = opts || {};
                 var updates = { updatedAt: new Date().toISOString() };
-                if (opts.password && opts.password.trim()) updates.password = await hashPassword(opts.password.trim());
+                if (opts.password && opts.password.trim()) {
+                    updates.password = await hashPassword(opts.password.trim());
+                    localStorage.setItem('pw_ref_' + refId, opts.password.trim());
+                }
                 if (opts.courtNumber && String(opts.courtNumber).trim()) {
                     updates.courtNumber = String(opts.courtNumber).trim();
                     await dbUpdate(dbRef(database, 'users/' + refId), { courtNumber: updates.courtNumber });
@@ -449,6 +453,10 @@
                         '</div>' +
                         '<span class="court-badge">Court ' + escHtml(r.courtNumber) + '</span>' +
                     '</div>' +
+                    '<div style="margin-bottom:12px;padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:6px;border-left:3px solid var(--accent-cyan);">' +
+                        '<span style="font-size:0.8rem;color:var(--text-gray);text-transform:uppercase;letter-spacing:1px;">Password</span>' +
+                        '<div style="font-family:monospace;color:var(--accent-cyan);font-weight:700;font-size:1rem;margin-top:2px;">' + escHtml(localStorage.getItem('pw_ref_' + r.refId) || '—') + '</div>' +
+                    '</div>' +
                     '<div style="margin-bottom:8px;font-size:0.85rem;color:var(--accent-cyan);font-weight:700;text-transform:uppercase;letter-spacing:1px;">Assigned Referees</div>' +
                     '<div class="assigned-refs-list">' + tagList + '</div>' +
                     '<div class="ref-actions">' +
@@ -488,7 +496,7 @@
                 document.getElementById('refModalTitle').textContent = 'Edit — ' + refId;
                 document.getElementById('refIdInput').value = refId;
                 document.getElementById('refIdInput').disabled = true;
-                document.getElementById('refPasswordInput').value = '';
+                document.getElementById('refPasswordInput').value = localStorage.getItem('pw_ref_' + refId) || '';
                 document.getElementById('refPasswordHint').style.display = 'block';
                 document.getElementById('refCourtInput').value = ref.courtNumber || '';
                 document.getElementById('refFormModal').classList.add('active');
