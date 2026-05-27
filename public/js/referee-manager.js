@@ -1,3 +1,17 @@
+// ── PASSWORD HASHING ──────────────────────────────────────────────────────────
+async function hashPassword(plain) {
+  const buf = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode('TKDCM:' + plain)
+  );
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+function isLegacyPassword(stored) {
+  return !/^[0-9a-f]{64}$/.test(stored);
+}
+
 // ============================================================
 // REFEREE MANAGER — CRUD for referees/{refId}
 // ============================================================
@@ -13,13 +27,6 @@ const REFEREE_MANAGER = {
   _requireAdmin() {
     const role = sessionStorage.getItem('userRole');
     if (role !== 'admin') throw new Error('Access denied: Admin only');
-  },
-
-  /** Simple password hash (sha256-like substitute using btoa for demo; swap with real hash in prod) */
-  _hashPassword(plain) {
-    // In production use a proper hashing library. For this app (DB auth pattern),
-    // we store plain text consistent with team login. Mark clearly here.
-    return plain; // consistent with existing team login approach
   },
 
   // ── Create ─────────────────────────────────────────────────
@@ -50,7 +57,7 @@ const REFEREE_MANAGER = {
     const now = new Date().toISOString();
     const refData = {
       refId: trimmedId,
-      password: this._hashPassword(trimmedPw),
+      password: await hashPassword(trimmedPw),
       courtNumber: String(courtNumber).trim(),
       assignedRefs: [],
       createdAt: now,
@@ -100,7 +107,7 @@ const REFEREE_MANAGER = {
 
     const updates = { updatedAt: new Date().toISOString() };
     if (password !== undefined && password.trim() !== '') {
-      updates.password = this._hashPassword(password.trim());
+      updates.password = await hashPassword(password.trim());
     }
     if (courtNumber !== undefined && String(courtNumber).trim() !== '') {
       updates.courtNumber = String(courtNumber).trim();
@@ -161,8 +168,17 @@ const REFEREE_MANAGER = {
     if (!snap.exists()) throw new Error('Invalid referee ID or password');
 
     const data = snap.val();
-    if (data.password !== this._hashPassword(trimmedPw)) {
-      throw new Error('Invalid referee ID or password');
+    const hashedInput = await hashPassword(trimmedPw);
+    const storedPw = data.password;
+
+    if (isLegacyPassword(storedPw)) {
+      if (storedPw !== trimmedPw) throw new Error('Invalid referee ID or password');
+      // Migrate to hash silently
+      try {
+        await dbUpdate(dbRef(database, `referees/${trimmedId}`), { password: hashedInput });
+      } catch (_) { /* non-critical */ }
+    } else {
+      if (storedPw !== hashedInput) throw new Error('Invalid referee ID or password');
     }
 
     // Persist session

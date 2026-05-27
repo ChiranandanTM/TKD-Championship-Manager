@@ -19,7 +19,7 @@
       ".indexOn": ["role", "teamId"],
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('teams').child($uid).exists()",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('teams').child($uid).exists() || root.child('referees').child($uid).exists()",
         ".validate": "newData.hasChildren(['role']) && newData.child('role').isString()",
         "role": {
           ".write": "(auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin') || (auth != null && auth.uid === $uid && !data.exists())",
@@ -62,16 +62,7 @@
       "$playerId": {
         ".read": true,
         ".write": true,
-        ".validate": "newData.isString() && newData.val().length <= 250000"
-      }
-    },
-
-    "championship": {
-      ".read": true,
-      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      "$section": {
-        ".read": true,
-        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        ".validate": "newData.isString() && newData.val().length <= 50000"
       }
     },
 

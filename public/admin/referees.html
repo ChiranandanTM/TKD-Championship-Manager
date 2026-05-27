@@ -304,6 +304,12 @@
     <script type="module" src="/js/ui.js"></script>
 
     <script type="module">
+        // ── PASSWORD HASHING ──────────────────────────────────────────────────
+        async function hashPassword(plain) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('TKDCM:' + plain));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
         // ── REFEREE MANAGER (inlined to avoid cross-module timing issues) ──
         const RM = {
             _requireAdmin: function() {
@@ -320,7 +326,7 @@
                 var now = new Date().toISOString();
                 await dbSet(dbRef(database, 'referees/' + tid), {
                     refId: tid,
-                    password: password.trim(),
+                    password: await hashPassword(password.trim()),
                     courtNumber: String(courtNumber).trim(),
                     assignedRefs: [],
                     createdAt: now,
@@ -354,7 +360,7 @@
                 this._requireAdmin();
                 opts = opts || {};
                 var updates = { updatedAt: new Date().toISOString() };
-                if (opts.password && opts.password.trim()) updates.password = opts.password.trim();
+                if (opts.password && opts.password.trim()) updates.password = await hashPassword(opts.password.trim());
                 if (opts.courtNumber && String(opts.courtNumber).trim()) {
                     updates.courtNumber = String(opts.courtNumber).trim();
                     await dbUpdate(dbRef(database, 'users/' + refId), { courtNumber: updates.courtNumber });

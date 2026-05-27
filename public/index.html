@@ -162,6 +162,13 @@
         import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
 
+        // ── PASSWORD HASHING ────────────────────────────────────────────────
+        async function hashPassword(plain) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('TKDCM:' + plain));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        function isLegacyPassword(stored) { return !/^[0-9a-f]{64}$/.test(stored); }
+
         const firebaseConfig = {
             apiKey: "AIzaSyC7NfS7RMv8C78KGJsPkQCeV9fzmJ86lDU",
             authDomain: "taekowndo-championship.firebaseapp.com",
@@ -444,8 +451,13 @@
                         throw new Error("Invalid username or password");
                     }
 
-                    if (teamData.password !== trimmedPassword) {
-                        throw new Error("Invalid username or password");
+                    const hashedInput = await hashPassword(trimmedPassword);
+                    const storedPw = teamData.password;
+                    if (isLegacyPassword(storedPw)) {
+                        if (storedPw !== trimmedPassword) throw new Error("Invalid username or password");
+                        try { await update(ref(database, `teams/${teamId}`), { password: hashedInput }); } catch (_) {}
+                    } else {
+                        if (storedPw !== hashedInput) throw new Error("Invalid username or password");
                     }
 
                     // Save session
@@ -455,7 +467,7 @@
                     sessionStorage.setItem('userRole', 'team');
                     sessionStorage.setItem('teamId', teamId);
                     sessionStorage.setItem('teamName', teamData.teamName || '');
-                    
+
                     // Store login page URL for logout redirect
                     sessionStorage.setItem('loginPageUrl', window.location.href);
 
@@ -608,7 +620,14 @@
                 if (!snap.exists()) throw new Error('Invalid referee ID or password');
 
                 const data = snap.val();
-                if (data.password !== password) throw new Error('Invalid referee ID or password');
+                const hashedRefInput = await hashPassword(password);
+                const storedRefPw = data.password;
+                if (isLegacyPassword(storedRefPw)) {
+                    if (storedRefPw !== password) throw new Error('Invalid referee ID or password');
+                    try { await update(ref(database, `referees/${refId}`), { password: hashedRefInput }); } catch (_) {}
+                } else {
+                    if (storedRefPw !== hashedRefInput) throw new Error('Invalid referee ID or password');
+                }
 
                 // Set session
                 sessionStorage.setItem('userRole', 'referee');

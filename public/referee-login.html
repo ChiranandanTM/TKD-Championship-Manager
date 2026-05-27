@@ -114,6 +114,13 @@
         import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
 
+        // ── PASSWORD HASHING ────────────────────────────────────────────────
+        async function hashPassword(plain) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('TKDCM:' + plain));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+        function isLegacyPassword(stored) { return !/^[0-9a-f]{64}$/.test(stored); }
+
         const firebaseConfig = {
             apiKey: "AIzaSyC7NfS7RMv8C78KGJsPkQCeV9fzmJ86lDU",
             authDomain: "taekowndo-championship.firebaseapp.com",
@@ -284,7 +291,14 @@
                 if (!snap.exists()) throw new Error('Invalid referee ID or password');
 
                 const data = snap.val();
-                if (data.password !== password) throw new Error('Invalid referee ID or password');
+                const hashedInput = await hashPassword(password);
+                const storedPw = data.password;
+                if (isLegacyPassword(storedPw)) {
+                    if (storedPw !== password) throw new Error('Invalid referee ID or password');
+                    try { await update(ref(database, `referees/${refId}`), { password: hashedInput }); } catch (_) {}
+                } else {
+                    if (storedPw !== hashedInput) throw new Error('Invalid referee ID or password');
+                }
 
                 // Set session
                 sessionStorage.setItem('userRole', 'referee');

@@ -59,6 +59,25 @@ function togglePw(inputId, btn) {
   setTimeout(() => clearInterval(checkHistoryProtection), 2000);
 })();
 
+// ── PASSWORD HASHING ──────────────────────────────────────────────────────────
+// SHA-256 via the built-in Web Crypto API.  The fixed prefix acts as a pepper
+// so that generic rainbow tables cannot be used against the stored hashes.
+async function hashPassword(plain) {
+  const buf = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode('TKDCM:' + plain)
+  );
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// Returns true when the stored value is plaintext (not yet migrated to a hash).
+// SHA-256 always produces exactly 64 lowercase hex characters.
+function isLegacyPassword(stored) {
+  return !/^[0-9a-f]{64}$/.test(stored);
+}
+
 // AUTH MANAGER - NO IMPORTS!
 const AUTH_MANAGER = {
   currentUser: null,
@@ -230,14 +249,27 @@ const AUTH_MANAGER = {
       }
       
       console.log("🔐 Comparing passwords...");
-      console.log("Stored password:", teamData.password);
-      console.log("Entered password:", trimmedPassword);
-      
-      if (teamData.password !== trimmedPassword) {
-        console.error("❌ Password mismatch!");
-        throw new Error("Invalid username or password");
+      const hashedInput = await hashPassword(trimmedPassword);
+      const storedPw = teamData.password;
+
+      if (isLegacyPassword(storedPw)) {
+        // Plaintext stored — compare directly and migrate to hash on success
+        if (storedPw !== trimmedPassword) {
+          console.error("❌ Password mismatch!");
+          throw new Error("Invalid username or password");
+        }
+        // Silently upgrade to hash so next login uses the secure path
+        try {
+          await dbUpdate(dbRef(database, `teams/${teamId}`), { password: hashedInput });
+          console.log("✅ Team password migrated to SHA-256");
+        } catch (_) { /* non-critical — login still succeeds */ }
+      } else {
+        if (storedPw !== hashedInput) {
+          console.error("❌ Password mismatch!");
+          throw new Error("Invalid username or password");
+        }
       }
-      
+
       console.log("✅ Credentials matched!");
       
       // Try to sign in with Firebase Auth, but don't fail if email doesn't exist
