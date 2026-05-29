@@ -1,7 +1,7 @@
 // FIREBASE v11 - Modular SDK with persistence + performance optimizations
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, onIdTokenChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child, goOnline, goOffline, connectDatabaseEmulator } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
+import { getDatabase, ref, set, get, update, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, push, query, orderByChild, equalTo, child, goOnline, goOffline, connectDatabaseEmulator } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
 
 const firebaseConfig = {
@@ -110,6 +110,9 @@ window.onIdTokenChanged = onIdTokenChanged;
 window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
 window.dbGoOnline = goOnline;
 window.dbGoOffline = goOffline;
+window.dbOnChildAdded = onChildAdded;
+window.dbOnChildChanged = onChildChanged;
+window.dbOnChildRemoved = onChildRemoved;
 
 // 🔌 DATABASE CONNECTION FIX #4: Export connection verification function
 window.verifyDatabaseConnection = async function(timeoutMs = 3000) {

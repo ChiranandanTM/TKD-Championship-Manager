@@ -3,7 +3,7 @@
 // v4: Cache-bust bump — forces fresh fetch of all assets
 // ============================================
 
-const CACHE_NAME = 'tkd-championship-v4';
+const CACHE_NAME = 'tkd-championship-v5';
 
 // Static assets to cache on install (app shell)
 // NOTE: Large page-specific scripts (bracket.js, 82KB) are excluded from
@@ -22,6 +22,7 @@ const PRECACHE_URLS = [
   '/team/dashboard.html',
   '/referee/dashboard.html',
   '/assets/css/main.css',
+  '/js/firebase.js',
   '/js/modal.js',
   '/js/custom-select.js',
   '/js/auth.js',

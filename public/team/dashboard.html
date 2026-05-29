@@ -319,6 +319,7 @@
         let teamPlayers = [];
         let currentMedalFilter = 'all';
         let currentAgeCategoryFilter = 'all';
+        let _playersUnsubscribers = [];
 
         const MEDAL_PRIORITY = {
             Bronze: 1,
@@ -637,13 +638,82 @@
             }
         }
 
+        function updatePlayerCount() {
+            const countEl = document.getElementById('playerCount');
+            if (countEl) countEl.textContent = teamPlayers.length;
+        }
+
+        // ── sessionStorage helpers ────────────────────────────────────────────
+        // Player TEXT data is cached under 'tdp_{teamId}' (images excluded — stored separately).
+        // Images are cached under 'img_{playerId}' to avoid re-downloading on every refresh.
+        // Both caches survive page refreshes within the same browser tab session.
+
+        function savePlayersCache(teamId, players) {
+            try {
+                const slim = players.map(({ playerImage, ...rest }) => rest); // no image blobs in text cache
+                sessionStorage.setItem('tdp_' + teamId, JSON.stringify(slim));
+                sessionStorage.setItem('tdp_ts_' + teamId, Date.now().toString());
+            } catch (_) {} // quota exceeded — skip silently
+        }
+
+        function loadPlayersCache(teamId) {
+            try {
+                const raw = sessionStorage.getItem('tdp_' + teamId);
+                const ts  = parseInt(sessionStorage.getItem('tdp_ts_' + teamId) || '0');
+                if (!raw || Date.now() - ts > 5 * 60 * 1000) return []; // 5 min TTL
+                return JSON.parse(raw);
+            } catch (_) { return []; }
+        }
+
+        async function fetchPlayerImage(player, playerId) {
+            // If image is already embedded in the record, cache it and return
+            if (player.playerImage) {
+                try { sessionStorage.setItem('img_' + playerId, player.playerImage); } catch (_) {}
+                return;
+            }
+            // Check sessionStorage — avoids re-downloading on every page refresh
+            const cached = sessionStorage.getItem('img_' + playerId);
+            if (cached) {
+                player.playerImage = cached;
+                return;
+            }
+            // Not cached — fetch from Firebase once and cache it
+            try {
+                const imgSnap = await dbGet(dbRef(database, `playerImages/${playerId}`));
+                if (imgSnap.exists()) {
+                    player.playerImage = imgSnap.val();
+                    try { sessionStorage.setItem('img_' + playerId, imgSnap.val()); } catch (_) {}
+                }
+            } catch (_) {}
+        }
+
         async function loadPlayers() {
             const user = AUTH_MANAGER.getCurrentUser();
             const teamId = user.teamId;
 
+            // Tear down any previous listeners before re-subscribing
+            _playersUnsubscribers.forEach(unsub => unsub());
+            _playersUnsubscribers = [];
+
             try {
                 const playersRef = dbRef(database, 'players');
                 const bracketsRef = dbRef(database, 'brackets');
+
+                // ── Step 1: Render from sessionStorage cache immediately ───────
+                // Images are also in sessionStorage per-player, so fetchPlayerImage
+                // reads them from there — zero Firebase downloads on this render pass.
+                const cachedPlayers = loadPlayersCache(teamId);
+                if (cachedPlayers.length > 0) {
+                    teamPlayers = cachedPlayers;
+                    await Promise.all(teamPlayers.map(p => fetchPlayerImage(p, p.id)));
+                    updatePlayerCount();
+                    populateAgeCategoryFilterOptions();
+                    renderPlayersList();
+                }
+
+                // ── Step 2: Fetch fresh text data from Firebase ───────────────
+                // Text data is small (a few KB total). Images are NOT downloaded
+                // here because fetchPlayerImage will serve them from sessionStorage.
                 const [playersSnapshot, bracketsSnapshot] = await Promise.all([
                     dbGet(playersRef),
                     dbGet(bracketsRef)
@@ -653,53 +723,120 @@
                     ? buildMedalMapFromBrackets(bracketsSnapshot.val())
                     : {};
 
-                if (!playersSnapshot.exists()) {
-                    teamPlayers = [];
-                    populateAgeCategoryFilterOptions();
-                    renderPlayersList();
-                    return;
-                }
-
                 const players = [];
-                playersSnapshot.forEach(child => {
-                    const player = child.val();
-                    if (player.teamId === teamId) {
-                        players.push({ id: child.key, ...player, medalType: medalMap[child.key]?.type || null });
-                    }
-                });
-
-                document.getElementById('playerCount').textContent = players.length;
-
-                if (players.length === 0) {
-                    teamPlayers = [];
-                    populateAgeCategoryFilterOptions();
-                    renderPlayersList();
-                    return;
+                if (playersSnapshot.exists()) {
+                    playersSnapshot.forEach(child => {
+                        const player = child.val();
+                        if (player.teamId === teamId) {
+                            players.push({ id: child.key, ...player, medalType: medalMap[child.key]?.type || null });
+                        }
+                    });
                 }
 
-                // Sort by submission date
                 players.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
-                // Load player images from dedicated playerImages/ path.
-                // Legacy players may still have playerImage in their record — use that as fallback.
-                await Promise.all(players.map(async (player) => {
-                    if (!player.playerImage) {
-                        try {
-                            const imgSnap = await dbGet(dbRef(database, `playerImages/${player.id}`));
-                            if (imgSnap.exists()) player.playerImage = imgSnap.val();
-                        } catch (_) {}
-                    }
-                }));
+                // Fetch images — hits sessionStorage cache for existing players,
+                // only downloads from Firebase for genuinely new players.
+                await Promise.all(players.map(p => fetchPlayerImage(p, p.id)));
 
                 teamPlayers = players;
+                savePlayersCache(teamId, players); // update text cache for next page load
+                updatePlayerCount();
                 populateAgeCategoryFilterOptions();
                 renderPlayersList();
 
+                // ── Step 3: Real-time listeners ───────────────────────────────
+                // Build a Set of already-loaded IDs so onChildAdded skips existing
+                // children (Firebase fires it for every existing child using its
+                // local SDK cache — no extra network cost, but we skip them because
+                // they're already in teamPlayers).
+                const loadedIds = new Set(teamPlayers.map(p => p.id));
+
+                // Real-time: new player added
+                const unsubAdded = dbOnChildAdded(playersRef, async (snapshot) => {
+                    const playerId = snapshot.key;
+                    if (loadedIds.has(playerId)) return; // already loaded, skip
+                    const player = snapshot.val();
+                    if (player.teamId !== teamId) return;
+
+                    loadedIds.add(playerId);
+                    await fetchPlayerImage(player, playerId); // caches image in sessionStorage
+
+                    teamPlayers.push({ id: playerId, ...player, medalType: null });
+                    teamPlayers.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+                    savePlayersCache(teamId, teamPlayers);
+
+                    updatePlayerCount();
+                    populateAgeCategoryFilterOptions();
+                    renderPlayersList();
+                });
+
+                // Real-time: existing player updated (e.g. admin approves, edits details)
+                // Firebase only sends the single changed player's data — very cheap.
+                const unsubChanged = dbOnChildChanged(playersRef, async (snapshot) => {
+                    const playerId = snapshot.key;
+                    const player = snapshot.val();
+                    const idx = teamPlayers.findIndex(p => p.id === playerId);
+
+                    if (player.teamId !== teamId) {
+                        if (idx !== -1) {
+                            teamPlayers.splice(idx, 1);
+                            loadedIds.delete(playerId);
+                            sessionStorage.removeItem('img_' + playerId);
+                            savePlayersCache(teamId, teamPlayers);
+                            updatePlayerCount();
+                            populateAgeCategoryFilterOptions();
+                            renderPlayersList();
+                        }
+                        return;
+                    }
+
+                    // Admin may have updated the player's image — invalidate its cache
+                    // so fetchPlayerImage re-downloads the latest version.
+                    sessionStorage.removeItem('img_' + playerId);
+
+                    await fetchPlayerImage(player, playerId); // re-fetches and re-caches image
+
+                    // Preserve medal type — it comes from brackets, not the player record
+                    const medalType = idx !== -1 ? teamPlayers[idx].medalType : null;
+                    const updated = { id: playerId, ...player, medalType };
+
+                    if (idx !== -1) {
+                        teamPlayers[idx] = updated;
+                    } else {
+                        loadedIds.add(playerId);
+                        teamPlayers.push(updated);
+                        teamPlayers.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+                    }
+
+                    savePlayersCache(teamId, teamPlayers);
+                    updatePlayerCount();
+                    populateAgeCategoryFilterOptions();
+                    renderPlayersList();
+                });
+
+                // Real-time: player deleted
+                const unsubRemoved = dbOnChildRemoved(playersRef, (snapshot) => {
+                    const playerId = snapshot.key;
+                    const idx = teamPlayers.findIndex(p => p.id === playerId);
+                    if (idx !== -1) {
+                        teamPlayers.splice(idx, 1);
+                        loadedIds.delete(playerId);
+                        sessionStorage.removeItem('img_' + playerId); // free up cache space
+                        savePlayersCache(teamId, teamPlayers);
+                        updatePlayerCount();
+                        populateAgeCategoryFilterOptions();
+                        renderPlayersList();
+                    }
+                });
+
+                _playersUnsubscribers = [unsubAdded, unsubChanged, unsubRemoved];
+
             } catch (error) {
                 console.error('Error loading players:', error);
-                const grid = document.getElementById('playersGrid');
-                if (grid) {
-                    grid.innerHTML = `
+                const playersList = document.getElementById('playersList');
+                if (playersList) {
+                    playersList.innerHTML = `
                         <div style="grid-column:1/-1;padding:40px 20px;background:rgba(255,23,68,.08);border:2px solid rgba(255,23,68,.3);border-radius:14px;text-align:center">
                             <div style="font-size:2.5rem;margin-bottom:10px">⚠️</div>
                             <div style="color:#ef9a9a;font-weight:700;font-size:1.05rem;margin-bottom:6px">Failed to load players</div>
@@ -797,6 +934,11 @@
                 }, 100);
             }
         }
+
+        // Clean up listeners when navigating away so they don't linger
+        window.addEventListener('beforeunload', () => {
+            _playersUnsubscribers.forEach(unsub => unsub());
+        });
 
         // Override native alert/confirm with custom modals
         window.alert = function(message) {
