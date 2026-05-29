@@ -26,6 +26,7 @@
         @keyframes tdSpin{to{transform:rotate(360deg)}}
         @keyframes tdPulse{0%,100%{opacity:.5}50%{opacity:.2}}
         @keyframes tdFadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+        @keyframes tdUrgentBlink{0%,100%{opacity:1}50%{opacity:.55}}
 
         /* Skeleton loader */
         .td-skeleton{background:linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.04) 75%);background-size:200% 100%;animation:tdPulse 1.5s ease-in-out infinite;border-radius:12px;min-height:120px}
@@ -568,6 +569,25 @@
                     }
                     // ────────────────────────────────────────────────────────
 
+                    // Deadline countdown pill shown inside the Registration stat card when open
+                    let deadlineCountdownHtml = '';
+                    if (!registrationBlocked && team.registrationDeadline) {
+                        const dl = new Date(team.registrationDeadline);
+                        dl.setHours(23, 59, 59, 999);
+                        const msLeft = dl - now;
+                        const hoursLeft = Math.floor(msLeft / (1000 * 60 * 60));
+                        const daysLeft = Math.ceil(hoursLeft / 24);
+                        const deadlineFmt = new Date(team.registrationDeadline)
+                            .toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                        if (hoursLeft < 24) {
+                            deadlineCountdownHtml = `<div style="font-size:.7rem;font-weight:800;margin-top:5px;color:#FF6B6B;letter-spacing:.5px;animation:tdUrgentBlink 1s ease-in-out infinite">⏰ CLOSES TODAY!</div>`;
+                        } else if (daysLeft <= 2) {
+                            deadlineCountdownHtml = `<div style="font-size:.7rem;font-weight:800;margin-top:5px;color:#FF9800;letter-spacing:.5px">${daysLeft} day${daysLeft !== 1 ? 's' : ''} left ⚠️</div>`;
+                        } else {
+                            deadlineCountdownHtml = `<div style="font-size:.7rem;font-weight:700;margin-top:5px;color:rgba(255,255,255,.65)">${daysLeft} days left · ${deadlineFmt}</div>`;
+                        }
+                    }
+
                     document.getElementById('teamInfo').innerHTML = `
                         <div class="td-summary">
                             <div class="td-stat td-stat-1">
@@ -597,6 +617,7 @@
                                 </div>
                                 <div class="td-stat-val" style="font-size:1.05rem;color:#FFFFFF">${registrationBlocked ? 'Closed' : 'Open'}</div>
                                 <div class="td-stat-lbl">Registration</div>
+                                ${deadlineCountdownHtml}
                             </div>
                         </div>
                     `;

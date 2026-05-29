@@ -120,6 +120,28 @@
         /* Drop-zone slot for drag-and-drop BYE player */
         .drop-target { border-style:dashed!important; border-color:rgba(0,229,255,0.45)!important; background:rgba(0,229,255,0.05)!important; min-height:44px; }
         .drop-target.drag-over { border-color:var(--border-gold)!important; background:rgba(255,215,0,0.08)!important; }
+
+        /* Skeleton loader for category cards */
+        @keyframes bktPulse{0%,100%{opacity:.45}50%{opacity:.2}}
+        @keyframes bktShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+        .bracket-skeleton-card{
+            background:linear-gradient(145deg,rgba(15,20,45,.97),rgba(22,33,62,.97));
+            border:2px solid rgba(255,215,0,.1);
+            border-radius:18px;
+            padding:28px 24px;
+            min-height:185px;
+            animation:bktPulse 1.5s ease-in-out infinite;
+            position:relative;
+            overflow:hidden;
+        }
+        .bracket-skeleton-card::after{
+            content:'';
+            position:absolute;
+            inset:0;
+            background:linear-gradient(90deg,transparent 0%,rgba(255,255,255,.04) 50%,transparent 100%);
+            background-size:200% 100%;
+            animation:bktShimmer 1.8s ease-in-out infinite;
+        }
     </style>
 </head>
 
@@ -169,7 +191,16 @@
         </div>
 
         <!-- Categories List -->
-        <div id="categoriesList"></div>
+        <div id="categoriesList">
+            <div class="categories-grid">
+                <div class="bracket-skeleton-card"></div>
+                <div class="bracket-skeleton-card"></div>
+                <div class="bracket-skeleton-card"></div>
+                <div class="bracket-skeleton-card"></div>
+                <div class="bracket-skeleton-card"></div>
+                <div class="bracket-skeleton-card"></div>
+            </div>
+        </div>
 
         <!-- Bracket Display -->
         <div id="bracketContainer" style="display: none;"></div>
