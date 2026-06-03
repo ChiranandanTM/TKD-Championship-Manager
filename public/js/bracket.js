@@ -1656,6 +1656,7 @@ const BRACKET = {
           ${isComplete ? `<button class="btn-success" onclick="BRACKET.exportToExcel()" style="background:var(--success-green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.95rem;">📥 Export Results</button>` : ''}
           <button class="btn-secondary" onclick="BRACKET.downloadFixturePDF()" style="padding:8px 18px;font-size:0.95rem;">📄 Download Fixture PDF</button>
           <button class="btn-secondary" onclick="BRACKET.showMatchHistory()">📋 Previous Matches</button>
+          <button class="msg-bell-btn" onclick="if(typeof toggleMsgPanel==='function')toggleMsgPanel()" title="Court Messages" style="padding:8px 14px;font-size:0.95rem;white-space:nowrap;">🔔 Messages</button>
         </div>
       </div>
       <div class="bracket-rounds">
