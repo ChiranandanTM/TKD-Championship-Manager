@@ -1,8 +1,9 @@
 // FIREBASE v11 - Modular SDK with persistence + performance optimizations
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, onIdTokenChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, onIdTokenChanged, createUserWithEmailAndPassword, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
 import { getDatabase, ref, set, get, update, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, push, query, orderByChild, equalTo, child, goOnline, goOffline, connectDatabaseEmulator } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
+import { getFirestore, collection, addDoc, doc, setDoc, getDoc, updateDoc, deleteDoc, query as fsQuery, where, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyC7NfS7RMv8C78KGJsPkQCeV9fzmJ86lDU",
@@ -18,6 +19,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const database = getDatabase(app);
 const storage = getStorage(app);
+const firestore = getFirestore(app);
 
 // ── Keep connection alive on visibility change ────────────────────────────────
 // When tab becomes hidden, Firebase drops the WebSocket. When the user returns,
@@ -108,11 +110,27 @@ window.signOut = signOut;
 window.onAuthStateChanged = onAuthStateChanged;
 window.onIdTokenChanged = onIdTokenChanged;
 window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+window.signInAnonymously = signInAnonymously;
 window.dbGoOnline = goOnline;
 window.dbGoOffline = goOffline;
 window.dbOnChildAdded = onChildAdded;
 window.dbOnChildChanged = onChildChanged;
 window.dbOnChildRemoved = onChildRemoved;
+
+// ── Firestore globals ─────────────────────────────────────────────────────────
+window.firestore = firestore;
+window.fsCollection = collection;
+window.fsDoc = doc;
+window.fsAddDoc = addDoc;
+window.fsSetDoc = setDoc;
+window.fsGetDoc = getDoc;
+window.fsUpdateDoc = updateDoc;
+window.fsDeleteDoc = deleteDoc;
+window.fsQuery = fsQuery;
+window.fsWhere = where;
+window.fsOrderBy = orderBy;
+window.fsOnSnapshot = onSnapshot;
+window.fsServerTimestamp = serverTimestamp;
 
 // 🔌 DATABASE CONNECTION FIX #4: Export connection verification function
 window.verifyDatabaseConnection = async function(timeoutMs = 3000) {

@@ -1,0 +1,22 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "courtMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "to",        "order": "ASCENDING"  },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "courtMessages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "from",      "order": "ASCENDING"  },
+        { "fieldPath": "to",        "order": "ASCENDING"  },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

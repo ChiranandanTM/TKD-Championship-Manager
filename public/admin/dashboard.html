@@ -84,6 +84,130 @@
         }
     </style>
     <style>
+        /* ── Messaging bell + panel ───────────────────────────────────────────── */
+        .msg-bell-btn {
+            background: linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,215,0,0.05));
+            border: 2px solid var(--border-gold); color: var(--border-gold);
+            border-radius: 10px; padding: 10px 18px; font-size: 1.1rem;
+            cursor: pointer; transition: all 0.25s ease;
+            display: flex; align-items: center; gap: 8px; font-weight: 700;
+        }
+        .msg-bell-btn:hover { background: rgba(255,215,0,0.25); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,215,0,0.3); }
+        .msg-badge {
+            background: var(--accent-red); color: #fff;
+            font-size: 0.75rem; font-weight: 900;
+            min-width: 22px; height: 22px; border-radius: 11px;
+            display: inline-flex; align-items: center; justify-content: center; padding: 0 6px;
+            animation: pulse-msg 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse-msg { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+
+        @keyframes bell-shake {
+            0%,100% { transform: translateY(0) rotate(0deg); }
+            15%      { transform: translateY(-3px) rotate(-12deg); }
+            30%      { transform: translateY(0)   rotate(10deg); }
+            45%      { transform: translateY(-2px) rotate(-8deg); }
+            60%      { transform: translateY(0)   rotate(6deg); }
+            75%      { transform: translateY(-1px) rotate(-3deg); }
+        }
+        .bell-new-msg {
+            animation: bell-shake 0.6s ease forwards !important;
+            box-shadow: 0 0 22px rgba(255,215,0,0.7) !important;
+            border-color: #FFD700 !important;
+            background: rgba(255,215,0,0.3) !important;
+        }
+
+        .msg-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:6000; }
+        .msg-overlay.open { display:block; }
+
+        .msg-panel {
+            position:fixed; top:0; right:0;
+            width:440px; max-width:100vw; height:100vh;
+            background:linear-gradient(160deg,rgba(12,18,42,0.99) 0%,rgba(22,33,62,0.99) 100%);
+            border-left:2px solid var(--border-gold);
+            box-shadow:-8px 0 40px rgba(0,0,0,0.6);
+            display:flex; flex-direction:column; z-index:6001;
+            transform:translateX(100%); transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);
+        }
+        .msg-panel.open { transform:translateX(0); }
+        .msg-panel-header {
+            background:linear-gradient(90deg,rgba(255,215,0,0.12),rgba(0,229,255,0.08));
+            border-bottom:1px solid rgba(255,215,0,0.25);
+            padding:20px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+        }
+        .msg-panel-title { font-size:1.2rem; font-weight:800; color:var(--border-gold); letter-spacing:0.5px; }
+        .msg-close-btn { background:none; border:none; color:var(--text-gray); font-size:1.4rem; cursor:pointer; padding:4px 8px; border-radius:6px; transition:all 0.2s; }
+        .msg-close-btn:hover { color:var(--accent-red); background:rgba(255,23,68,0.1); }
+
+        .msg-compose { padding:20px 24px; border-bottom:1px solid rgba(255,255,255,0.07); flex-shrink:0; }
+        .msg-compose-label { font-size:0.78rem; font-weight:700; color:var(--accent-cyan); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
+        .msg-select {
+            width:100%; background:rgba(0,0,0,0.4);
+            border:1.5px solid rgba(255,215,0,0.35); border-radius:8px;
+            color:var(--text-white); font-size:0.9rem; padding:9px 12px;
+            cursor:pointer; margin-bottom:10px; transition:border-color 0.2s;
+        }
+        .msg-select:focus { outline:none; border-color:var(--border-gold); }
+        .msg-type-row { display:flex; gap:8px; margin-bottom:10px; }
+        .msg-type-btn { flex:1; padding:8px; border-radius:8px; font-size:0.85rem; font-weight:700; cursor:pointer; border:2px solid transparent; transition:all 0.2s; }
+        .msg-type-btn.info  { background:rgba(0,229,255,0.1); border-color:rgba(0,229,255,0.3); color:var(--accent-cyan); }
+        .msg-type-btn.info.active  { background:rgba(0,229,255,0.25); border-color:var(--accent-cyan); }
+        .msg-type-btn.urgent{ background:rgba(255,23,68,0.1); border-color:rgba(255,23,68,0.3); color:var(--accent-red); }
+        .msg-type-btn.urgent.active{ background:rgba(255,23,68,0.25); border-color:var(--accent-red); }
+        .msg-textarea {
+            width:100%; box-sizing:border-box;
+            background:rgba(0,0,0,0.35); border:1.5px solid rgba(255,255,255,0.12); border-radius:8px;
+            color:var(--text-white); font-size:0.9rem; font-family:inherit;
+            padding:10px 12px; resize:none; height:72px; margin-bottom:10px; transition:border-color 0.2s;
+        }
+        .msg-textarea:focus { outline:none; border-color:var(--border-gold); }
+        .msg-textarea::placeholder { color:#555; }
+        .msg-send-btn {
+            width:100%; background:linear-gradient(135deg,#FFD700,#FFC107);
+            color:#000; font-weight:800; border:none; border-radius:8px;
+            padding:12px; font-size:0.95rem; cursor:pointer; transition:all 0.2s;
+        }
+        .msg-send-btn:hover { opacity:0.9; transform:translateY(-1px); }
+        .msg-send-btn:disabled { opacity:0.45; cursor:not-allowed; transform:none; }
+
+        .msg-feed-label { padding:14px 24px 8px; font-size:0.78rem; font-weight:700; color:var(--text-gray); text-transform:uppercase; letter-spacing:1px; flex-shrink:0; }
+        .msg-feed { flex:1; overflow-y:auto; padding:0 16px 20px; }
+        .msg-feed::-webkit-scrollbar { width:4px; }
+        .msg-feed::-webkit-scrollbar-thumb { background:rgba(255,215,0,0.2); border-radius:2px; }
+
+        .msg-item { border-radius:10px; padding:12px 14px; margin-bottom:10px; animation:fadeInUp 0.3s ease; }
+        .msg-item.sent { background:linear-gradient(135deg,rgba(0,229,255,0.08),rgba(0,229,255,0.04)); border:1px solid rgba(0,229,255,0.2); border-left:3px solid var(--accent-cyan); }
+        .msg-item.sent.urgent-msg { background:linear-gradient(135deg,rgba(255,23,68,0.1),rgba(255,23,68,0.05)); border:1px solid rgba(255,23,68,0.25); border-left:3px solid var(--accent-red); }
+        .msg-item.reply { background:linear-gradient(135deg,rgba(255,215,0,0.07),rgba(255,215,0,0.03)); border:1px solid rgba(255,215,0,0.15); border-left:3px solid var(--border-gold); }
+        .msg-item-meta { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.75rem; }
+        .msg-item-from { font-weight:700; color:var(--accent-cyan); }
+        .msg-item.reply .msg-item-from { color:var(--border-gold); }
+        .msg-item.sent.urgent-msg .msg-item-from { color:var(--accent-red); }
+        .msg-item-time { color:#555; }
+        .msg-item-target { font-size:0.72rem; color:#666; margin-bottom:5px; }
+        .msg-item-text { font-size:0.9rem; color:var(--text-white); line-height:1.45; }
+        .msg-tag { display:inline-block; font-size:0.65rem; font-weight:700; padding:2px 7px; border-radius:4px; margin-right:6px; text-transform:uppercase; }
+        .msg-tag.broadcast { background:rgba(0,229,255,0.2); color:var(--accent-cyan); }
+        .msg-tag.court     { background:rgba(255,215,0,0.2); color:var(--border-gold); }
+        .msg-tag.urgent    { background:rgba(255,23,68,0.25); color:#ff6b8a; }
+        .msg-tag.reply-tag { background:rgba(255,215,0,0.15); color:var(--border-gold); }
+        .msg-empty { text-align:center; padding:40px 20px; color:#555; font-size:0.9rem; }
+
+        /* Delete button on each message */
+        .msg-delete-btn {
+            background: none; border: none;
+            color: rgba(255,80,80,0.5); font-size: 0.85rem;
+            cursor: pointer; padding: 2px 6px; border-radius: 4px;
+            transition: all 0.2s; line-height: 1;
+        }
+        .msg-delete-btn:hover { color: var(--accent-red); background: rgba(255,23,68,0.12); }
+        .msg-item-new-from-ref {
+            background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,215,0,0.03));
+            border: 1px solid rgba(255,215,0,0.2);
+            border-left: 3px solid var(--border-gold);
+        }
+    </style>
+    <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
 
         @keyframes cntUp {
@@ -389,9 +513,39 @@
 </head>
 
 <body>
+    <!-- Messaging overlay + slide-out panel -->
+    <div class="msg-overlay" id="msgOverlay" onclick="closeMsgPanel()"></div>
+    <div class="msg-panel" id="msgPanel">
+        <div class="msg-panel-header">
+            <div class="msg-panel-title">🔔 Court Messages</div>
+            <button class="msg-close-btn" onclick="closeMsgPanel()">✕</button>
+        </div>
+        <div class="msg-compose">
+            <div class="msg-compose-label">📤 New Message</div>
+            <select class="msg-select" id="msgTarget">
+                <option value="broadcast">📢 All Courts (Broadcast)</option>
+            </select>
+            <div class="msg-type-row">
+                <button class="msg-type-btn info active" id="msgTypeInfo"   onclick="setMsgType('info')">ℹ️ Info</button>
+                <button class="msg-type-btn urgent"      id="msgTypeUrgent" onclick="setMsgType('urgent')">🔴 Urgent</button>
+            </div>
+            <textarea class="msg-textarea" id="msgText" maxlength="500"
+                placeholder="Type your message to the court referee..."></textarea>
+            <button class="msg-send-btn" id="msgSendBtn" onclick="sendAdminMessage()">Send Message</button>
+        </div>
+        <div class="msg-feed-label">💬 Message History</div>
+        <div class="msg-feed" id="msgFeed"><div class="msg-empty">No messages yet.</div></div>
+    </div>
+
     <div class="page-header">
         <h1 class="page-title">⚙️ ADMIN DASHBOARD</h1>
-        <button class="btn-danger" onclick="UI.logout()">Logout</button>
+        <div style="display:flex;gap:12px;align-items:center;">
+            <button class="msg-bell-btn" id="adminBellBtn" onclick="toggleMsgPanel()" title="Court Messages">
+                🔔 <span style="font-size:0.85rem;">Messages</span>
+                <span class="msg-badge" id="adminBadge" style="display:none">0</span>
+            </button>
+            <button class="btn-danger" onclick="UI.logout()">Logout</button>
+        </div>
     </div>
 
     <!-- Championship Info Ticker -->
@@ -663,6 +817,8 @@
     <script type="module" src="/js/Team-deadline-manager.js"></script>
     <script type="module" src="/js/player-manager.js"></script>
     <script type="module" src="/js/championship-manager.js"></script>
+    <script type="module" src="/js/messaging.js"></script>
+    <script defer src="/js/notifications.js"></script>
 
     <script type="module">
         // Unregister any bad service workers to prevent caching issues
@@ -1435,6 +1591,228 @@
 
         window.alert = function (message) { return MODAL.showAlert(message); };
         window.confirm = function (message) { return MODAL.showConfirm(message); };
+    </script>
+
+    <!-- ── Admin Messaging Panel ──────────────────────────────────────────── -->
+    <script type="module">
+        var _msgType        = 'info';
+        var _msgUnsubscribe = null;
+        var _panelOpen      = false;
+
+        // Wait until Firebase modules are loaded (synchronous globals set by firebase.js)
+        function waitForModulesReady(cb) {
+            if (typeof window.MESSAGING !== 'undefined'
+                && typeof window.firestore !== 'undefined'
+                && typeof window.database !== 'undefined'
+                && typeof window.onAuthStateChanged === 'function'
+                && window.auth) {
+                cb();
+            } else {
+                setTimeout(() => waitForModulesReady(cb), 100);
+            }
+        }
+
+        var _adminUid = null;
+
+        // Modules ready → wait for Firebase Auth to restore the session,
+        // then create the admin's userRoles doc and start listening.
+        waitForModulesReady(() => {
+            const unsubAuth = window.onAuthStateChanged(window.auth, async (user) => {
+                if (user) {
+                    unsubAuth();
+                    _adminUid = user.uid;
+                    sessionStorage.setItem('firebaseUid', user.uid);
+                    await window.MESSAGING.initAdmin(user.uid);
+                    await loadCourts();
+                    // NOTIFY is optional — guard every call so messaging
+                    // works even if notifications.js hasn't loaded yet
+                    if (window.NOTIFY) window.NOTIFY.init('admin');
+                    startAdminListener();
+                }
+            });
+        });
+
+        // ── Load courts dynamically from RTDB referees node ────────────────
+        // Called at init AND every time the panel opens, so the list is always current.
+        async function loadCourts() {
+            if (!window.database || !window.dbGet || !window.dbRef) return;
+            try {
+                const snap = await window.dbGet(window.dbRef(window.database, 'referees'));
+                const courts = new Set();
+                if (snap.exists()) {
+                    snap.forEach(child => {
+                        const cn = child.val().courtNumber;
+                        if (cn && String(cn).trim()) courts.add(String(cn).trim());
+                    });
+                }
+                const select = document.getElementById('msgTarget');
+                if (!select) return;
+                const sorted = Array.from(courts).sort((a, b) => Number(a) - Number(b));
+                let options  = '<option value="broadcast">&#x1F4E2; All Courts (Broadcast)</option>';
+                sorted.forEach(cn => {
+                    options += '<option value="court_' + cn + '">&#x1F3DF; Court ' + cn + '</option>';
+                });
+                select.innerHTML = options;
+            } catch (e) {
+                console.warn('[MESSAGING] loadCourts:', e.message);
+            }
+        }
+
+        function startAdminListener() {
+            _msgUnsubscribe = window.MESSAGING.listenAdmin((msgs) => {
+                renderFeed(msgs);
+                updateBadge(msgs);
+                if (window.NOTIFY) {
+                    window.NOTIFY.processMessages(msgs, _adminUid, window.openMsgPanel);
+                }
+            });
+        }
+
+        // ── Panel toggle ───────────────────────────────────────────────────
+        window.toggleMsgPanel = function () { _panelOpen ? closeMsgPanel() : openMsgPanel(); };
+
+        window.openMsgPanel = function () {
+            _panelOpen = true;
+            document.getElementById('msgPanel').classList.add('open');
+            document.getElementById('msgOverlay').classList.add('open');
+            document.getElementById('adminBadge').style.display = 'none';
+            loadCourts(); // always refresh courts when panel opens
+        };
+
+        window.closeMsgPanel = function () {
+            _panelOpen = false;
+            document.getElementById('msgPanel').classList.remove('open');
+            document.getElementById('msgOverlay').classList.remove('open');
+        };
+
+        // ── Message type ───────────────────────────────────────────────────
+        window.setMsgType = function (type) {
+            _msgType = type;
+            document.getElementById('msgTypeInfo').classList.toggle('active',   type === 'info');
+            document.getElementById('msgTypeUrgent').classList.toggle('active', type === 'urgent');
+        };
+
+        // ── Send ───────────────────────────────────────────────────────────
+        window.sendAdminMessage = async function () {
+            const to   = document.getElementById('msgTarget').value;
+            const text = document.getElementById('msgText').value.trim();
+            if (!text) return;
+            const btn = document.getElementById('msgSendBtn');
+            btn.disabled = true; btn.textContent = 'Sending...';
+            try {
+                await window.MESSAGING.sendMessage(to, text, _msgType);
+                document.getElementById('msgText').value = '';
+            } catch (e) {
+                alert('Failed to send: ' + e.message);
+            } finally {
+                btn.disabled = false; btn.textContent = 'Send Message';
+            }
+        };
+
+        // ── Render feed ────────────────────────────────────────────────────
+        function renderFeed(msgs) {
+            const feed = document.getElementById('msgFeed');
+            if (!msgs || msgs.length === 0) {
+                feed.innerHTML = '<div class="msg-empty">No messages yet.</div>';
+                return;
+            }
+            feed.innerHTML = msgs.map(m => {
+                const fromRef  = m.fromRole === 'referee';
+                const isReply  = m.isReply === true && fromRef;
+                const isRefNew = fromRef && !m.isReply;          // referee-initiated new message
+                const isUrgent = m.type === 'urgent';
+                const isAdminMsg = !fromRef;
+
+                // CSS class
+                let cls = 'sent';
+                if (isReply)   cls = 'reply';
+                if (isRefNew)  cls = 'reply msg-item-new-from-ref';
+                if (isAdminMsg && isUrgent) cls = 'sent urgent-msg';
+
+                const time = m.timestamp
+                    ? new Date(m.timestamp.toMillis()).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                    : '—';
+
+                // Tag showing who sent it / where it went
+                let targetTag;
+                if (fromRef) {
+                    // From referee — show court + name
+                    const label = isReply ? '&#x21A9; Reply' : '&#x1F4E4; New Message';
+                    targetTag = '<span class="msg-tag reply-tag">' + label + ' &mdash; '
+                        + escHtml(m.fromName || 'Referee')
+                        + ' (Court ' + escHtml(m.courtNumber || '?') + ')</span>';
+                } else {
+                    // From admin — show destination
+                    targetTag = m.to === 'broadcast'
+                        ? '<span class="msg-tag broadcast">&#x1F4E2; Broadcast</span>'
+                        : '<span class="msg-tag court">&#x1F3DF; Court ' + escHtml(m.courtNumber || m.to.replace('court_', '')) + '</span>';
+                }
+                const urgentTag = isUrgent && isAdminMsg ? '<span class="msg-tag urgent">&#x1F534; Urgent</span>' : '';
+
+                const senderLabel = fromRef
+                    ? (isReply ? '&#x21A9; ' : '&#x1F4E4; ') + escHtml(m.fromName || 'Referee')
+                    : '&#x1F4E4; You';
+
+                const deleteBtn = '<button class="msg-delete-btn" title="Delete message" '
+                    + 'onclick="deleteAdminMsg(\'' + m.id + '\', this)">&#x1F5D1;</button>';
+
+                return '<div class="msg-item ' + cls + '" id="msg-' + m.id + '">' +
+                    '<div class="msg-item-meta">' +
+                        '<span class="msg-item-from">' + senderLabel + '</span>' +
+                        '<span style="display:flex;align-items:center;gap:8px;">' +
+                            '<span class="msg-item-time">' + time + '</span>' +
+                            deleteBtn +
+                        '</span>' +
+                    '</div>' +
+                    '<div class="msg-item-target">' + targetTag + urgentTag + '</div>' +
+                    '<div class="msg-item-text">' + escHtml(m.text) + '</div>' +
+                '</div>';
+            }).join('');
+        }
+
+        // ── Delete message ─────────────────────────────────────────────────
+        window.deleteAdminMsg = async function (msgId, btnEl) {
+            if (!msgId) return;
+            const confirmed = await MODAL.showConfirm('Delete this message? This cannot be undone.');
+            if (!confirmed) return;
+            btnEl.disabled = true; btnEl.textContent = '...';
+            try {
+                await window.MESSAGING.deleteMessage(msgId);
+                const el = document.getElementById('msg-' + msgId);
+                if (el) el.remove();
+            } catch (e) {
+                alert('Failed to delete: ' + e.message);
+                btnEl.disabled = false; btnEl.textContent = '&#x1F5D1;';
+            }
+        };
+
+        // ── Unread badge — counts only unread referee replies ──────────────
+        let _prevAdminUnread = 0;
+
+        function updateBadge(msgs) {
+            if (_panelOpen) return;
+            const uid   = sessionStorage.getItem('firebaseUid') ||
+                          (window.auth && window.auth.currentUser ? window.auth.currentUser.uid : null);
+            const count = uid ? msgs.filter(m => m.isReply && (!m.readBy || !m.readBy[uid])).length : 0;
+            const badge = document.getElementById('adminBadge');
+            const bell  = document.getElementById('adminBellBtn');
+            if (!badge) return;
+            badge.textContent   = count > 99 ? '99+' : count;
+            badge.style.display = count > 0 ? 'flex' : 'none';
+
+            // Shake + glow the bell when a NEW reply arrives from a referee
+            if (count > _prevAdminUnread && bell) {
+                bell.classList.remove('bell-new-msg');
+                void bell.offsetWidth; // reflow to restart animation
+                bell.classList.add('bell-new-msg');
+                setTimeout(() => bell.classList.remove('bell-new-msg'), 1800);
+            }
+            _prevAdminUnread = count;
+        }
+
+        function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && _panelOpen) closeMsgPanel(); });
     </script>
 </body>
 

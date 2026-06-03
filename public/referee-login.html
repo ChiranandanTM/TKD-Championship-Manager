@@ -110,9 +110,10 @@
     <!-- Firebase SDK v11 -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
-        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
         import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
+        import { getFirestore, doc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
         // ── PASSWORD HASHING ────────────────────────────────────────────────
         async function hashPassword(plain) {
@@ -136,6 +137,7 @@
         const auth = getAuth(app);
         const database = getDatabase(app);
         const storage = getStorage(app);
+        const firestore = getFirestore(app);
 
         // Export for global use
         window.firebaseApp = app;
@@ -305,7 +307,7 @@
                 sessionStorage.setItem('userId', refId);
                 sessionStorage.setItem('refId', refId);
                 sessionStorage.setItem('courtNumber', data.courtNumber || '');
-                
+
                 // Store login page URL for logout redirect
                 sessionStorage.setItem('loginPageUrl', window.location.href);
 
@@ -316,6 +318,24 @@
                     courtNumber: data.courtNumber || '',
                     updatedAt: new Date().toISOString()
                 });
+
+                // Sign in anonymously to Firebase Auth so Firestore security rules
+                // can identify this referee. The anonymous UID is stable per browser.
+                try {
+                    const anonResult = await signInAnonymously(auth);
+                    const anonUid = anonResult.user.uid;
+                    sessionStorage.setItem('firebaseUid', anonUid);
+                    // Write userRoles doc so Firestore rules can resolve role + court
+                    await setDoc(doc(firestore, 'userRoles', anonUid), {
+                        role: 'referee',
+                        refId: refId,
+                        courtNumber: data.courtNumber || '',
+                        createdAt: serverTimestamp()
+                    }, { merge: true });
+                } catch (fsErr) {
+                    // Non-fatal: messaging won't work but login still succeeds
+                    console.warn('Anonymous auth / Firestore init failed:', fsErr.message);
+                }
 
                 UI.hideLoading();
                 RATE_LIMITER.reset();

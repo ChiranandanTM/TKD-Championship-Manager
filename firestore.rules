@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Reads the userRoles doc — used only for admin/judge verification.
+    function userRole() {
+      let doc = get(/databases/$(database)/documents/userRoles/$(request.auth.uid));
+      return doc.data != null ? doc.data.get('role', '') : '';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() == 'admin';
+    }
+
+    // ── userRoles ──────────────────────────────────────────────────────────────
+    // Each user stores their role here after login.
+    // Referees call setDoc({merge:true}) on every login, so allow both
+    // create AND update for the owner — prevents "update denied on re-login" bug.
+    match /userRoles/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+
+      allow create, update: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.get('role', '') in ['admin', 'judge', 'referee']
+        && request.resource.data.keys().hasAll(['role', 'createdAt']);
+
+      allow delete: if isAdmin();
+    }
+
+    // ── courtMessages ──────────────────────────────────────────────────────────
+    match /courtMessages/{messageId} {
+
+      // ── READ ──────────────────────────────────────────────────────────────────
+      // Any signed-in user may read all messages.
+      // Message content is operational (match updates, court info) — not sensitive.
+      // Admin/judge get all; referees naturally see only what their queries return
+      // (broadcast, their court, admin replies) because of the where() filters
+      // used in listenReferee().
+      allow read: if isSignedIn();
+
+      // ── CREATE — admin sends to courts or broadcast ───────────────────────────
+      allow create: if isAdmin()
+        && request.resource.data.from     == request.auth.uid
+        && request.resource.data.fromRole == 'admin'
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 500
+        && request.resource.data.type in ['info', 'urgent']
+        && (
+             request.resource.data.to == 'broadcast' ||
+             request.resource.data.to.matches('court_[0-9]+')
+           );
+
+      // ── CREATE — referee sends to admin (new message or reply) ──────────────
+      // Any signed-in user may create a referee message to admin.
+      // Security: sender must be authenticated, must set their own UID as 'from',
+      // must claim fromRole='referee', and can only target 'admin'.
+      // The admin create rule above is the only path to send to courts/broadcast.
+      allow create: if isSignedIn()
+        && request.resource.data.from     == request.auth.uid
+        && request.resource.data.fromRole == 'referee'
+        && request.resource.data.to       == 'admin'
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 500;
+
+      // ── UPDATE — mark as read only ────────────────────────────────────────────
+      // Any signed-in user may flip their own readBy flag.
+      // Only the readBy map may change; all other fields stay immutable.
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readBy'])
+        && request.resource.data.readBy.keys().hasAll([request.auth.uid])
+        && request.resource.data.readBy[request.auth.uid] == true;
+
+      // ── DELETE — admin only ───────────────────────────────────────────────────
+      allow delete: if isAdmin();
+    }
+
+  }
+}
