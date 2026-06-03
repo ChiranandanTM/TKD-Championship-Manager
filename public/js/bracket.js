@@ -27,6 +27,7 @@ const BRACKET = {
   categoriesListener: null,
   currentFilter: 'all',
   currentCategoryFilter: 'all',
+  currentAgeCategoryFilter: 'all',
   categoryStatuses: {},
   categoriesRenderRequestId: 0,
   _teamNameCache: null,  // { teamId → teamName } lookup built once per session
@@ -219,6 +220,12 @@ const BRACKET = {
     await this.renderCategories();
   },
 
+  // Filter brackets by age category (Junior, Senior, Sub-Junior, etc.)
+  async filterByAgeCategory(age) {
+    this.currentAgeCategoryFilter = age || 'all';
+    await this.renderCategories();
+  },
+
   // Keep category filter options in sync with available categories
   syncCategoryFilterControl() {
     const select = document.getElementById('categoryFilterSelect');
@@ -248,12 +255,26 @@ const BRACKET = {
     select.value = this.currentCategoryFilter;
   },
 
+  // Build age category filter tabs dynamically from available categories
+  syncAgeCategoryFilter() {
+    const container = document.getElementById('ageCategoryFilter');
+    if (!container) return;
+    const ages = [...new Set(Object.values(this.categories).map(c => c.ageCategory))].sort();
+    let html = `<button class="status-tab${this.currentAgeCategoryFilter === 'all' ? ' active' : ''}" onclick="BRACKET.filterByAgeCategory('all')">All</button>`;
+    ages.forEach(age => {
+      const active = this.currentAgeCategoryFilter === age ? ' active' : '';
+      html += `<button class="status-tab${active}" onclick="BRACKET.filterByAgeCategory('${age}')">${age}</button>`;
+    });
+    container.innerHTML = html;
+  },
+
   // Render category list
   async renderCategories() {
     const container = document.getElementById('categoriesList');
     if (!container) return;
 
     this.syncCategoryFilterControl();
+    this.syncAgeCategoryFilter();
 
     const renderRequestId = ++this.categoriesRenderRequestId;
 
@@ -288,8 +309,9 @@ const BRACKET = {
         const statusLower = status.toLowerCase();
         const matchesStatus = this.currentFilter === 'all' || this.currentFilter === statusLower;
         const matchesCategory = this.currentCategoryFilter === 'all' || this.currentCategoryFilter === key;
+        const matchesAge = this.currentAgeCategoryFilter === 'all' || cat.ageCategory === this.currentAgeCategoryFilter;
 
-        if (!matchesStatus || !matchesCategory) {
+        if (!matchesStatus || !matchesCategory || !matchesAge) {
           return null;
         }
 
