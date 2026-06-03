@@ -2,6 +2,94 @@
 // CHAMPIONSHIP MANAGER - Archive & History
 // ============================================
 
+// Keeps only { id } for each player slot in brackets/matchHistory.
+// Full player data is already stored in data.players, so no info is lost.
+function _slimBrackets(brackets) {
+  const slim = p => (p && p.id) ? { id: p.id } : p;
+  const result = {};
+  for (const [catKey, bracket] of Object.entries(brackets)) {
+    result[catKey] = {
+      ...bracket,
+      rounds: (bracket.rounds || []).map(round =>
+        round.map(match => ({
+          ...match,
+          player1:    slim(match.player1),
+          player2:    slim(match.player2),
+          winner:     slim(match.winner),
+          eliminated: slim(match.eliminated),
+        }))
+      ),
+      byePlayers: Object.fromEntries(
+        Object.entries(bracket.byePlayers || {}).map(([k, p]) => [k, slim(p)])
+      )
+    };
+  }
+  return result;
+}
+
+function _slimMatchHistory(matchHistory) {
+  const slim = p => (p && p.id) ? { id: p.id } : p;
+  const result = {};
+  for (const [catKey, matches] of Object.entries(matchHistory)) {
+    result[catKey] = {};
+    for (const [matchId, match] of Object.entries(matches || {})) {
+      result[catKey][matchId] = {
+        ...match,
+        player1:    slim(match.player1),
+        player2:    slim(match.player2),
+        winner:     slim(match.winner),
+        eliminated: slim(match.eliminated),
+      };
+    }
+  }
+  return result;
+}
+
+// Rebuilds full player objects from playersMap when restoring an archive.
+// Handles both new lean archives ({ id } only) and old full-object archives.
+function _rebuildPlayers(brackets, matchHistory, playersMap) {
+  const rebuild = p => {
+    if (!p || !p.id) return p;
+    if (Object.keys(p).length === 1) return playersMap[p.id] ? { ...playersMap[p.id] } : p;
+    return p; // already a full object (old archive format)
+  };
+
+  const rebuiltBrackets = {};
+  for (const [catKey, bracket] of Object.entries(brackets)) {
+    rebuiltBrackets[catKey] = {
+      ...bracket,
+      rounds: (bracket.rounds || []).map(round =>
+        round.map(match => ({
+          ...match,
+          player1:    rebuild(match.player1),
+          player2:    rebuild(match.player2),
+          winner:     rebuild(match.winner),
+          eliminated: rebuild(match.eliminated),
+        }))
+      ),
+      byePlayers: Object.fromEntries(
+        Object.entries(bracket.byePlayers || {}).map(([k, p]) => [k, rebuild(p)])
+      )
+    };
+  }
+
+  const rebuiltHistory = {};
+  for (const [catKey, matches] of Object.entries(matchHistory)) {
+    rebuiltHistory[catKey] = {};
+    for (const [matchId, match] of Object.entries(matches || {})) {
+      rebuiltHistory[catKey][matchId] = {
+        ...match,
+        player1:    rebuild(match.player1),
+        player2:    rebuild(match.player2),
+        winner:     rebuild(match.winner),
+        eliminated: rebuild(match.eliminated),
+      };
+    }
+  }
+
+  return { brackets: rebuiltBrackets, matchHistory: rebuiltHistory };
+}
+
 const CHAMPIONSHIP_MANAGER = {
   // 🔒 CONCURRENCY FIX #5: Lock mechanism to prevent concurrent operations
   isCreatingChampionship: false,
@@ -70,15 +158,16 @@ const CHAMPIONSHIP_MANAGER = {
       ]);
       console.log("✅ All data fetched");
 
-      // Create archive structure with competition data only
+      // Create archive — store full players/teams once, strip player objects
+      // from brackets and matchHistory (only keep player ID per slot).
       const archiveData = {
         timestamp: timestamp,
         championship: championship,
         data: {
-          players: playersSnap.exists() ? playersSnap.val() : {},
-          brackets: bracketsSnap.exists() ? bracketsSnap.val() : {},
-          matchHistory: historySnap.exists() ? historySnap.val() : {},
-          teams: teamsSnap.exists() ? teamsSnap.val() : {}
+          players:      playersSnap.exists()  ? playersSnap.val()                          : {},
+          brackets:     bracketsSnap.exists() ? _slimBrackets(bracketsSnap.val())          : {},
+          matchHistory: historySnap.exists()  ? _slimMatchHistory(historySnap.val())       : {},
+          teams:        teamsSnap.exists()    ? teamsSnap.val()                            : {}
         }
       };
 
@@ -310,17 +399,24 @@ const CHAMPIONSHIP_MANAGER = {
 
       const archiveData = snapshot.val();
       console.log("📖 Archive data loaded");
-      
-      // Restore competition data only
+
+      const playersMap  = archiveData.data.players || {};
+      const rebuiltData = _rebuildPlayers(
+        archiveData.data.brackets     || {},
+        archiveData.data.matchHistory || {},
+        playersMap
+      );
+
+      // Restore competition data
       console.log("💾 Restoring players...");
-      await dbSet(dbRef(database, 'players'), archiveData.data.players || {});
-      
+      await dbSet(dbRef(database, 'players'), playersMap);
+
       console.log("💾 Restoring brackets...");
-      await dbSet(dbRef(database, 'brackets'), archiveData.data.brackets || {});
-      
+      await dbSet(dbRef(database, 'brackets'), rebuiltData.brackets);
+
       console.log("💾 Restoring match history...");
-      await dbSet(dbRef(database, 'matchHistory'), archiveData.data.matchHistory || {});
-      
+      await dbSet(dbRef(database, 'matchHistory'), rebuiltData.matchHistory);
+
       console.log("💾 Restoring teams...");
       await dbSet(dbRef(database, 'teams'), archiveData.data.teams || {});
 
