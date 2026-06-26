@@ -1690,6 +1690,12 @@ const BRACKET = {
     // Compute sequential match numbers across all rounds
     let globalMatchNum = 1;
     const matchNumMap = {};
+
+    if (!this.currentBracket || !this.currentBracket.rounds) {
+      console.warn("Current bracket or its rounds are undefined, cannot render bracket.");
+      return;
+    }
+
     this.currentBracket.rounds.forEach(round => {
       round.forEach(match => { matchNumMap[match.matchId] = globalMatchNum++; });
     });
