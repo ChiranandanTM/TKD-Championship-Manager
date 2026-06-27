@@ -188,19 +188,22 @@
         };
 
         // SECURE LOGIN ATTEMPT PROTECTION
+        // Uses role-specific localStorage key so coach/team login failures
+        // never affect rate limiting for other roles or tabs.
         window.RATE_LIMITER = {
             maxAttempts: 3,
             lockTime: 60 * 1000,
+            storageKey: 'loginAttempts_team',
             
             checkLimit() {
-                const stored = localStorage.getItem('loginAttempts');
+                const stored = localStorage.getItem(this.storageKey);
                 if (stored) {
                     const data = JSON.parse(stored);
                     if (data.lockedUntil && Date.now() < data.lockedUntil) {
                         this.enforceLock(data.lockedUntil);
                         return false; 
                     } else if (data.lockedUntil && Date.now() >= data.lockedUntil) {
-                        localStorage.removeItem('loginAttempts');
+                        localStorage.removeItem(this.storageKey);
                         return true;
                     }
                 }
@@ -209,7 +212,7 @@
             
             recordFailure() {
                 let data = { attempts: 0, lockedUntil: null };
-                const stored = localStorage.getItem('loginAttempts');
+                const stored = localStorage.getItem(this.storageKey);
                 if (stored) {
                     const parsed = JSON.parse(stored);
                     if (!parsed.lockedUntil || Date.now() >= parsed.lockedUntil) {
@@ -221,17 +224,17 @@
                 
                 if (data.attempts >= this.maxAttempts) {
                     data.lockedUntil = Date.now() + this.lockTime;
-                    localStorage.setItem('loginAttempts', JSON.stringify(data));
+                    localStorage.setItem(this.storageKey, JSON.stringify(data));
                     this.enforceLock(data.lockedUntil);
                     return { locked: true, remaining: 0 };
                 }
                 
-                localStorage.setItem('loginAttempts', JSON.stringify(data));
+                localStorage.setItem(this.storageKey, JSON.stringify(data));
                 return { locked: false, remaining: this.maxAttempts - data.attempts };
             },
             
             reset() {
-                localStorage.removeItem('loginAttempts');
+                localStorage.removeItem(this.storageKey);
             },
             
             enforceLock(lockedUntil) {
@@ -244,6 +247,7 @@
                 });
                 inputs.forEach(input => input.disabled = true);
                 
+                const self = this;
                 const updateTimer = () => {
                     const remaining = Math.ceil((lockedUntil - Date.now()) / 1000);
                     if (remaining <= 0) {
@@ -252,7 +256,7 @@
                             btn.innerText = btn.dataset.originalText;
                         });
                         inputs.forEach(input => input.disabled = false);
-                        localStorage.removeItem('loginAttempts');
+                        localStorage.removeItem(self.storageKey);
                     } else {
                         buttons.forEach(btn => btn.innerText = `Try again in ${remaining}s`);
                         setTimeout(updateTimer, 1000);
