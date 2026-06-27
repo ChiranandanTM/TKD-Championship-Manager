@@ -53,6 +53,110 @@
         .pw-toggle:hover {
             color: #FFD700
         }
+
+        /* ── Toast Notification ─────────────────────────────── */
+        .login-toast-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            display: flex;
+            justify-content: center;
+            z-index: 10000;
+            padding: 20px 16px 0;
+            pointer-events: none;
+        }
+        .login-toast {
+            pointer-events: auto;
+            min-width: 320px;
+            max-width: 440px;
+            width: 100%;
+            padding: 16px 18px;
+            border-radius: 16px;
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05) inset;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            color: #fff;
+            transform: translateY(-120%);
+            opacity: 0;
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .login-toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .login-toast.error {
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.92), rgba(153, 27, 27, 0.88));
+            border: 1px solid rgba(252, 165, 165, 0.25);
+        }
+        .login-toast.warning {
+            background: linear-gradient(135deg, rgba(217, 119, 6, 0.92), rgba(180, 83, 9, 0.88));
+            border: 1px solid rgba(253, 230, 138, 0.25);
+        }
+        .login-toast.info {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(29, 78, 216, 0.88));
+            border: 1px solid rgba(147, 197, 253, 0.25);
+        }
+        .login-toast-icon {
+            font-size: 1.5rem;
+            line-height: 1;
+            flex-shrink: 0;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        }
+        .login-toast-body { flex: 1; min-width: 0; }
+        .login-toast-title {
+            font-weight: 700;
+            font-size: 0.95rem;
+            letter-spacing: 0.01em;
+            margin-bottom: 3px;
+        }
+        .login-toast-msg {
+            font-size: 0.85rem;
+            opacity: 0.92;
+            line-height: 1.4;
+        }
+        .login-toast-close {
+            background: rgba(255,255,255,0.12);
+            border: none;
+            color: rgba(255,255,255,0.8);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 4px 7px;
+            border-radius: 8px;
+            line-height: 1;
+            flex-shrink: 0;
+            transition: background 0.2s, color 0.2s;
+            margin-top: 1px;
+        }
+        .login-toast-close:hover {
+            background: rgba(255,255,255,0.25);
+            color: #fff;
+        }
+        .login-toast-progress {
+            position: absolute;
+            bottom: 0; left: 0;
+            height: 3px;
+            border-radius: 0 0 16px 16px;
+            background: rgba(255,255,255,0.35);
+        }
+        .login-toast-progress.animate {
+            animation: toastCountdown 4s linear forwards;
+        }
+        @keyframes toastCountdown {
+            from { width: 100%; }
+            to   { width: 0%; }
+        }
+        @keyframes toastShake {
+            0%, 100% { transform: translateX(0); }
+            20%  { transform: translateX(-6px); }
+            40%  { transform: translateX(5px); }
+            60%  { transform: translateX(-4px); }
+            80%  { transform: translateX(2px); }
+        }
+        .login-toast.shake { animation: toastShake 0.45s ease-in-out; }
     </style>
     <script src="/js/history-protection.js"></script>
 </head>
@@ -531,6 +635,50 @@
             }
         };
 
+        // ── Toast Notification Helper ──────────────────────────────────
+        window.showToast = function(message, type = 'error') {
+            const existing = document.querySelector('.login-toast-overlay');
+            if (existing) existing.remove();
+
+            const icons  = { error: '🚫', warning: '⚠️', info: '💡' };
+            const titles = { error: 'Login Failed', warning: 'Account Locked', info: 'Notice' };
+
+            const overlay = document.createElement('div');
+            overlay.className = 'login-toast-overlay';
+            overlay.innerHTML = `
+                <div class="login-toast ${type}">
+                    <span class="login-toast-icon">${icons[type] || icons.error}</span>
+                    <div class="login-toast-body">
+                        <div class="login-toast-title">${titles[type] || titles.error}</div>
+                        <div class="login-toast-msg">${message}</div>
+                    </div>
+                    <button class="login-toast-close" onclick="this.closest('.login-toast-overlay').remove()">✕</button>
+                    <div class="login-toast-progress"></div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const toast = overlay.querySelector('.login-toast');
+            requestAnimationFrame(() => {
+                toast.classList.add('show');
+                if (type === 'error') toast.classList.add('shake');
+                overlay.querySelector('.login-toast-progress').classList.add('animate');
+            });
+
+            const autoClose = setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => overlay.remove(), 500);
+            }, 4000);
+
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    clearTimeout(autoClose);
+                    toast.classList.remove('show');
+                    setTimeout(() => overlay.remove(), 500);
+                }
+            });
+        };
+
         // Make functions global
         window.switchTab = function (tab) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -552,7 +700,7 @@
             event.preventDefault();
             
             if (!RATE_LIMITER.checkLimit('admin')) {
-                alert('Too many failed attempts. Please try again in 60 seconds.');
+                showToast('Too many failed attempts. Please try again in 60 seconds.', 'warning');
                 return;
             }
 
@@ -572,9 +720,9 @@
                 UI.hideLoading();
                 const status = RATE_LIMITER.recordFailure('admin');
                 if (status.locked) {
-                    setTimeout(() => alert('Too many failed attempts. Please try again in 60 seconds.'), 10);
+                    setTimeout(() => showToast('Too many failed attempts. Please try again in 60 seconds.', 'warning'), 10);
                 } else {
-                    alert(`Invalid username or password. Attempts remaining: ${status.remaining}`);
+                    showToast(`Invalid email or password. ${status.remaining} attempt${status.remaining !== 1 ? 's' : ''} remaining.`, 'error');
                 }
             }
         };
@@ -583,7 +731,7 @@
             event.preventDefault();
             
             if (!RATE_LIMITER.checkLimit('team')) {
-                alert('Too many failed attempts. Please try again in 60 seconds.');
+                showToast('Too many failed attempts. Please try again in 60 seconds.', 'warning');
                 return;
             }
 
@@ -591,7 +739,7 @@
             const password = document.getElementById('teamPassword').value.trim();
 
             if (!username || !password) {
-                alert('❌ Please enter username and password');
+                showToast('Please enter username and password.', 'info');
                 return;
             }
 
@@ -608,9 +756,9 @@
                 UI.hideLoading();
                 const status = RATE_LIMITER.recordFailure('team');
                 if (status.locked) {
-                    setTimeout(() => alert('Too many failed attempts. Please try again in 60 seconds.'), 10);
+                    setTimeout(() => showToast('Too many failed attempts. Please try again in 60 seconds.', 'warning'), 10);
                 } else {
-                    alert(`Invalid username or password. Attempts remaining: ${status.remaining}`);
+                    showToast(`Invalid username or password. ${status.remaining} attempt${status.remaining !== 1 ? 's' : ''} remaining.`, 'error');
                 }
             }
         };
@@ -619,7 +767,7 @@
             event.preventDefault();
             
             if (!RATE_LIMITER.checkLimit('referee')) {
-                alert('Too many failed attempts. Please try again in 60 seconds.');
+                showToast('Too many failed attempts. Please try again in 60 seconds.', 'warning');
                 return;
             }
 
@@ -627,7 +775,7 @@
             const password = document.getElementById('refereePassword').value.trim();
 
             if (!refId || !password) {
-                alert('❌ Please enter Referee ID and password');
+                showToast('Please enter Referee ID and password.', 'info');
                 return;
             }
 
@@ -672,9 +820,9 @@
                 UI.hideLoading();
                 const status = RATE_LIMITER.recordFailure('referee');
                 if (status.locked) {
-                    setTimeout(() => alert('Too many failed attempts. Please try again in 60 seconds.'), 10);
+                    setTimeout(() => showToast('Too many failed attempts. Please try again in 60 seconds.', 'warning'), 10);
                 } else {
-                    alert(`Invalid username or password. Attempts remaining: ${status.remaining}`);
+                    showToast(`Invalid credentials. ${status.remaining} attempt${status.remaining !== 1 ? 's' : ''} remaining.`, 'error');
                 }
             }
         };
