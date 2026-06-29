@@ -350,10 +350,21 @@
             }
 
             Object.values(bracketsData).forEach(bracket => {
-                if (!bracket || !bracket.rounds) return;
+                if (!bracket) return;
 
-                const rounds = toOrderedArray(bracket.rounds).map(round => toOrderedArray(round));
-                if (rounds.length === 0) return;
+                const rounds = toOrderedArray(bracket.rounds || []).map(round => toOrderedArray(round));
+                // Detect single-player walkover: rounds may be [], or [[]] (one round with zero matches)
+                const hasActualMatches = rounds.some(r => r.length > 0);
+
+                if (!hasActualMatches) {
+                    // Single-player walkover: no matches, winner is the bye player
+                    const byePlayers = bracket.byePlayers || {};
+                    const byePlayer = byePlayers['0'];
+                    if (byePlayer && byePlayer.id) {
+                        setBestMedal(medalMap, byePlayer.id, 'Gold');
+                    }
+                    return;
+                }
 
                 // Final round: champion + runner-up
                 const finalRound = rounds[rounds.length - 1] || [];

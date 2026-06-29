@@ -64,12 +64,44 @@ const LEADERBOARD = {
 
         // Iterate brackets
         for (const [categoryKey, bracket] of Object.entries(this.brackets)) {
-            if (!bracket.rounds || bracket.rounds.length === 0) continue;
+            // Detect single-player walkover: rounds may be missing, empty [],
+            // [[]] (one round with zero matches), or Firebase object equivalents.
+            // Also detect via bracket.status + byePlayers as a fallback.
+            const roundsRaw = bracket.rounds;
+            let roundsArr;
+            if (Array.isArray(roundsRaw)) {
+                roundsArr = roundsRaw;
+            } else if (roundsRaw && typeof roundsRaw === 'object') {
+                roundsArr = Object.keys(roundsRaw).sort((a,b) => Number(a)-Number(b)).map(k => roundsRaw[k]);
+            } else {
+                roundsArr = [];
+            }
+
+            const hasActualMatches = roundsArr.some(r => {
+                if (!r) return false;
+                const ra = Array.isArray(r) ? r : Object.values(r);
+                return ra.length > 0;
+            });
+
+            if (!hasActualMatches) {
+                // Single-player walkover: award gold to the bye player's team
+                const byePlayers = bracket.byePlayers || {};
+                const byePlayer = byePlayers['0'] || byePlayers[0];
+                if (byePlayer) {
+                    const champTeam = this.getTeam(byePlayer);
+                    if (champTeam) {
+                        champTeam.gold += 1;
+                        champTeam.points += 7;
+                        console.log(`🏆 Walkover gold awarded to ${champTeam.name} in ${categoryKey}`);
+                    }
+                }
+                continue;
+            }
             
-            const totalRounds = bracket.rounds.length;
+            const totalRounds = roundsArr.length;
             
             // Final Match (Gold & Silver)
-            const finalRound = bracket.rounds[totalRounds - 1];
+            const finalRound = roundsArr[totalRounds - 1];
             if (finalRound && finalRound.length > 0) {
                 const finalMatch = finalRound[0];
                 if (finalMatch && finalMatch.status === 'completed' && finalMatch.winner) {
@@ -92,7 +124,7 @@ const LEADERBOARD = {
 
             // Semi-Final Matches (Bronze)
             if (totalRounds >= 2) {
-                const semiRound = bracket.rounds[totalRounds - 2];
+                const semiRound = roundsArr[totalRounds - 2];
                 if (semiRound) {
                     semiRound.forEach(match => {
                         if (match && match.status === 'completed' && match.winner && match.eliminated) {

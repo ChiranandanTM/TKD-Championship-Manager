@@ -1224,6 +1224,10 @@ const BRACKET = {
       const round = this.currentBracket.rounds[roundIdx];
       if (!round) continue;
 
+      // Never reshuffle matches that have already started or completed —
+      // doing so would corrupt winner/eliminated data.
+      if (round.length === 0 || round.some(m => m.status && m.status !== 'pending')) continue;
+
       // Detect conflicts in this round
       const conflicts = this.detectTeamConflicts(round);
 
@@ -1313,8 +1317,9 @@ const BRACKET = {
             bracket.expectedRoundMatchCounts = toArray(bracket.expectedRoundMatchCounts);
           }
 
-          bracket.rounds = toArray(bracket.rounds).map(round =>
-            toArray(round).map(match => ({
+          bracket.rounds = toArray(bracket.rounds).map(round => {
+            if (!round) return []; // Firebase drops empty arrays → null; recover gracefully
+            return toArray(round).map(match => ({
               matchId: match.matchId,
               round: match.round,
               player1: match.player1 || null,
@@ -1325,8 +1330,13 @@ const BRACKET = {
               startTime: match.startTime || null,
               endTime: match.endTime || null,
               courtNumber: match.courtNumber || null
-            }))
-          );
+            }));
+          });
+        }
+
+        // Ensure rounds is always an array (Firebase drops empty arrays entirely)
+        if (!bracket.rounds) {
+          bracket.rounds = [];
         }
 
         this.currentBracket = bracket;
@@ -1382,8 +1392,9 @@ const BRACKET = {
           if (rawBracket.expectedRoundMatchCounts) {
             rawBracket.expectedRoundMatchCounts = toArray(rawBracket.expectedRoundMatchCounts);
           }
-          rawBracket.rounds = toArray(rawBracket.rounds).map(round =>
-            toArray(round).map(match => ({
+          rawBracket.rounds = toArray(rawBracket.rounds).map(round => {
+            if (!round) return []; // Firebase drops empty arrays → null; recover gracefully
+            return toArray(round).map(match => ({
               matchId: match.matchId,
               round: match.round,
               player1: match.player1 || null,
@@ -1394,8 +1405,12 @@ const BRACKET = {
               startTime: match.startTime || null,
               endTime: match.endTime || null,
               courtNumber: match.courtNumber || null
-            }))
-          );
+            }));
+          });
+        }
+        // Ensure rounds is always an array (Firebase drops empty arrays entirely)
+        if (!rawBracket.rounds) {
+          rawBracket.rounds = [];
         }
         // Normalize team names in real-time data
         if (this._teamNameCache) {
@@ -1622,7 +1637,7 @@ const BRACKET = {
       console.log("✅ Bracket saved (optimized)");
 
       // Also save to championship history (fire-and-forget with error handling)
-      this.saveBracketToChampionshipHistory(categoryKey, bracket).catch(err => 
+      this.saveBracketToChampionshipHistory(categoryKey, bracket).catch(err =>
         console.error('❌ Failed to save bracket to championship history:', err)
       );
     } catch (error) {
@@ -1728,6 +1743,30 @@ const BRACKET = {
         </div>
       `;
     });
+
+    // ── Single-player (walkover) category: rounds is empty but bye player exists ──
+    const byePlayersAll = this.currentBracket.byePlayers || {};
+    if (this.currentBracket.rounds.length === 0 && byePlayersAll['0']) {
+      const soloPlayer = byePlayersAll['0'];
+      html += `
+        <div class="round">
+          <h3 class="round-title">Champion</h3>
+          <div class="matches">
+            <div class="match bye-card">
+              <div class="match-players">
+                <div class="player">
+                  <span class="player-name">${soloPlayer.playerName}</span>
+                  <span class="player-center">${soloPlayer.centerName || ''}</span>
+                </div>
+              </div>
+              <div class="match-completed-info">
+                <span class="winner-badge">🏆 Champion — Won by Walkover</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
 
     html += '</div>';
     container.innerHTML = html;
@@ -2192,12 +2231,26 @@ const BRACKET = {
   isCategoryComplete() {
     if (!this.currentBracket) return false;
     if (this.currentBracket.status === 'complete') return true;
+
     const rounds = this.currentBracket.rounds;
-    if (!rounds || rounds.length === 0) return false;
+    const roundsArr = Array.isArray(rounds) ? rounds : (rounds ? Object.values(rounds) : []);
+
+    // Single-player walkover: no actual matches but a bye player exists
+    const hasActualMatches = roundsArr.some(r => {
+      const ra = Array.isArray(r) ? r : (r ? Object.values(r) : []);
+      return ra.length > 0;
+    });
+    if (!hasActualMatches) {
+      const byePlayers = this.currentBracket.byePlayers || {};
+      return !!byePlayers['0'];  // complete if walkover champion exists
+    }
+
+    if (roundsArr.length === 0) return false;
     const expectedTotal = this.getExpectedTotalRounds(this.currentBracket);
-    if (rounds.length < expectedTotal) return false;
-    for (const round of rounds) {
-      for (const match of round) {
+    if (roundsArr.length < expectedTotal) return false;
+    for (const round of roundsArr) {
+      const matchArr = Array.isArray(round) ? round : (round ? Object.values(round) : []);
+      for (const match of matchArr) {
         if (match.status !== 'completed') return false;
       }
     }
@@ -2207,14 +2260,22 @@ const BRACKET = {
   // Derive final rankings from bracket structure
   // 1st = winner of final, 2nd = loser of final, 3rd = both semi-final losers
   buildRankings() {
-    const rounds = this.currentBracket.rounds;
+    const rounds = this.currentBracket.rounds || [];
     const totalRounds = rounds.length;
     const rankings = [];
 
     // Rounds are stored in FORWARD order: [Round 1, Quarter-Final, Semi-Final, Final]
     // Final is at the last index (totalRounds - 1)
     const finalRound = rounds[totalRounds - 1];
-    if (!finalRound || finalRound.length === 0) return rankings;
+    if (!finalRound || finalRound.length === 0) {
+      // Handle single-player categories: only a bye player, no matches
+      const byePlayers = this.currentBracket.byePlayers || {};
+      const byePlayer = byePlayers['0'];
+      if (byePlayer) {
+        rankings.push({ rank: 1, player: byePlayer, note: 'Champion (walkover)' });
+      }
+      return rankings;
+    }
 
     const finalMatch = finalRound[0];
     if (!finalMatch || !finalMatch.winner) return rankings;
@@ -2274,19 +2335,19 @@ const BRACKET = {
       const categoryLabel = `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`;
 
       const toArr = o => Array.isArray(o) ? o
-        : Object.keys(o).sort((a,b)=>Number(a)-Number(b)).map(k=>o[k]);
-      const rounds       = toArr(this.currentBracket.rounds).map(r=>toArr(r));
+        : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
+      const rounds = toArr(this.currentBracket.rounds).map(r => toArr(r));
       const expectedCnts = toArr(this.currentBracket.expectedRoundMatchCounts || []);
-      const totalRounds  = Math.max(rounds.length, expectedCnts.length);
+      const totalRounds = Math.max(rounds.length, expectedCnts.length);
 
       // ── PAGE SETUP (A3 landscape, mm) ────────────────────────────────
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
       const PW = 420, PH = 297;
       const ML = 8, MR = 8, MT = 8, MB = 12;
-      const W  = PW - ML - MR;
+      const W = PW - ML - MR;
 
-      const r1Matches   = rounds[0] || [];
-      const byePlayers  = this.currentBracket.byePlayers || {};
+      const r1Matches = rounds[0] || [];
+      const byePlayers = this.currentBracket.byePlayers || {};
       const r1ByePlayer = byePlayers['0'] || null;
 
       // Colors [R,G,B]
@@ -2333,28 +2394,85 @@ const BRACKET = {
         if (label != null) txt(String(label), cx, cy, 5, true, WHITE, 'center');
       };
 
+      // ── SINGLE-PLAYER WALKOVER: bracket-style PDF ──────────────────────
+      if (totalRounds === 0 && r1ByePlayer) {
+        const HEADER_H = 20, GOLD_LINE = 0.8, LABEL_H = 8, FOOTER_H = 10;
+        const CONTENT_TOP = MT + HEADER_H + GOLD_LINE + LABEL_H + 1;
+        const CONTENT_H = PH - CONTENT_TOP - MB - FOOTER_H;
+        const SEED_W = 6, ARM_W = 11, CHAMP_W = 50;
+        const ROUND_W = (W - SEED_W - ARM_W - CHAMP_W);
+
+        // ── HEADER ──
+        sf(NAVY); doc.rect(ML, MT, W, HEADER_H, 'F');
+        txt(champTitle.toUpperCase(), PW / 2, MT + HEADER_H * 0.37, 16, true, WHITE, 'center');
+        txt(categoryLabel.toUpperCase(), PW / 2, MT + HEADER_H * 0.74, 9, false, [160, 185, 220], 'center');
+        sf(GOLD); doc.rect(ML, MT + HEADER_H, W, GOLD_LINE, 'F');
+
+        // ── ROUND LABEL ──
+        const labelY = MT + HEADER_H + GOLD_LINE + LABEL_H / 2 + 0.5;
+        txt('CHAMPION', ML + SEED_W + ROUND_W / 2, labelY, 7.5, true, NAVY, 'center');
+        ln(ML, MT + HEADER_H + GOLD_LINE + LABEL_H, ML + W,
+           MT + HEADER_H + GOLD_LINE + LABEL_H, 0.25, [180, 180, 180]);
+
+        // ── PLAYER CELL ──
+        const cellY = CONTENT_TOP + CONTENT_H / 2 - 5;
+        const cellH = 10;
+        const cellX = ML + SEED_W;
+
+        // Seed number
+        drawSeed(ML, cellY, SEED_W, cellH, 1);
+
+        // Player cell
+        const pname = r1ByePlayer.playerName
+          + (r1ByePlayer.centerName ? ` (${r1ByePlayer.centerName})` : '')
+          + ' — BYE';
+        drawCell(cellX, cellY, ROUND_W, cellH, pname, [210, 245, 210], true);
+
+        // Bracket arm from cell to champion box
+        const midY = cellY + cellH / 2;
+        const armStartX = cellX + ROUND_W;
+        const armEndX = armStartX + ARM_W;
+        ln(armStartX, midY, armEndX, midY);
+
+        // Champion box
+        const champBoxW = CHAMP_W - 4;
+        const champX = armEndX + 2;
+        sf(GREEN); doc.rect(champX, midY - 5, champBoxW, 10, 'F');
+        txt(r1ByePlayer.playerName || '', champX + champBoxW / 2, midY, 8, true, WHITE, 'center');
+
+        // ── FOOTER ──
+        const footerY = PH - MB - FOOTER_H / 2;
+        ln(ML, PH - MB - FOOTER_H, ML + W, PH - MB - FOOTER_H, 0.3, [150, 150, 150]);
+        txt(`${champTitle}  |  ${categoryLabel}`, ML, footerY, 7, false, GRAY, 'left');
+        txt(`Generated: ${new Date().toLocaleDateString('en-IN')}`, ML + W, footerY, 7, false, GRAY, 'right');
+
+        const safeKey = this.currentCategory.replace(/[^a-zA-Z0-9]/g, '_');
+        doc.save(`Fixture_${safeKey}_${new Date().toISOString().slice(0, 10)}.pdf`);
+        return;
+      }
+
       // Layout
-      const HEADER_H  = 20, GOLD_LINE = 0.8, LABEL_H = 8, FOOTER_H = 10;
+      const HEADER_H = 20, GOLD_LINE = 0.8, LABEL_H = 8, FOOTER_H = 10;
       const CONTENT_TOP = MT + HEADER_H + GOLD_LINE + LABEL_H + 1;
-      const CONTENT_H   = PH - CONTENT_TOP - MB - FOOTER_H;
+      const CONTENT_H = PH - CONTENT_TOP - MB - FOOTER_H;
       const SEED_W = 6, ARM_W = 11, JUNC_SZ = 4.5, CHAMP_W = 32;
       const ROUND_W = (W - SEED_W - totalRounds * ARM_W - CHAMP_W) / totalRounds;
-      const roundX  = ri => ML + SEED_W + ri * (ROUND_W + ARM_W);
-      const armCX   = ri => roundX(ri) + ROUND_W + ARM_W / 2;
+      const roundX = ri => ML + SEED_W + ri * (ROUND_W + ARM_W);
+      const armCX = ri => roundX(ri) + ROUND_W + ARM_W / 2;
 
-      const numM   = r1Matches.length;
+      const numM = r1Matches.length;
       const matchH = CONTENT_H / Math.max(numM, 1);
-      const pH     = Math.min(matchH * 0.40, 9.5);
-      const r1p1Y  = mi => CONTENT_TOP + mi * matchH;
-      const r1p2Y  = mi => CONTENT_TOP + mi * matchH + pH;
+      const pH = Math.min(matchH * 0.40, 9.5);
+      const r1p1Y = mi => CONTENT_TOP + mi * matchH;
+      const r1p2Y = mi => CONTENT_TOP + mi * matchH + pH;
 
       // Junction Y[ri][mi] — recursive midpoint
       const jY = [];
       jY.push(r1Matches.map((_, mi) => CONTENT_TOP + mi * matchH + pH)); // at P1/P2 boundary
       for (let ri = 1; ri < totalRounds; ri++) {
         const prev = jY[ri - 1];
-        const cnt  = expectedCnts[ri] !== undefined ? expectedCnts[ri] : Math.ceil(prev.length / 2);
-        const cur  = [];
+        const cnt = expectedCnts[ri] !== undefined ? expectedCnts[ri] : Math.ceil(prev.length / 2);
+        const cur = [];
         for (let mi = 0; mi < cnt; mi++) {
           const a = prev[mi * 2], b = prev[mi * 2 + 1];
           cur.push(b !== undefined ? (a + b) / 2 : a);
@@ -2387,14 +2505,14 @@ const BRACKET = {
       // ── ROUND LABELS ──────────────────────────────────────────────────
       const labelY = MT + HEADER_H + GOLD_LINE + LABEL_H / 2 + 0.5;
       for (let ri = 0; ri < totalRounds; ri++) {
-        const rn  = (rounds[ri] && rounds[ri][0]) ? rounds[ri][0].round : ri + 1;
+        const rn = (rounds[ri] && rounds[ri][0]) ? rounds[ri][0].round : ri + 1;
         txt(this.getRoundName(ri, totalRounds, rn).toUpperCase(),
-            roundX(ri) + ROUND_W / 2, labelY, 7.5, true, NAVY, 'center');
+          roundX(ri) + ROUND_W / 2, labelY, 7.5, true, NAVY, 'center');
       }
       txt('CHAMPION', ML + SEED_W + totalRounds * (ROUND_W + ARM_W) + CHAMP_W / 2,
-          labelY, 7.5, true, NAVY, 'center');
+        labelY, 7.5, true, NAVY, 'center');
       ln(ML, MT + HEADER_H + GOLD_LINE + LABEL_H, ML + W,
-         MT + HEADER_H + GOLD_LINE + LABEL_H, 0.25, [180, 180, 180]);
+        MT + HEADER_H + GOLD_LINE + LABEL_H, 0.25, [180, 180, 180]);
 
       // ── R1 MATCHES ────────────────────────────────────────────────────
       let globalMatchNum = 1;
@@ -2429,17 +2547,17 @@ const BRACKET = {
 
       // ── LATER ROUNDS ──────────────────────────────────────────────────
       for (let ri = 1; ri < totalRounds; ri++) {
-        const isFinal   = ri === totalRounds - 1;
-        const x         = roundX(ri);
-        const ax        = armCX(ri);
-        const prevAX    = armCX(ri - 1);
+        const isFinal = ri === totalRounds - 1;
+        const x = roundX(ri);
+        const ax = armCX(ri);
+        const prevAX = armCX(ri - 1);
         const matchList = rounds[ri] || [];
 
         if (isFinal) {
-          const fm      = matchList[0] || {};
+          const fm = matchList[0] || {};
           const sfCount = jY[ri - 1].length;
           for (let fi = 0; fi < Math.min(sfCount, 2); fi++) {
-            const prevJY  = jY[ri - 1][fi];
+            const prevJY = jY[ri - 1][fi];
             const cellTop = prevJY - pH / 2;
             ln(prevAX + JUNC_SZ / 2, prevJY, x, prevJY);    // input arm
             const fp = fi === 0 ? fm.player1 : fm.player2;
@@ -2454,9 +2572,9 @@ const BRACKET = {
           drawJunc(ax, jY[ri][0], JUNC_SZ, null);
 
           // Champion section
-          const champX    = ax + JUNC_SZ / 2 + 2;
+          const champX = ax + JUNC_SZ / 2 + 2;
           const champBoxW = CHAMP_W - 4;
-          const champJY   = jY[ri][0];
+          const champJY = jY[ri][0];
           const champ = fm.winner
             ? ((fm.player1 && fm.player1.id === fm.winner) ? fm.player1 : fm.player2) : null;
           if (champ) {
@@ -2472,10 +2590,10 @@ const BRACKET = {
         } else {
           const cnt = jY[ri].length;
           for (let mi = 0; mi < cnt; mi++) {
-            const jy    = jY[ri][mi];
+            const jy = jY[ri][mi];
             const match = matchList[mi] || {};
-            const pjA   = jY[ri - 1][mi * 2];
-            const pjB   = jY[ri - 1][mi * 2 + 1];
+            const pjA = jY[ri - 1][mi * 2];
+            const pjB = jY[ri - 1][mi * 2 + 1];
 
             // Horizontal input arms from previous junction boxes
             if (pjA !== undefined) ln(prevAX + JUNC_SZ / 2, pjA, x, pjA);
@@ -2655,12 +2773,12 @@ const BRACKET = {
       const toArr = o => Array.isArray(o) ? o
         : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
 
-      const rounds       = toArr(this.currentBracket.rounds).map(r => toArr(r));
-      const byePlayers   = this.currentBracket.byePlayers || {};
+      const rounds = toArr(this.currentBracket.rounds).map(r => toArr(r));
+      const byePlayers = this.currentBracket.byePlayers || {};
       const expectedCnts = toArr(this.currentBracket.expectedRoundMatchCounts || []);
-      const totalRounds  = Math.max(rounds.length, expectedCnts.length);
-      const r1Matches    = rounds[0] || [];
-      const r1ByePlayer  = byePlayers['0'] || null;
+      const totalRounds = Math.max(rounds.length, expectedCnts.length);
+      const r1Matches = rounds[0] || [];
+      const r1ByePlayer = byePlayers['0'] || null;
 
       // ── Layout constants ─────────────────────────────────────────────
       // 4 rows per R1 match: P1 row, spacer row, P2 row, gap/junction row
@@ -2668,15 +2786,15 @@ const BRACKET = {
       const HEADER = 3; // title + subtitle + column headers
 
       // ── Colour palette ───────────────────────────────────────────────
-      const NAVY   = '17305E';
-      const WHITE  = 'FFFFFF';
+      const NAVY = '17305E';
+      const WHITE = 'FFFFFF';
       const DKLINE = '1A3A6B'; // bracket line colour
       const LTGRAY = 'E8ECF0'; // player row background
       const BYGRAY = 'F0F0E8'; // bye row background
       const CHAMGN = '155724'; // champion green fill
 
       // ── Border helpers ───────────────────────────────────────────────
-      const bk = (style) => ({ style, color:{ rgb: DKLINE } });
+      const bk = (style) => ({ style, color: { rgb: DKLINE } });
       const th = bk('thin');
       const md = bk('medium');
       const tk = bk('thick');
@@ -2685,71 +2803,93 @@ const BRACKET = {
       // Build a border object (pass undefined for sides to omit)
       const mkBorder = (t, r, b, l) => {
         const o = {};
-        if (t) o.top    = t;
-        if (r) o.right  = r;
+        if (t) o.top = t;
+        if (r) o.right = r;
         if (b) o.bottom = b;
-        if (l) o.left   = l;
+        if (l) o.left = l;
         return o;
       };
 
       // ── Fill helper (SheetJS requires patternType:'solid') ───────────
-      const fgFill = (hex) => ({ patternType:'solid', fgColor:{ rgb: hex } });
+      const fgFill = (hex) => ({ patternType: 'solid', fgColor: { rgb: hex } });
 
       // ── Shared cell styles ───────────────────────────────────────────
       const S = {
-        title:  { font:{bold:true,sz:14,color:{rgb:NAVY}},
-                  alignment:{horizontal:'left',vertical:'center'} },
-        sub:    { font:{sz:9,color:{rgb:'555555'}},
-                  alignment:{vertical:'center'} },
-        hdr:    { font:{bold:true,sz:9,color:{rgb:WHITE}},
-                  fill:fgFill(NAVY),
-                  alignment:{horizontal:'center',vertical:'center'},
-                  border:mkBorder(md,md,md,md) },
+        title: {
+          font: { bold: true, sz: 14, color: { rgb: NAVY } },
+          alignment: { horizontal: 'left', vertical: 'center' }
+        },
+        sub: {
+          font: { sz: 9, color: { rgb: '555555' } },
+          alignment: { vertical: 'center' }
+        },
+        hdr: {
+          font: { bold: true, sz: 9, color: { rgb: WHITE } },
+          fill: fgFill(NAVY),
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: mkBorder(md, md, md, md)
+        },
         // Seed number cell: dark navy, white bold
-        seed:   { font:{bold:true,sz:8,color:{rgb:WHITE}},
-                  fill:fgFill(NAVY),
-                  alignment:{horizontal:'center',vertical:'center'},
-                  border:mkBorder(th,th,th,th) },
+        seed: {
+          font: { bold: true, sz: 8, color: { rgb: WHITE } },
+          fill: fgFill(NAVY),
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: mkBorder(th, th, th, th)
+        },
         // Player name cell: light gray bg, 3-sided border (open right toward arm)
-        pname:  { font:{sz:9,color:{rgb:'111111'}},
-                  fill:fgFill(LTGRAY),
-                  alignment:{vertical:'center',wrapText:false},
-                  border:mkBorder(md,none,md,md) },
+        pname: {
+          font: { sz: 9, color: { rgb: '111111' } },
+          fill: fgFill(LTGRAY),
+          alignment: { vertical: 'center', wrapText: false },
+          border: mkBorder(md, none, md, md)
+        },
         // Bye player cell
-        bye:    { font:{sz:9,color:{rgb:'887700'},italic:true},
-                  fill:fgFill(BYGRAY),
-                  alignment:{vertical:'center'},
-                  border:mkBorder(th,none,th,th) },
+        bye: {
+          font: { sz: 9, color: { rgb: '887700' }, italic: true },
+          fill: fgFill(BYGRAY),
+          alignment: { vertical: 'center' },
+          border: mkBorder(th, none, th, th)
+        },
         // Arm/spacer row — no content, just specific border sides
-        arm_p1: { fill:fgFill(WHITE), border:mkBorder(none,md,md,none) },
-        arm_sp: { fill:fgFill(WHITE), border:mkBorder(md,none,md,none) },
-        arm_p2: { fill:fgFill(WHITE), border:mkBorder(md,md,none,none) },
+        arm_p1: { fill: fgFill(WHITE), border: mkBorder(none, md, md, none) },
+        arm_sp: { fill: fgFill(WHITE), border: mkBorder(md, none, md, none) },
+        arm_p2: { fill: fgFill(WHITE), border: mkBorder(md, md, none, none) },
         // Junction box: dark navy fill + all medium borders + white match# text
-        junc:   { font:{bold:true,sz:8,color:{rgb:WHITE}},
-                  fill:fgFill(NAVY),
-                  alignment:{horizontal:'center',vertical:'center'},
-                  border:mkBorder(md,md,md,md) },
+        junc: {
+          font: { bold: true, sz: 8, color: { rgb: WHITE } },
+          fill: fgFill(NAVY),
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: mkBorder(md, md, md, md)
+        },
         // Later-round player merged cell (winner advancing)
-        adv:    { font:{bold:true,sz:9,color:{rgb:'111111'}},
-                  fill:fgFill('EAF4FF'),
-                  alignment:{horizontal:'left',vertical:'center',wrapText:false},
-                  border:mkBorder(md,none,md,md) },
-        tbd:    { font:{sz:9,color:{rgb:'AAAAAA'},italic:true},
-                  fill:fgFill('F7F7F7'),
-                  alignment:{vertical:'center'},
-                  border:mkBorder(th,none,th,th) },
+        adv: {
+          font: { bold: true, sz: 9, color: { rgb: '111111' } },
+          fill: fgFill('EAF4FF'),
+          alignment: { horizontal: 'left', vertical: 'center', wrapText: false },
+          border: mkBorder(md, none, md, md)
+        },
+        tbd: {
+          font: { sz: 9, color: { rgb: 'AAAAAA' }, italic: true },
+          fill: fgFill('F7F7F7'),
+          alignment: { vertical: 'center' },
+          border: mkBorder(th, none, th, th)
+        },
         // Champion final cell: dark green, white, all-bordered
-        champ:  { font:{bold:true,sz:11,color:{rgb:WHITE}},
-                  fill:fgFill(CHAMGN),
-                  alignment:{horizontal:'center',vertical:'center',wrapText:false},
-                  border:mkBorder(tk,tk,tk,tk) },
+        champ: {
+          font: { bold: true, sz: 11, color: { rgb: WHITE } },
+          fill: fgFill(CHAMGN),
+          alignment: { horizontal: 'center', vertical: 'center', wrapText: false },
+          border: mkBorder(tk, tk, tk, tk)
+        },
         // Junction boxes for later rounds
-        juncLR: { font:{bold:true,sz:8,color:{rgb:WHITE}},
-                  fill:fgFill(NAVY),
-                  alignment:{horizontal:'center',vertical:'center'},
-                  border:mkBorder(md,md,md,md) },
-        navyBg: { fill:fgFill(NAVY) },
-        blank:  { fill:fgFill(WHITE) }
+        juncLR: {
+          font: { bold: true, sz: 8, color: { rgb: WHITE } },
+          fill: fgFill(NAVY),
+          alignment: { horizontal: 'center', vertical: 'center' },
+          border: mkBorder(md, md, md, md)
+        },
+        navyBg: { fill: fgFill(NAVY) },
+        blank: { fill: fgFill(WHITE) }
       };
 
       // ── Column layout ────────────────────────────────────────────────
@@ -2758,7 +2898,7 @@ const BRACKET = {
       //   armCol(ri)  = 2 + ri * 2   (narrow arm/junction)
       // Final round (ri = totalRounds-1): only nameCol exists (champion)
       const nameCol = ri => 1 + ri * 2;
-      const armCol  = ri => 2 + ri * 2;
+      const armCol = ri => 2 + ri * 2;
       // Total columns: seed(1) + 2 per round but last round has no arm = totalRounds*2
       const totalCols = 1 + totalRounds * 2 - 1; // = totalRounds*2
 
@@ -2779,7 +2919,7 @@ const BRACKET = {
 
       for (let ri = 1; ri < totalRounds; ri++) {
         const pTop = slotTop[ri - 1], pBot = slotBot[ri - 1];
-        const cnt  = expectedCnts[ri] !== undefined
+        const cnt = expectedCnts[ri] !== undefined
           ? expectedCnts[ri]
           : Math.ceil(pTop.length / 2);
         const tops = [], bots = [];
@@ -2796,16 +2936,16 @@ const BRACKET = {
       const totalRows = HEADER + totalDataRows;
 
       const ws = {};
-      ws['!ref']    = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:totalRows, c:totalCols} });
+      ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: totalRows, c: totalCols } });
       ws['!merges'] = [];
 
-      const enc    = (r, c) => XLSX.utils.encode_cell({ r, c });
+      const enc = (r, c) => XLSX.utils.encode_cell({ r, c });
       const setCell = (r, c, v, s) => {
         ws[enc(r, c)] = { v: v ?? '', t: typeof v === 'number' ? 'n' : 's', s: s || {} };
       };
       const mergeSet = (r1x, c1x, r2x, c2x, v, s) => {
         if (r1x < r2x || c1x < c2x)
-          ws['!merges'].push({ s:{r:r1x,c:c1x}, e:{r:r2x,c:c2x} });
+          ws['!merges'].push({ s: { r: r1x, c: c1x }, e: { r: r2x, c: c2x } });
         setCell(r1x, c1x, v, s);
       };
 
@@ -2820,8 +2960,8 @@ const BRACKET = {
       // ── Row 2: Column headers ─────────────────────────────────────────
       setCell(2, 0, '#', S.hdr); // seed column header
       for (let ri = 0; ri < totalRounds; ri++) {
-        const nc  = nameCol(ri);
-        const rn  = (rounds[ri] && rounds[ri][0]) ? rounds[ri][0].round : ri + 1;
+        const nc = nameCol(ri);
+        const rn = (rounds[ri] && rounds[ri][0]) ? rounds[ri][0].round : ri + 1;
         const lbl = this.getRoundName(ri, totalRounds, rn);
         const isFinalRd = ri === totalRounds - 1;
         // Merge name + arm columns under one header (except final round has no arm)
@@ -2842,31 +2982,31 @@ const BRACKET = {
       let globalMatchNum = 1;
 
       r1Matches.forEach((match, mi) => {
-        const base  = HEADER + ROWS_PER_MATCH * mi;
+        const base = HEADER + ROWS_PER_MATCH * mi;
         const rowP1 = base;
         const rowSp = base + 1;
         const rowP2 = base + 2;
         const rowGp = base + 3;
 
-        const p1   = match.player1;
-        const p2   = match.player2;
-        const mn   = globalMatchNum++;
+        const p1 = match.player1;
+        const p2 = match.player2;
+        const mn = globalMatchNum++;
         const seed1 = mi * 2 + 1;
         const seed2 = mi * 2 + 2;
 
         // Seed # column (col 0): navy fill entire 4-row block
         setCell(rowP1, 0, seed1, S.seed);
-        setCell(rowSp, 0, '',    S.navyBg);
+        setCell(rowSp, 0, '', S.navyBg);
         setCell(rowP2, 0, seed2, S.seed);
-        setCell(rowGp, 0, '',    S.navyBg);
+        setCell(rowGp, 0, '', S.navyBg);
 
         // Player name cells (col 1 = nameCol(0))
-        const n1   = p1 ? p1.playerName + (p1.centerName ? ` (${p1.centerName})` : '') : 'BYE';
-        const n2   = p2 ? p2.playerName + (p2.centerName ? ` (${p2.centerName})` : '') : 'BYE';
+        const n1 = p1 ? p1.playerName + (p1.centerName ? ` (${p1.centerName})` : '') : 'BYE';
+        const n2 = p2 ? p2.playerName + (p2.centerName ? ` (${p2.centerName})` : '') : 'BYE';
         setCell(rowP1, nameCol(0), n1, p1 ? S.pname : S.bye);
-        setCell(rowSp, nameCol(0), '',  S.blank);
-        setCell(rowP2, nameCol(0), n2,  p2 ? S.pname : S.bye);
-        setCell(rowGp, nameCol(0), '',  S.blank);
+        setCell(rowSp, nameCol(0), '', S.blank);
+        setCell(rowP2, nameCol(0), n2, p2 ? S.pname : S.bye);
+        setCell(rowGp, nameCol(0), '', S.blank);
 
         // Arm/junction column (col 2 = armCol(0))
         // P1 row:  right + bottom borders (arm going right + spine going down)
@@ -2892,13 +3032,13 @@ const BRACKET = {
       for (let ri = 1; ri < totalRounds; ri++) {
         const isFinalRd = ri === totalRounds - 1;
         const matchesInRound = rounds[ri] || [];
-        const nc  = nameCol(ri);
-        const ac  = armCol(ri);
+        const nc = nameCol(ri);
+        const ac = armCol(ri);
 
         slotTop[ri].forEach((top, mi) => {
-          const bot   = slotBot[ri][mi];
+          const bot = slotBot[ri][mi];
           const match = matchesInRound[mi] || {};
-          const mn    = isFinalRd ? null : globalMatchNum++;
+          const mn = isFinalRd ? null : globalMatchNum++;
 
           // Determine player text + style
           let pname = '', style = S.tbd;
@@ -2925,7 +3065,7 @@ const BRACKET = {
             // The junction box goes at the last row of this match's span
             // Arm borders go in rows above the junction
             const juncRow = bot;
-            const midRow  = Math.floor((top + bot) / 2);
+            const midRow = Math.floor((top + bot) / 2);
 
             // Top half: arm from top toward center-right
             for (let r = top; r <= midRow; r++) {
@@ -2966,7 +3106,7 @@ const BRACKET = {
       ws['!rows'] = [{ hpt: 26 }, { hpt: 13 }, { hpt: 18 }];
       for (let ri = 0; ri < r1Matches.length; ri++) {
         ws['!rows'].push({ hpt: 18 }); // P1 row
-        ws['!rows'].push({ hpt: 8  }); // spacer
+        ws['!rows'].push({ hpt: 8 }); // spacer
         ws['!rows'].push({ hpt: 18 }); // P2 row
         ws['!rows'].push({ hpt: 10 }); // gap/junction
       }
@@ -2983,16 +3123,16 @@ const BRACKET = {
       ]];
       let schedMatchNum = 1;
       rounds.forEach((round, ri) => {
-        const actualRn  = round[0]?.round || (ri + 1);
+        const actualRn = round[0]?.round || (ri + 1);
         const roundName = this.getRoundName(ri, totalRounds, actualRn);
         round.forEach(match => {
           if (!match.player1 && !match.player2) return;
-          const p1     = match.player1 ? match.player1.playerName : 'BYE';
-          const p2     = match.player2 ? match.player2.playerName : 'BYE';
+          const p1 = match.player1 ? match.player1.playerName : 'BYE';
+          const p2 = match.player2 ? match.player2.playerName : 'BYE';
           const winner = match.winner
             ? ((match.player1 && match.player1.id === match.winner)
-                ? match.player1.playerName
-                : (match.player2 ? match.player2.playerName : ''))
+              ? match.player1.playerName
+              : (match.player2 ? match.player2.playerName : ''))
             : '';
           const court = match.courtNumber ? `Court ${match.courtNumber}` : '';
           tiesRows.push([schedMatchNum++, roundName, p1, 'VS', p2, court, winner, '']);
@@ -3000,7 +3140,7 @@ const BRACKET = {
       });
       const wsTies = XLSX.utils.aoa_to_sheet(tiesRows);
       wsTies['!cols'] = [
-        {wch:10},{wch:18},{wch:28},{wch:5},{wch:28},{wch:12},{wch:28},{wch:20}
+        { wch: 10 }, { wch: 18 }, { wch: 28 }, { wch: 5 }, { wch: 28 }, { wch: 12 }, { wch: 28 }, { wch: 20 }
       ];
       XLSX.utils.book_append_sheet(wb, wsTies, 'Match Schedule');
 
@@ -3030,6 +3170,7 @@ const BRACKET = {
       ['Rank', 'Player Name', 'Center / Club', 'Result']
     ];
     rankings.forEach(r => {
+      if (!r.player) return; // guard against corrupted ranking entries
       rankRows.push([r.rank, r.player.playerName, r.player.centerName || '', r.note]);
     });
     const wsRank = XLSX.utils.aoa_to_sheet(rankRows);
@@ -3040,7 +3181,7 @@ const BRACKET = {
     const matchRows = [
       ['Round', 'Match', 'Player 1', 'Player 2', 'Winner', 'Start Time', 'End Time']
     ];
-    const totalRounds = this.currentBracket.rounds.length;
+    const totalRounds = (this.currentBracket.rounds || []).length;
 
     // Iterate rounds in forward order (they're stored as Round 1, Quarter-Final, Semi-Final, Final)
     this.currentBracket.rounds.forEach((round, ri) => {
