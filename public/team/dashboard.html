@@ -586,18 +586,55 @@
                     if (!registrationBlocked && team.registrationDeadline) {
                         const dl = new Date(team.registrationDeadline);
                         dl.setHours(23, 59, 59, 999);
-                        const msLeft = dl - now;
-                        const hoursLeft = Math.floor(msLeft / (1000 * 60 * 60));
-                        const daysLeft = Math.ceil(hoursLeft / 24);
-                        const deadlineFmt = new Date(team.registrationDeadline)
-                            .toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-                        if (hoursLeft < 24) {
-                            deadlineCountdownHtml = `<div style="font-size:.7rem;font-weight:800;margin-top:5px;color:#FF6B6B;letter-spacing:.5px;animation:tdUrgentBlink 1s ease-in-out infinite">⏰ CLOSES TODAY!</div>`;
-                        } else if (daysLeft <= 2) {
-                            deadlineCountdownHtml = `<div style="font-size:.7rem;font-weight:800;margin-top:5px;color:#FF9800;letter-spacing:.5px">${daysLeft} day${daysLeft !== 1 ? 's' : ''} left ⚠️</div>`;
-                        } else {
-                            deadlineCountdownHtml = `<div style="font-size:.7rem;font-weight:700;margin-top:5px;color:rgba(255,255,255,.65)">${daysLeft} days left · ${deadlineFmt}</div>`;
-                        }
+                        const deadlineFmt = dl.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                        
+                        deadlineCountdownHtml = `<div id="liveCountdownContainer" style="margin-top:5px; text-align:center;">
+                            <div id="liveCountdownTimer" style="font-size:.75rem;font-weight:800;letter-spacing:.5px;color:rgba(255,255,255,.85);">⏳ Calculating...</div>
+                            <div style="font-size:.65rem;color:rgba(255,255,255,.5);margin-top:2px;">Until ${deadlineFmt}</div>
+                        </div>`;
+                        
+                        if (window._deadlineTimer) clearInterval(window._deadlineTimer);
+                        
+                        const tickTimer = () => {
+                            const currentNow = new Date();
+                            const msLeft = dl - currentNow;
+                            const el = document.getElementById('liveCountdownTimer');
+                            if (!el) return;
+                            
+                            if (msLeft <= 0) {
+                                el.innerHTML = '<span style="color:#FF6B6B;animation:tdUrgentBlink 1s infinite">⏰ CLOSED</span>';
+                                clearInterval(window._deadlineTimer);
+                                setTimeout(() => window.location.reload(), 2000);
+                                return;
+                            }
+                            
+                            const d = Math.floor(msLeft / (1000 * 60 * 60 * 24));
+                            const h = Math.floor((msLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                            const m = Math.floor((msLeft % (1000 * 60 * 60)) / (1000 * 60));
+                            const s = Math.floor((msLeft % (1000 * 60)) / 1000);
+                            
+                            let timeStr = '';
+                            if (d > 0) timeStr += `${d}d `;
+                            timeStr += `${h}h ${m}m ${s}s`;
+                            
+                            if (d < 1) {
+                                el.style.color = '#FF6B6B';
+                                el.style.animation = 'tdUrgentBlink 1s ease-in-out infinite';
+                                el.innerHTML = `⏰ ${timeStr}`;
+                            } else if (d <= 2) {
+                                el.style.color = '#FF9800';
+                                el.style.animation = 'none';
+                                el.innerHTML = `⚠️ ${timeStr}`;
+                            } else {
+                                el.style.color = 'rgba(255,255,255,.85)';
+                                el.style.animation = 'none';
+                                el.innerHTML = `⏳ ${timeStr}`;
+                            }
+                        };
+                        
+                        // Start timer and also do an initial tick after DOM updates
+                        window._deadlineTimer = setInterval(tickTimer, 1000);
+                        setTimeout(tickTimer, 0); // initial tick right after innerHTML assignment
                     }
 
                     document.getElementById('teamInfo').innerHTML = `
