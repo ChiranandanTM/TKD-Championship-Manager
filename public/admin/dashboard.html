@@ -191,7 +191,19 @@
         .msg-tag.court     { background:rgba(255,215,0,0.2); color:var(--border-gold); }
         .msg-tag.urgent    { background:rgba(255,23,68,0.25); color:#ff6b8a; }
         .msg-tag.reply-tag { background:rgba(255,215,0,0.15); color:var(--border-gold); }
-        .msg-empty { text-align:center; padding:40px 20px; color:#555; font-size:0.9rem; }
+        .msg-reply-area { margin-top: 8px; display: none; }
+        .msg-reply-area.open { display: block; }
+        .msg-reply-input { flex-grow: 1; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1.5px solid rgba(0,229,255,0.3); border-radius: 8px; color: var(--text-white); font-size: 0.85rem; font-family: inherit; padding: 9px 12px; resize: none; height: 40px; transition: border-color 0.2s; }
+        .msg-reply-input:focus { outline: none; border-color: var(--accent-cyan); }
+        .msg-reply-input::placeholder { color: #555; }
+        .msg-reply-btn { background: linear-gradient(135deg, var(--accent-cyan), #006BFF); color: #000; font-weight: 800; border: none; border-radius: 7px; padding: 0 16px; font-size: 0.85rem; cursor: pointer; transition: opacity 0.2s; }
+        .msg-reply-btn:hover { opacity: 0.85; }
+        .msg-reply-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .msg-open-reply-btn { background: none; border: 1px solid rgba(0,229,255,0.3); color: var(--accent-cyan); border-radius: 6px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; margin-top: 6px; }
+        .msg-open-reply-btn:hover { background: rgba(0,229,255,0.1); }
+        .quick-reply-btn { background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3); color: var(--accent-cyan); border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .quick-reply-btn:hover { background: rgba(0,229,255,0.2); }
+        .msg-empty { text-align: center; padding: 40px 20px; color: #555; font-size: 0.9rem; }
 
         /* Delete button on each message */
         .msg-delete-btn {
@@ -1709,6 +1721,41 @@
             }
         };
 
+        window.toggleReply = function (msgId) {
+            const area = document.getElementById('admin-reply-' + msgId);
+            if (!area) return;
+            area.classList.toggle('open');
+            if (area.classList.contains('open')) {
+                const inp = area.querySelector('.msg-reply-input');
+                if (inp) inp.focus();
+            }
+        };
+
+        window.sendAdminQuickReply = async function(msgId, to, text, btnEl) {
+            btnEl.disabled = true;
+            try {
+                await window.MESSAGING.sendMessage(to, text, 'info');
+            } catch (e) {
+                alert('Failed to send: ' + e.message);
+                btnEl.disabled = false;
+            }
+        };
+
+        window.sendAdminCustomReply = async function(msgId, to, btnEl) {
+            const area = document.getElementById('admin-reply-' + msgId);
+            const input = area && area.querySelector('.msg-reply-input');
+            if (!input || !input.value.trim()) return;
+            btnEl.disabled = true; btnEl.textContent = '...';
+            try {
+                await window.MESSAGING.sendMessage(to, input.value.trim(), 'info');
+                input.value = '';
+            } catch (e) {
+                alert('Failed to send: ' + e.message);
+            } finally {
+                btnEl.disabled = false; btnEl.textContent = 'Send';
+            }
+        };
+
         // ── Render feed ────────────────────────────────────────────────────
         function renderFeed(msgs) {
             const feed = document.getElementById('msgFeed');
@@ -1756,6 +1803,23 @@
                 const deleteBtn = '<button class="msg-delete-btn" title="Delete message" '
                     + 'onclick="deleteAdminMsg(\'' + m.id + '\', this)">&#x1F5D1;</button>';
 
+                let replySection = '';
+                if (fromRef) {
+                    const courtId = m.courtNumber ? 'court_' + m.courtNumber : 'broadcast';
+                    replySection = '<button class="msg-open-reply-btn" onclick="toggleReply(\'' + m.id + '\')">&#x21A9; Reply</button>' +
+                        '<div class="msg-reply-area" id="admin-reply-' + m.id + '">' +
+                            '<div class="quick-replies" style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">' +
+                                '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Acknowledged\', this)">Acknowledged</button>' +
+                                '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Will check\', this)">Will check</button>' +
+                                '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Please proceed\', this)">Please proceed</button>' +
+                            '</div>' +
+                            '<div style="display:flex; gap:8px;">' +
+                                '<textarea class="msg-reply-input" placeholder="Type your reply..."></textarea>' +
+                                '<button class="msg-reply-btn" onclick="sendAdminCustomReply(\'' + m.id + '\', \'' + courtId + '\', this)">Send</button>' +
+                            '</div>' +
+                        '</div>';
+                }
+
                 return '<div class="msg-item ' + cls + '" id="msg-' + m.id + '">' +
                     '<div class="msg-item-meta">' +
                         '<span class="msg-item-from">' + senderLabel + '</span>' +
@@ -1766,6 +1830,7 @@
                     '</div>' +
                     '<div class="msg-item-target">' + targetTag + urgentTag + '</div>' +
                     '<div class="msg-item-text">' + escHtml(m.text) + '</div>' +
+                    replySection +
                 '</div>';
             }).join('');
         }

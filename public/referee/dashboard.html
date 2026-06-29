@@ -295,8 +295,10 @@
         .msg-reply-btn { margin-top: 6px; background: linear-gradient(135deg, var(--accent-cyan), #006BFF); color: #000; font-weight: 800; border: none; border-radius: 7px; padding: 8px 18px; font-size: 0.85rem; cursor: pointer; transition: opacity 0.2s; }
         .msg-reply-btn:hover { opacity: 0.85; }
         .msg-reply-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .msg-open-reply-btn { background: none; border: 1px solid rgba(0,229,255,0.3); color: var(--accent-cyan); border-radius: 6px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+        .msg-open-reply-btn { background: none; border: 1px solid rgba(0,229,255,0.3); color: var(--accent-cyan); border-radius: 6px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; margin-top: 6px; }
         .msg-open-reply-btn:hover { background: rgba(0,229,255,0.1); }
+        .quick-reply-btn { background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3); color: var(--accent-cyan); border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .quick-reply-btn:hover { background: rgba(0,229,255,0.2); }
         .msg-empty { text-align: center; padding: 40px 20px; color: #555; font-size: 0.9rem; }
 
         /* ── Edit button ──────────────────────────────────── */
@@ -720,7 +722,7 @@
             var area  = document.getElementById('reply-' + msgId);
             var input = area && area.querySelector('.msg-reply-input');
             if (!input || !input.value.trim()) return;
-            btnEl.disabled = true; btnEl.textContent = 'Sending...';
+            btnEl.disabled = true; btnEl.textContent = '...';
             try {
                 await window.MESSAGING.sendReply(input.value.trim(), msgId);
                 input.value = ''; area.classList.remove('open');
@@ -728,6 +730,16 @@
                 alert('Failed to send reply: ' + e.message);
             } finally {
                 btnEl.disabled = false; btnEl.textContent = 'Send';
+            }
+        };
+
+        window.sendRefQuickReply = async function (msgId, text, btnEl) {
+            btnEl.disabled = true;
+            try {
+                await window.MESSAGING.sendReply(text, msgId);
+            } catch (e) {
+                alert('Failed to send reply: ' + e.message);
+                btnEl.disabled = false;
             }
         };
 
@@ -767,8 +779,15 @@
                 var replySection = isFromAdmin
                     ? '<button class="msg-open-reply-btn" onclick="toggleReply(\'' + m.id + '\')">&#x21A9; Reply</button>' +
                       '<div class="msg-reply-area" id="reply-' + m.id + '">' +
-                          '<textarea class="msg-reply-input" placeholder="Type your reply..."></textarea>' +
-                          '<button class="msg-reply-btn" onclick="sendRefReply(\'' + m.id + '\', this)">Send</button>' +
+                          '<div class="quick-replies" style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">' +
+                              '<button class="quick-reply-btn" onclick="sendRefQuickReply(\'' + m.id + '\', \'Acknowledged\', this)">Acknowledged</button>' +
+                              '<button class="quick-reply-btn" onclick="sendRefQuickReply(\'' + m.id + '\', \'Will do\', this)">Will do</button>' +
+                              '<button class="quick-reply-btn" onclick="sendRefQuickReply(\'' + m.id + '\', \'Need assistance\', this)">Need assistance</button>' +
+                          '</div>' +
+                          '<div style="display:flex; gap:8px;">' +
+                              '<textarea class="msg-reply-input" placeholder="Type your reply..."></textarea>' +
+                              '<button class="msg-reply-btn" onclick="sendRefReply(\'' + m.id + '\', this)">Send</button>' +
+                          '</div>' +
                       '</div>'
                     : '';
                 return '<div class="msg-item ' + cls + '">' +
