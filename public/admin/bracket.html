@@ -715,9 +715,11 @@
             const uid = sessionStorage.getItem('firebaseUid') || _bktUserUid;
             let count = 0;
             if (uid) {
-                count = role === 'admin'
-                    ? msgs.filter(m => m.isReply && (!m.readBy || !m.readBy[uid])).length
-                    : msgs.filter(m => m.fromRole === 'admin' && (!m.readBy || !m.readBy[uid])).length;
+                if (role === 'admin' || role === 'judge') {
+                    count = msgs.filter(m => m.fromRole === 'referee' && (!m.readBy || !m.readBy[uid])).length;
+                } else {
+                    count = msgs.filter(m => m.fromRole === 'admin' && (!m.readBy || !m.readBy[uid])).length;
+                }
             }
             const badge = document.getElementById('bktBadge');
             const bell  = document.getElementById('bktBellBtn');

@@ -1858,7 +1858,7 @@
             if (_panelOpen) return;
             const uid   = sessionStorage.getItem('firebaseUid') ||
                           (window.auth && window.auth.currentUser ? window.auth.currentUser.uid : null);
-            const count = uid ? msgs.filter(m => m.isReply && (!m.readBy || !m.readBy[uid])).length : 0;
+            const count = uid ? msgs.filter(m => m.fromRole === 'referee' && (!m.readBy || !m.readBy[uid])).length : 0;
             const badge = document.getElementById('adminBadge');
             const bell  = document.getElementById('adminBellBtn');
             if (!badge) return;
