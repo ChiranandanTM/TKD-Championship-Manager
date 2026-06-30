@@ -6,7 +6,7 @@ const LEADERBOARD = {
 
     init() {
         console.log("🏆 Initializing Leaderboard...");
-        
+
         const teamsRef = window.dbRef(window.database, 'teams');
         window.dbOnValue(teamsRef, (snapshot) => {
             if (snapshot.exists()) {
@@ -35,7 +35,7 @@ const LEADERBOARD = {
 
     getTeam(player) {
         if (!player) return null;
-        
+
         let teamId = player.teamId;
         // If no teamId but we have teamName, try to find the team or create a generic one
         if (!teamId && player.teamName) {
@@ -77,7 +77,7 @@ const LEADERBOARD = {
             if (Array.isArray(roundsRaw)) {
                 roundsArr = roundsRaw;
             } else if (roundsRaw && typeof roundsRaw === 'object') {
-                roundsArr = Object.keys(roundsRaw).sort((a,b) => Number(a)-Number(b)).map(k => roundsRaw[k]);
+                roundsArr = Object.keys(roundsRaw).sort((a, b) => Number(a) - Number(b)).map(k => roundsRaw[k]);
             } else {
                 roundsArr = [];
             }
@@ -102,9 +102,9 @@ const LEADERBOARD = {
                 }
                 continue;
             }
-            
+
             const totalRounds = roundsArr.length;
-            
+
             // Final Match (Gold & Silver)
             const finalRound = roundsArr[totalRounds - 1];
             if (finalRound && finalRound.length > 0) {
@@ -112,13 +112,13 @@ const LEADERBOARD = {
                 if (finalMatch && finalMatch.status === 'completed' && finalMatch.winner) {
                     const champion = finalMatch.player1 && finalMatch.player1.id === finalMatch.winner ? finalMatch.player1 : finalMatch.player2;
                     const runnerUp = finalMatch.player1 && finalMatch.player1.id === finalMatch.winner ? finalMatch.player2 : finalMatch.player1;
-                    
+
                     const champTeam = this.getTeam(champion);
                     if (champTeam) {
                         champTeam.gold += 1;
                         champTeam.points += 7;
                     }
-                        
+
                     const runnerUpTeam = this.getTeam(runnerUp);
                     if (runnerUpTeam) {
                         runnerUpTeam.silver += 1;

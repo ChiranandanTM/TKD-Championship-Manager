@@ -1224,6 +1224,15 @@ const BRACKET = {
       const round = this.currentBracket.rounds[roundIdx];
       if (!round) continue;
 
+      // ── AUTO BYE ASSIGNMENT ──
+      // Fix cases where a player was deleted leaving an unpaired player stuck
+      if (this.processAutoByes(roundIdx)) {
+        fixedAnyConflicts = true;
+        if (round.every(m => m.status === 'completed')) {
+          this.buildNextRound(roundIdx);
+        }
+      }
+
       // Never reshuffle matches that have already started or completed —
       // doing so would corrupt winner/eliminated data.
       if (round.length === 0 || round.some(m => m.status && m.status !== 'pending')) continue;
@@ -2047,6 +2056,47 @@ const BRACKET = {
     }
   },
 
+  // Automatically assign a BYE (walkover) if there is exactly one unpaired player in the round
+  // and no BYE players available in the drop pool.
+  processAutoByes(roundIndex) {
+    if (!this.currentBracket || !this.currentBracket.rounds) return false;
+    
+    const round = this.currentBracket.rounds[roundIndex];
+    if (!round) return false;
+    
+    const byePlayers = this.currentBracket.byePlayers || {};
+    const hasByePlayer = !!byePlayers[String(roundIndex)];
+    
+    // Find unpaired matches (exactly 1 player)
+    const unpairedMatches = round.filter(m => m.status === 'pending' && ((m.player1 && !m.player2) || (!m.player1 && m.player2)));
+    
+    // Find empty matches (0 players)
+    const emptyMatches = round.filter(m => m.status === 'pending' && !m.player1 && !m.player2);
+    
+    let changed = false;
+    
+    // Auto-advance if exactly 1 unpaired match, NO empty matches, and no bye players waiting
+    if (unpairedMatches.length === 1 && !hasByePlayer && emptyMatches.length === 0) {
+      const match = unpairedMatches[0];
+      const remainingPlayer = match.player1 || match.player2;
+      
+      match.status = 'completed';
+      match.winner = remainingPlayer.id;
+      match.eliminated = null;
+      match.endTime = new Date().toISOString();
+      match.isAutoBye = true;
+      
+      console.log(`🤖 Auto-advancing ${remainingPlayer.playerName} in R${roundIndex + 1} (No opponents available)`);
+      
+      if (typeof this.saveMatchToHistory === 'function') {
+        this.saveMatchToHistory(this.currentCategory, match).catch(e => console.warn(e));
+      }
+      changed = true;
+    }
+    
+    return changed;
+  },
+
   // Advance winner: when every match in the current round is complete,
   // build the next round dynamically (including correct bye assignment).
   advanceWinner(match) {
@@ -2067,6 +2117,8 @@ const BRACKET = {
       bracketMatch.eliminated = match.eliminated;
       bracketMatch.endTime = match.endTime;
     }
+
+    this.processAutoByes(roundIndex);
 
     const allDone = currentRound.every(m => m.status === 'completed');
 
@@ -2703,6 +2755,17 @@ const BRACKET = {
     if (!confirmed) return;
 
     match[slot] = null;
+    
+    const roundNum = parseInt(matchId.split('_')[0].substring(1));
+    const roundIndex = roundNum - 1;
+    
+    if (this.processAutoByes(roundIndex)) {
+      const round = this.currentBracket.rounds[roundIndex];
+      if (round.every(m => m.status === 'completed')) {
+        this.buildNextRound(roundIndex);
+      }
+    }
+    
     await this.saveBracket(this.currentCategory, this.currentBracket);
     this.renderBracket();
   },
