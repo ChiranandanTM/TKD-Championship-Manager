@@ -64,6 +64,11 @@ const LEADERBOARD = {
 
         // Iterate brackets
         for (const [categoryKey, bracket] of Object.entries(this.brackets)) {
+            // Only count brackets that are fully complete
+            if (bracket.status !== 'complete') {
+                continue;
+            }
+
             // Detect single-player walkover: rounds may be missing, empty [],
             // [[]] (one round with zero matches), or Firebase object equivalents.
             // Also detect via bracket.status + byePlayers as a fallback.
@@ -113,7 +118,7 @@ const LEADERBOARD = {
                         champTeam.gold += 1;
                         champTeam.points += 7;
                     }
-                    
+                        
                     const runnerUpTeam = this.getTeam(runnerUp);
                     if (runnerUpTeam) {
                         runnerUpTeam.silver += 1;
