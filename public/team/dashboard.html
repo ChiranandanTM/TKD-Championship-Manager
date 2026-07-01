@@ -558,7 +558,9 @@
                         blockedReason = 'Registration closed by admin';
                     } else if (team.registrationDeadline) {
                         const dl = new Date(team.registrationDeadline);
-                        dl.setHours(23, 59, 59, 999);
+                        if (!team.registrationDeadline.includes('T')) {
+                            dl.setHours(23, 59, 59, 999);
+                        }
                         if (now > dl) {
                             registrationBlocked = true;
                             const fmt = new Date(team.registrationDeadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -585,8 +587,10 @@
                     let deadlineCountdownHtml = '';
                     if (!registrationBlocked && team.registrationDeadline) {
                         const dl = new Date(team.registrationDeadline);
-                        dl.setHours(23, 59, 59, 999);
-                        const deadlineFmt = dl.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                        if (!team.registrationDeadline.includes('T')) {
+                            dl.setHours(23, 59, 59, 999);
+                        }
+                        const deadlineFmt = dl.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) + (team.registrationDeadline.includes('T') ? ' ' + dl.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '');
                         deadlineCountdownHtml = `<div id="liveCountdownContainer" style="margin-top:12px; text-align:center;">
                             <div id="liveCountdownTimer" style="font-size:1.15rem;font-weight:900;letter-spacing:1px;color:rgba(255,255,255,.95);">⏳ Calculating...</div>
                             <div style="font-size:.85rem;color:rgba(255,255,255,.7);margin-top:4px;">Until ${deadlineFmt}</div>

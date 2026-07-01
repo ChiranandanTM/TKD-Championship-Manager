@@ -111,7 +111,9 @@ const REGISTRATION = {
           const teamDeadline = teamData.registrationDeadline;
           if (teamDeadline) {
             const deadlineDate = new Date(teamDeadline);
-            deadlineDate.setHours(23, 59, 59, 999);
+            if (!teamDeadline.includes('T')) {
+              deadlineDate.setHours(23, 59, 59, 999);
+            }
             if (new Date() > deadlineDate) {
               this.showDeadlineClosed(config.championship, teamDeadline, false);
               return;
@@ -906,7 +908,9 @@ const REGISTRATION = {
       const teamDeadline = teamData.registrationDeadline;
       if (teamDeadline) {
         const deadlineDate = new Date(teamDeadline);
-        deadlineDate.setHours(23, 59, 59, 999);
+        if (!teamDeadline.includes('T')) {
+          deadlineDate.setHours(23, 59, 59, 999);
+        }
         if (new Date() > deadlineDate) {
           const formattedDate = new Date(teamDeadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
           throw new Error(`Registration closed. The deadline for your team was ${formattedDate}.`);

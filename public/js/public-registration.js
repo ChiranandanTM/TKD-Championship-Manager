@@ -85,7 +85,9 @@ const PUBLIC_REGISTRATION = {
       // Check if registration deadline has passed
       if (teamData.registrationDeadline) {
         const deadlineDate = new Date(teamData.registrationDeadline);
-        deadlineDate.setHours(23, 59, 59, 999);
+        if (!teamData.registrationDeadline.includes('T')) {
+          deadlineDate.setHours(23, 59, 59, 999);
+        }
         
         if (new Date() > deadlineDate) {
           this.registrationClosed = true;

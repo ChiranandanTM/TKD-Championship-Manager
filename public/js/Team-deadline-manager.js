@@ -50,7 +50,9 @@ const TEAM_DEADLINE_MANAGER = {
           statusHtml = `<span style="color: var(--accent-red); font-weight: 700;">🔒 Closed</span>`;
         } else if (deadline) {
           const d = new Date(deadline);
-          d.setHours(23, 59, 59, 999);
+          if (!deadline.includes('T')) {
+            d.setHours(23, 59, 59, 999);
+          }
           if (now > d) {
             statusHtml = `<span style="color: var(--warning-orange); font-weight: 700;">⏰ Expired</span>`;
           } else {
@@ -72,18 +74,30 @@ const TEAM_DEADLINE_MANAGER = {
             <td style="padding: 14px 16px; font-family: monospace; color: var(--accent-cyan);">${localStorage.getItem('pw_team_' + team.id) || '—'}</td>
             <td style="padding: 14px 16px; color: var(--text-gray); font-size: 0.9rem;">${createdAt}</td>
             <td style="padding: 14px 16px;">${statusHtml}</td>
-            <td style="padding: 14px 16px;">
-              <input type="date" id="deadline-${team.id}" value="${deadline}"
-                style="background: var(--secondary-black); border: 1px solid var(--accent-cyan); color: var(--text-white);
-                       border-radius: 6px; padding: 6px 10px; font-size: 0.9rem; width: 150px;">
+            <td style="padding: 10px 16px;">
+              <div style="display: inline-flex; align-items: center; background: rgba(10, 15, 30, 0.8); border: 1.5px solid rgba(0, 229, 255, 0.4); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), inset 0 2px 5px rgba(0,0,0,0.5); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);"
+                   onmouseover="this.style.borderColor='#00E5FF'; this.style.boxShadow='0 0 20px rgba(0, 229, 255, 0.3), inset 0 2px 5px rgba(0,0,0,0.5)'; this.style.transform='translateY(-2px)';"
+                   onmouseout="this.style.borderColor='rgba(0, 229, 255, 0.4)'; this.style.boxShadow='0 4px 15px rgba(0, 0, 0, 0.3), inset 0 2px 5px rgba(0,0,0,0.5)'; this.style.transform='translateY(0)';">
+                
+                <div style="padding: 0 12px; background: rgba(0, 229, 255, 0.1); border-right: 1px solid rgba(0, 229, 255, 0.2); display: flex; align-items: center; justify-content: center; height: 100%; min-height: 40px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 4px rgba(0,229,255,0.6));">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                </div>
+                
+                <input type="datetime-local" id="deadline-${team.id}" value="${deadline}"
+                  style="background: transparent; border: none; color: #fff; padding: 10px 12px; font-size: 0.9rem; width: 180px; outline: none; font-family: 'Inter', sans-serif; cursor: pointer;">
+                  
+                <button onclick="TEAM_DEADLINE_MANAGER.saveTeamDeadline('${team.id}')"
+                  style="background: linear-gradient(135deg, #00E5FF, #0088FF); color: #000; border: none; padding: 10px 20px; font-weight: 900; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; border-left: 1px solid rgba(0,0,0,0.3); height: 100%; min-height: 40px;"
+                  onmouseover="this.style.filter='brightness(1.2)';" onmouseout="this.style.filter='brightness(1)';">
+                  Set
+                </button>
+              </div>
             </td>
             <td style="padding: 14px 16px;">
-              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                <button onclick="TEAM_DEADLINE_MANAGER.saveTeamDeadline('${team.id}')"
-                  style="padding: 6px 14px; font-size: 0.85rem; background: var(--border-gold); color: var(--primary-black);
-                         border: none; border-radius: 6px; cursor: pointer; font-weight: 700;">
-                  💾 Save
-                </button>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                 <button onclick="TEAM_DEADLINE_MANAGER.toggleTeamClose('${team.id}', ${!isClosed})"
                   style="padding: 6px 14px; font-size: 0.85rem;
                          background: ${isClosed ? 'var(--success-green)' : 'var(--accent-red)'};
