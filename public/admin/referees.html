@@ -257,7 +257,12 @@
 
             <div class="form-group">
                 <label for="refPasswordInput">Password <span style="color:var(--accent-red)">*</span></label>
-                <input type="password" id="refPasswordInput" placeholder="Set login password">
+                <div style="position: relative; display: flex; align-items: center;">
+                    <input type="password" id="refPasswordInput" placeholder="Set login password" style="padding-right: 44px;">
+                    <button type="button" onclick="UI.togglePasswordVisibility('refPasswordInput','refPasswordToggleIcon','refPasswordToggleBtn')" id="refPasswordToggleBtn" aria-label="Show password" style="position: absolute; right: 8px; background: transparent; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center;">
+                        <svg id="refPasswordToggleIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                </div>
                 <small id="refPasswordHint" style="color:#888;font-size:0.82rem;margin-top:4px;display:none;">
                     Showing current password. Edit to change it.
                 </small>
