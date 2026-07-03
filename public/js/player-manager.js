@@ -71,29 +71,33 @@ const PLAYER_MANAGER = {
         cleanupUpdates[`playerImages/${playerId}`] = null;
         cleanupUpdates[`expoPlayers/${playerId}`] = null;
 
-        // Clean bracket references so no ghost IDs remain
+        // Clean bracket references so no ghost IDs remain. Schema matches
+        // bracket.js's saveBracket: rounds is an array of arrays of match
+        // objects with player1/player2 as compressed player objects (not
+        // raw ID strings), plus a separate byePlayers map keyed by round
+        // index — there is no top-level players/matches map.
         try {
           const bracketsSnap = await dbGet(dbRef(database, 'brackets'));
           if (bracketsSnap.exists()) {
             bracketsSnap.forEach(bracketChild => {
               const bracketId = bracketChild.key;
               const bracketData = bracketChild.val();
-              // Remove from player list
-              if (bracketData.players && bracketData.players[playerId]) {
-                cleanupUpdates[`brackets/${bracketId}/players/${playerId}`] = null;
+              if (Array.isArray(bracketData.rounds)) {
+                bracketData.rounds.forEach((round, roundIdx) => {
+                  (round || []).forEach((matchData, matchIdx) => {
+                    if (matchData.player1?.id === playerId) {
+                      cleanupUpdates[`brackets/${bracketId}/rounds/${roundIdx}/${matchIdx}/player1`] = null;
+                    }
+                    if (matchData.player2?.id === playerId) {
+                      cleanupUpdates[`brackets/${bracketId}/rounds/${roundIdx}/${matchIdx}/player2`] = null;
+                    }
+                  });
+                });
               }
-              // Remove from match slots
-              if (bracketData.matches && typeof bracketData.matches === 'object') {
-                Object.entries(bracketData.matches).forEach(([matchId, matchData]) => {
-                  if (matchData.player1 === playerId) {
-                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player1`] = null;
-                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player1Name`] = null;
-                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player1Team`] = null;
-                  }
-                  if (matchData.player2 === playerId) {
-                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player2`] = null;
-                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player2Name`] = null;
-                    cleanupUpdates[`brackets/${bracketId}/matches/${matchId}/player2Team`] = null;
+              if (bracketData.byePlayers && typeof bracketData.byePlayers === 'object') {
+                Object.entries(bracketData.byePlayers).forEach(([roundKey, byePlayer]) => {
+                  if (byePlayer?.id === playerId) {
+                    cleanupUpdates[`brackets/${bracketId}/byePlayers/${roundKey}`] = null;
                   }
                 });
               }
@@ -149,33 +153,38 @@ const PLAYER_MANAGER = {
       // For admin users, do full cleanup
       const updates = {};
 
-      // Step 1: Clean up bracket references
+      // Step 1: Clean up bracket references. Schema matches bracket.js's
+      // saveBracket: rounds is an array of arrays of match objects with
+      // player1/player2 as compressed player objects (not raw ID strings),
+      // plus a separate byePlayers map keyed by round index — there is no
+      // top-level players/matches map.
       console.log('🏆 Cleaning up bracket references...');
       const bracketsRef = dbRef(database, 'brackets');
       const bracketsSnap = await dbGet(bracketsRef);
-      
+
       let bracketsModified = 0;
       if (bracketsSnap.exists()) {
         const allBrackets = bracketsSnap.val();
         Object.entries(allBrackets).forEach(([bracketId, bracketData]) => {
-          // Remove player from bracket player list
-          if (bracketData.players && bracketData.players[playerId]) {
-            updates[`brackets/${bracketId}/players/${playerId}`] = null;
-            bracketsModified++;
+          if (Array.isArray(bracketData.rounds)) {
+            bracketData.rounds.forEach((round, roundIdx) => {
+              (round || []).forEach((matchData, matchIdx) => {
+                if (matchData.player1?.id === playerId) {
+                  updates[`brackets/${bracketId}/rounds/${roundIdx}/${matchIdx}/player1`] = null;
+                  bracketsModified++;
+                }
+                if (matchData.player2?.id === playerId) {
+                  updates[`brackets/${bracketId}/rounds/${roundIdx}/${matchIdx}/player2`] = null;
+                  bracketsModified++;
+                }
+              });
+            });
           }
-
-          // Remove player from matches
-          if (bracketData.matches && typeof bracketData.matches === 'object') {
-            Object.entries(bracketData.matches).forEach(([matchId, matchData]) => {
-              if (matchData.player1 === playerId) {
-                updates[`brackets/${bracketId}/matches/${matchId}/player1`] = null;
-                updates[`brackets/${bracketId}/matches/${matchId}/player1Name`] = null;
-                updates[`brackets/${bracketId}/matches/${matchId}/player1Team`] = null;
-              }
-              if (matchData.player2 === playerId) {
-                updates[`brackets/${bracketId}/matches/${matchId}/player2`] = null;
-                updates[`brackets/${bracketId}/matches/${matchId}/player2Name`] = null;
-                updates[`brackets/${bracketId}/matches/${matchId}/player2Team`] = null;
+          if (bracketData.byePlayers && typeof bracketData.byePlayers === 'object') {
+            Object.entries(bracketData.byePlayers).forEach(([roundKey, byePlayer]) => {
+              if (byePlayer?.id === playerId) {
+                updates[`brackets/${bracketId}/byePlayers/${roundKey}`] = null;
+                bracketsModified++;
               }
             });
           }

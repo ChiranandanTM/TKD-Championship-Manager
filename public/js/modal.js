@@ -3,6 +3,16 @@
 // ============================================
 
 const MODAL = {
+  // Stack of currently-open alert/confirm dialogs, most-recently-opened
+  // last. Each entry owns its own DOM node + resolve callback instead of
+  // sharing a single global slot — so if a dialog opens again before the
+  // previous one was dismissed (e.g. a double-clicked button, or two async
+  // calls racing), every dialog still gets its own working OK/Cancel
+  // instead of the newest one silently overwriting the previous one's
+  // resolver and leaving its overlay stuck on screen forever (blocking all
+  // clicks until a page reload).
+  _stack: [],
+
   // Show custom alert message on website
   showAlert(message, title = '⚠️ Message', type = 'info') {
     return new Promise((resolve) => {
@@ -26,33 +36,20 @@ const MODAL = {
       // Create modal element
       const modalDiv = document.createElement('div');
       modalDiv.innerHTML = modalHTML;
-      modalDiv.id = 'customAlertModal';
       document.body.appendChild(modalDiv);
 
-      // Store resolve function for closing
-      window.modalResolve = () => {
-        modalDiv.remove();
-        resolve();
-      };
+      this._stack.push({ div: modalDiv, resolve, kind: 'alert' });
     });
   },
 
   // Close alert
   closeAlert() {
-    const modal = document.getElementById('customAlertModal');
-    if (modal) {
-      modal.remove();
-    }
-    if (window.modalResolve) {
-      window.modalResolve();
-    }
+    this._closeTop('alert', undefined);
   },
 
   // Show custom confirm dialog
   showConfirm(message, title = '🔒 Confirmation') {
     return new Promise((resolve) => {
-      console.log("📋 Creating confirm dialog with message:", message);
-      
       const modalHTML = `
         <div class="custom-modal-overlay" onclick="if(event.target === this) MODAL._confirmCancel()">
           <div class="custom-modal-content modal-warning">
@@ -74,43 +71,35 @@ const MODAL = {
       // Create modal element
       const modalDiv = document.createElement('div');
       modalDiv.innerHTML = modalHTML;
-      modalDiv.id = 'customConfirmModal';
       document.body.appendChild(modalDiv);
 
-      // Store resolve function
-      window.confirmResolve = resolve;
-      window._modalDiv = modalDiv;
-      console.log("✅ Modal created, waiting for user response...");
+      this._stack.push({ div: modalDiv, resolve, kind: 'confirm' });
     });
   },
 
   // Internal confirm OK handler
   _confirmOK() {
-    console.log("✅ Confirm OK clicked");
-    if (window._modalDiv) {
-      window._modalDiv.remove();
-      console.log("✅ Modal removed");
-    }
-    if (window.confirmResolve) {
-      console.log("✅ Resolving with true");
-      window.confirmResolve(true);
-      delete window.confirmResolve;
-      delete window._modalDiv;
-    }
+    this._closeTop('confirm', true);
   },
 
   // Internal confirm Cancel handler
   _confirmCancel() {
-    console.log("❌ Confirm cancelled");
-    if (window._modalDiv) {
-      window._modalDiv.remove();
-      console.log("❌ Modal removed");
-    }
-    if (window.confirmResolve) {
-      console.log("❌ Resolving with false");
-      window.confirmResolve(false);
-      delete window.confirmResolve;
-      delete window._modalDiv;
+    this._closeTop('confirm', false);
+  },
+
+  // Resolve + remove the most recently opened dialog of the given kind.
+  // Newer dialogs render on top of (and fully cover) older ones, so the
+  // topmost entry of that kind is always the one the click actually came
+  // from — closing it reveals any earlier dialog still underneath rather
+  // than leaving it stuck forever.
+  _closeTop(kind, value) {
+    for (let i = this._stack.length - 1; i >= 0; i--) {
+      if (this._stack[i].kind === kind) {
+        const [entry] = this._stack.splice(i, 1);
+        entry.div.remove();
+        entry.resolve(value);
+        return;
+      }
     }
   },
 

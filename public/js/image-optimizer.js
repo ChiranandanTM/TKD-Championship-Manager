@@ -102,7 +102,7 @@ const IMAGE_OPTIMIZER = {
         break;
     }
 
-    ctx.drawImage(img, 0, 0);
+    ctx.drawImage(img, 0, 0, width, height);
     ctx.restore();
   },
 
