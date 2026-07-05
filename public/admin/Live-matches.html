@@ -616,39 +616,6 @@
             return (isNaN(ca) ? 999 : ca) - (isNaN(cb) ? 999 : cb);
         }
 
-        // Find a specific match by matchId inside an official bracket's rounds
-        // (used to resolve a liveCourts/{court} presence entry to real match data).
-        function findOfficialMatchById(allBrackets, categoryKey, matchId) {
-            const bracket = allBrackets && allBrackets[categoryKey];
-            if (!bracket || !bracket.rounds) return null;
-
-            const rounds = Array.isArray(bracket.rounds) ? bracket.rounds : Object.values(bracket.rounds);
-            const totalRounds = getExpectedTotalRounds(bracket);
-
-            for (let roundIndex = 0; roundIndex < rounds.length; roundIndex++) {
-                const round = rounds[roundIndex];
-                if (!round) continue;
-                const matches = Array.isArray(round) ? round : Object.values(round);
-                const actualRoundNumber = matches[0]?.round || (roundIndex + 1);
-                for (const match of matches) {
-                    if (match && match.matchId === matchId) {
-                        return { match, roundName: getRoundName(roundIndex, totalRounds, actualRoundNumber) };
-                    }
-                }
-            }
-            return null;
-        }
-
-        // Find a specific match by matchId inside an expo bracket's flat match list.
-        function findExpoMatchById(allExpoBrackets, categoryKey, matchId) {
-            const bracket = allExpoBrackets && allExpoBrackets[categoryKey];
-            if (!bracket) return null;
-            const matches = Array.isArray(bracket.matches) ? bracket.matches : Object.values(bracket.matches || {});
-            const idx = matches.findIndex(function(m) { return m && m.matchId === matchId; });
-            if (idx === -1) return null;
-            return { match: matches[idx], roundName: 'Match ' + (idx + 1) };
-        }
-
         let latestOfficialBrackets = null;
         let latestExpoBrackets = null;
         let latestLiveCourts = null;
@@ -658,17 +625,39 @@
             const official = collectOfficialMatches(latestOfficialBrackets);
             const expo = collectExpoMatches(latestExpoBrackets);
 
-            // Each liveCourts/{court} entry means "this court has a bracket open right
-            // now" — written the instant a referee opens a bracket, and removed the
-            // instant they stop/navigate away/disconnect. That entry's activeMatchId
-            // tells us whether a specific match is currently being scored:
-            //   - activeMatchId set  -> show that match as Live
-            //   - activeMatchId null -> bracket open, nothing started yet
-            // Either way, the court's next scheduled match is shown as Upcoming for as
-            // long as the bracket stays open — independent of whether anything is live.
+            // Live matches come straight from /brackets and /expoBrackets — the same
+            // single source of truth every client (Admin, every referee, scoreboards)
+            // already listens to. match.status === 'in-progress'/'live' plus the
+            // courtNumber stored on the match itself is enough to render a Live card;
+            // this does NOT depend on the separate liveCourts/{court} presence node,
+            // so a dropped/late/blank presence write on one court can no longer make
+            // that court's live match invisible while other courts work fine.
             const liveItems = [];
-            const nextItems = [];
+            official.live.forEach(function(entry) {
+                liveItems.push({
+                    division: entry.division,
+                    categoryKey: entry.categoryKey,
+                    roundName: entry.roundName,
+                    match: entry.match,
+                    isLive: true,
+                    court: entry.match.courtNumber || ''
+                });
+            });
+            expo.live.forEach(function(entry) {
+                liveItems.push({
+                    division: entry.division,
+                    categoryKey: entry.categoryKey,
+                    roundName: entry.roundName,
+                    match: entry.match,
+                    isLive: true,
+                    court: entry.match.courtNumber || ''
+                });
+            });
 
+            // Upcoming still uses liveCourts: it's the only signal that a category is
+            // currently assigned to a court (bracket open, nothing started yet), which
+            // isn't recorded anywhere on the bracket/match data itself.
+            const nextItems = [];
             if (latestLiveCourts) {
                 Object.keys(latestLiveCourts).forEach(function(courtNumber) {
                     const presence = latestLiveCourts[courtNumber];
@@ -676,26 +665,6 @@
 
                     const isExpo = presence.matchType === 'expo';
                     const nextByKey = isExpo ? expo.nextByKey : official.nextByKey;
-
-                    if (presence.activeMatchId) {
-                        const found = isExpo
-                            ? findExpoMatchById(latestExpoBrackets, presence.categoryKey, presence.activeMatchId)
-                            : findOfficialMatchById(latestOfficialBrackets, presence.categoryKey, presence.activeMatchId);
-
-                        // Presence points at data that's gone or already completed
-                        // (e.g. a stale write) — skip rather than show a wrong/stale card.
-                        const expectedStatus = isExpo ? 'live' : 'in-progress';
-                        if (found && found.match.status === expectedStatus) {
-                            liveItems.push({
-                                division: isExpo ? 'Expo' : 'Official',
-                                categoryKey: presence.categoryKey,
-                                roundName: found.roundName,
-                                match: found.match,
-                                isLive: true,
-                                court: courtNumber
-                            });
-                        }
-                    }
 
                     // This court's bracket is open — show its next scheduled match as
                     // Upcoming whether or not a match is live yet on it.

@@ -454,31 +454,19 @@
             }
         }
 
-        // Inject a "Download Fixture (Excel)" button INSIDE the Official bracket's
-        // own header (next to the existing Download Fixture PDF / Previous Matches
-        // buttons bracket.js renders), without editing bracket.js. bracket.js
-        // rebuilds #bracketContainer's innerHTML on every render (open category,
-        // start match, set winner, stop match, etc.), which wipes out anything
-        // injected here — so a MutationObserver re-injects it after each render.
-        function injectOfficialFixtureExcelButton() {
+        // Take over the existing "Download Fixture PDF" button bracket.js renders
+        // (same button, same label, but generates the official fight-diagram-style
+        // layout instead of bracket.js's own PDF export), without editing
+        // bracket.js. bracket.js rebuilds #bracketContainer's innerHTML on every
+        // render (open category, start match, set winner, stop match, etc.),
+        // which wipes out this override — so a MutationObserver reapplies it
+        // after each render.
+        function takeOverBracketPdfButton() {
             const header = document.querySelector('#bracketContainer .bracket-header');
             if (!header) return;
             const actionsWrap = header.querySelector(':scope > div');
             if (!actionsWrap) return;
 
-            if (!actionsWrap.querySelector('.official-fixture-excel-btn')) {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'btn-secondary official-fixture-excel-btn';
-                btn.style.cssText = 'padding:8px 18px;font-size:0.95rem;';
-                btn.textContent = '📥 Download Fixture (Excel)';
-                btn.onclick = downloadOfficialSimpleFixtureExcel;
-                actionsWrap.insertBefore(btn, actionsWrap.firstChild);
-            }
-
-            // Take over the existing "Download Fixture PDF" button bracket.js
-            // renders — same button, same label, but now generates the official
-            // fight-diagram-style layout instead of bracket.js's own PDF export.
             const pdfBtn = actionsWrap.querySelector('button[onclick*="downloadFixturePDF"]');
             if (pdfBtn && !pdfBtn.dataset.overridden) {
                 pdfBtn.dataset.overridden = 'true';
@@ -488,61 +476,8 @@
 
         const _officialBracketContainer = document.getElementById('bracketContainer');
         if (_officialBracketContainer) {
-            new MutationObserver(injectOfficialFixtureExcelButton)
+            new MutationObserver(takeOverBracketPdfButton)
                 .observe(_officialBracketContainer, { childList: true, subtree: true });
-        }
-
-        // Plain player-list Excel export for the Official bracket — NOT the
-        // visual bracket-tree drawing BRACKET.downloadFixtureExcel() produces.
-        // Just the matches/byes in the same order the bracket was generated in
-        // (round by round, seed order within each round), with team names.
-        // Reads BRACKET's already-public currentBracket/categories data only —
-        // no bracket.js changes.
-        function downloadOfficialSimpleFixtureExcel() {
-            if (typeof BRACKET === 'undefined' || !BRACKET.currentBracket) {
-                if (typeof MODAL !== 'undefined') MODAL.warning('No bracket loaded.');
-                return;
-            }
-            if (typeof XLSX === 'undefined') {
-                if (typeof MODAL !== 'undefined') MODAL.error('Excel library not loaded.');
-                return;
-            }
-
-            const category = BRACKET.categories[BRACKET.currentCategory];
-            const bracket = BRACKET.currentBracket;
-            const toArr = o => Array.isArray(o) ? o : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
-            const rounds = toArr(bracket.rounds || []).map(r => toArr(r));
-
-            // Same simple layout as the Expo fixture export: Match #, Player 1,
-            // Center 1, Player 2, Center 2, Court — flattened across all rounds,
-            // numbered sequentially in the exact order the bracket was generated in.
-            const wsData = [['Match #', 'Player 1', 'Center 1', 'Player 2', 'Center 2', 'Court']];
-
-            let matchCounter = 1;
-            rounds.forEach((roundMatches) => {
-                roundMatches.forEach((match) => {
-                    const p1 = match.player1;
-                    const p2 = match.player2;
-                    wsData.push([
-                        matchCounter++,
-                        p1 ? p1.playerName : '',
-                        p1 ? (p1.centerName || p1.teamName || '') : '',
-                        p2 ? p2.playerName : '',
-                        p2 ? (p2.centerName || p2.teamName || '') : '',
-                        match.courtNumber || ''
-                    ]);
-                });
-            });
-
-            Object.values(bracket.byePlayers || {}).forEach(p => {
-                if (p) wsData.push(['BYE', p.playerName, p.centerName || p.teamName || '', '', '', '']);
-            });
-
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'Fixture');
-            const fileName = `Official_Fixture_${category.gender}_${category.ageCategory}_${category.weightCategory}.xlsx`.replace(/\s+/g, '_');
-            XLSX.writeFile(wb, fileName);
         }
 
         // "Bracket Sheet" style bracket PDF — classic printable tournament sheet:
@@ -753,19 +688,13 @@
             BRACKET.init();
         }
 
-        // 🧹 CRITICAL FIX: Clean up bracket listeners on page unload
-        // Prevents memory leaks and duplicate listener accumulation
+        // Clean up bracket listeners on page unload only. Tearing them down on
+        // mere tab-hide (screen lock, app switch — routine on referee tablets)
+        // used to kill real-time sync permanently, since nothing ever resubscribed
+        // when the tab came back: the bracket view would silently stop receiving
+        // other courts' updates until the user manually clicked Back and reopened it.
         window.addEventListener('beforeunload', () => {
             if (typeof BRACKET !== 'undefined' && BRACKET.bracketListener) {
-                console.log('🧹 Cleaning up bracket listeners on page unload');
-                BRACKET.stopBracketListeners();
-            }
-        });
-
-        // Also cleanup when tab becomes hidden
-        document.addEventListener('visibilitychange', () => {
-            if (document.hidden && typeof BRACKET !== 'undefined' && BRACKET.bracketListener) {
-                console.log('🧹 Cleaning up bracket listeners - tab hidden');
                 BRACKET.stopBracketListeners();
             }
         });

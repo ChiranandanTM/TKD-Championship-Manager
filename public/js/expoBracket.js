@@ -23,12 +23,15 @@ const EXPO_BRACKET = {
   categoriesRenderRequestId: 0,
   _initialized: false,
   _liveCourtNumber: null, // court this session registered live presence under, if any
+  bracketListener: null,
+  categoriesListener: null,
 
   // Initialize the Expo system (called lazily the first time the Expo tab is opened)
   async init() {
     await this.loadPlayers();
     this.categorizePlayers();
     await this.renderCategories();
+    this.setupCategoriesListener();
     this._initialized = true;
     console.log('✅ Expo bracket initialized with categories:', Object.keys(this.categories).length);
   },
@@ -271,6 +274,61 @@ const EXPO_BRACKET = {
     return (this.currentBracket.matches || []).find(m => m.matchId === matchId) || null;
   },
 
+  // Real-time listener for the open bracket (multi-court sync — mirrors
+  // bracket.js's setupBracketListeners so Expo behaves the same as Official:
+  // any change another referee/admin makes to this category shows up here
+  // immediately, without needing to close and reopen the bracket.
+  setupBracketListeners(categoryKey) {
+    this.stopBracketListeners();
+    if (!categoryKey) return;
+
+    const bracketRef = dbRef(database, `expoBrackets/${categoryKey}`);
+    this.bracketListener = dbOnValue(bracketRef, (snapshot) => {
+      if (!snapshot.exists()) return;
+      const rawBracket = snapshot.val();
+      // Only re-render if the bracket actually changed
+      if (JSON.stringify(this.currentBracket) !== JSON.stringify(rawBracket)) {
+        this.currentBracket = rawBracket;
+        console.log('🔄 Expo bracket updated from Firebase - re-rendering');
+        this.renderBracket();
+      }
+    });
+    console.log(`✅ Expo real-time listener active for ${categoryKey}`);
+  },
+
+  stopBracketListeners() {
+    if (this.bracketListener) {
+      this.bracketListener();
+      this.bracketListener = null;
+      console.log('✅ Expo bracket listener stopped');
+    }
+  },
+
+  // Real-time listener on the expoBrackets node so ALL users see status
+  // changes (Live / Pending / Completed) in the Expo categories list without
+  // refreshing — mirrors bracket.js's setupCategoriesListener.
+  setupCategoriesListener() {
+    this.stopCategoriesListener();
+    let debounceTimer = null;
+    const bracketsRef = dbRef(database, 'expoBrackets');
+    this.categoriesListener = dbOnValue(bracketsRef, () => {
+      // Skip if the user is currently inside the bracket view
+      const container = document.getElementById('expoBracketContainer');
+      if (container && container.style.display === 'block') return;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => this.renderCategories(), 500);
+    });
+    console.log('✅ Expo categories real-time listener active');
+  },
+
+  stopCategoriesListener() {
+    if (this.categoriesListener) {
+      this.categoriesListener();
+      this.categoriesListener = null;
+      console.log('✅ Expo categories listener stopped');
+    }
+  },
+
   // ── Open / close a category ────────────────────────────────────────────
   async openCategory(categoryKey) {
     this.currentCategory = categoryKey;
@@ -295,10 +353,27 @@ const EXPO_BRACKET = {
       await this.saveBracket(categoryKey, this.currentBracket);
     }
 
+    // Mark as live the moment ANY referee opens this bracket — even before a
+    // match is started — so other courts' categories list shows "Live" in
+    // real time (matches bracket.js's Official behavior exactly).
+    if (this.currentBracket.status === 'complete') {
+      console.log(`✅ Expo bracket ${categoryKey} is COMPLETED`);
+    } else {
+      this.currentBracket.status = 'live';
+      await this.saveBracket(categoryKey, this.currentBracket);
+      console.log(`📍 Expo bracket ${categoryKey} marked as LIVE`);
+    }
+
     const listEl = document.getElementById('expoCategoriesList');
     const containerEl = document.getElementById('expoBracketContainer');
     if (listEl) listEl.style.display = 'none';
     if (containerEl) containerEl.style.display = 'block';
+
+    // Pause the categories-level listener — we no longer need it while inside
+    // the bracket view — and start real-time sync for this specific bracket
+    // (multi-court sync, matching the Official bracket's behavior).
+    this.stopCategoriesListener();
+    this.setupBracketListeners(categoryKey);
 
     // Bracket is now open for this referee's court — mark it active so the
     // Live Matches page shows the Upcoming Match immediately, even before any
@@ -325,12 +400,25 @@ const EXPO_BRACKET = {
     this.renderBracket();
   },
 
-  closeCategory() {
+  async closeCategory() {
+    // Stop real-time listener for this bracket when leaving
+    this.stopBracketListeners();
+
     // Referee is leaving the bracket entirely — the court disappears from
     // the Live Matches page (both Live and Upcoming) until reopened.
     if (typeof LIVE_PRESENCE !== 'undefined' && this._liveCourtNumber) {
       LIVE_PRESENCE.closeCourt(this._liveCourtNumber);
       this._liveCourtNumber = null;
+    }
+
+    // Revert "Live" back to "Pending" for other courts' categories list once
+    // no one is actively viewing this bracket anymore — unless it's already
+    // fully complete (matches bracket.js's Official behavior).
+    if (this.currentCategory && this.currentBracket && this.currentBracket.status !== 'complete') {
+      const matches = this.currentBracket.matches || [];
+      const isComplete = matches.length > 0 && matches.every(m => m.status === 'completed');
+      this.currentBracket.status = isComplete ? 'complete' : 'pending';
+      await this.saveBracket(this.currentCategory, this.currentBracket);
     }
 
     this.currentCategory = null;
@@ -339,7 +427,11 @@ const EXPO_BRACKET = {
     const containerEl = document.getElementById('expoBracketContainer');
     if (containerEl) containerEl.style.display = 'none';
     if (listEl) listEl.style.display = 'block';
+
+    // Refresh category list to update status display, then resume real-time
+    // listening so any other user's bracket opens/closes appear immediately.
     this.renderCategories();
+    this.setupCategoriesListener();
   },
 
   // ── Referee workflow ───────────────────────────────────────────────────
@@ -417,6 +509,20 @@ const EXPO_BRACKET = {
 
     await this.saveMatchToHistory(this.currentCategory, match);
 
+    // The real-time bracketListener (setupBracketListeners) can fire during
+    // the await above and replace this.currentBracket with a fresher
+    // Firebase snapshot from another court — one that doesn't yet know this
+    // match just completed. Re-apply this match's finished fields onto the
+    // (possibly swapped-in) bracket before checking completion/saving, so a
+    // concurrent write from another referee can't silently erase this
+    // result. Mirrors bracket.js's advanceWinner fix for the same race.
+    const bracketMatch = (this.currentBracket.matches || []).find(m => m.matchId === matchId);
+    if (bracketMatch) {
+      bracketMatch.status = match.status;
+      bracketMatch.winner = match.winner;
+      bracketMatch.endTime = match.endTime;
+    }
+
     const allDone = this.currentBracket.matches.every(m => m.status === 'completed');
     this.currentBracket.status = allDone ? 'complete' : 'live';
 
@@ -458,10 +564,10 @@ const EXPO_BRACKET = {
       <div class="bracket-header">
         <h2>${category.gender} ${category.ageCategory} — ${category.weightCategory} (Expo)</h2>
         <button class="btn-back" onclick="EXPO_BRACKET.closeCategory()">← Back to Categories</button>
-        <button class="btn-secondary" onclick="EXPO_BRACKET.downloadFixtureExcel()">📥 Download Fixture (Excel)</button>
+        <button class="btn-secondary" onclick="EXPO_BRACKET.downloadFixturePDF()">📄 Download Fixture PDF</button>
         ${isComplete ? `
           <button class="btn-secondary" onclick="EXPO_BRACKET.exportResultsToExcel()">📥 Export Results (Excel)</button>
-          <button class="btn-secondary" onclick="EXPO_BRACKET.downloadFixturePDF()">📄 Download Results (PDF)</button>
+          <button class="btn-secondary" onclick="EXPO_BRACKET.downloadResultsPDF()">📄 Download Results (PDF)</button>
         ` : ''}
       </div>
       <div class="matches" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px;">
@@ -588,25 +694,8 @@ const EXPO_BRACKET = {
     XLSX.writeFile(wb, fileName);
   },
 
-  downloadFixtureExcel() {
-    if (typeof XLSX === 'undefined') {
-      if (typeof MODAL !== 'undefined') MODAL.error('Excel library not loaded.');
-      return;
-    }
-    const category = this.categories[this.currentCategory];
-    const matches = this.currentBracket.matches || [];
-    const byes = this.currentBracket.byes || [];
-    const wsData = [['Match #', 'Player 1', 'Center 1', 'Player 2', 'Center 2', 'Court']];
-    matches.forEach((m, idx) => wsData.push([idx + 1, m.player1?.playerName || '', m.player1?.centerName || '', m.player2?.playerName || '', m.player2?.centerName || '', m.courtNumber || '']));
-    byes.forEach(p => wsData.push(['BYE (Auto-Gold)', p.playerName, p.centerName || '', '', '', '']));
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Expo Fixture');
-    const fileName = `Expo_Fixture_${category.gender}_${category.ageCategory}_${category.weightCategory}.xlsx`.replace(/\s+/g, '_');
-    XLSX.writeFile(wb, fileName);
-  },
-
-  downloadFixturePDF() {
+  // Final Gold/Silver placements — only meaningful once every match is done.
+  downloadResultsPDF() {
     const JsPDFCtor = (window.jspdf && window.jspdf.jsPDF) || (typeof jsPDF !== 'undefined' ? jsPDF : null);
     if (!JsPDFCtor) {
       if (typeof MODAL !== 'undefined') MODAL.error('PDF library not loaded.');
@@ -626,6 +715,181 @@ const EXPO_BRACKET = {
     });
     const fileName = `Expo_Results_${category.gender}_${category.ageCategory}_${category.weightCategory}.pdf`.replace(/\s+/g, '_');
     doc.save(fileName);
+  },
+
+  // Pre-match fixture as a PDF — available as soon as the Expo bracket is
+  // generated, no completion required. Visually mirrors bracket.js's
+  // bracket-tree PDF (seed boxes, player cells, connector arms, a colored
+  // outcome box) but structured for Expo's rules: every match is its own
+  // independent pair — no rounds, no advancement — so each pair connects
+  // straight to a GOLD outcome box instead of feeding into further rounds.
+  // A local, self-contained adaptation — does not call into bracket.js.
+  downloadFixturePDF() {
+    const JsPDFCtor = (window.jspdf && window.jspdf.jsPDF) || (typeof jsPDF !== 'undefined' ? jsPDF : null);
+    if (!JsPDFCtor) {
+      if (typeof MODAL !== 'undefined') MODAL.error('PDF library not loaded.');
+      return;
+    }
+    if (!this.currentBracket) {
+      if (typeof MODAL !== 'undefined') MODAL.warning('No bracket loaded.');
+      return;
+    }
+
+    const category = this.categories[this.currentCategory];
+    const matches = this.currentBracket.matches || [];
+    const byes = this.currentBracket.byes || [];
+    const champTitle = document.title.replace(' - Bracket Management', '').trim() || 'Tournament';
+    const categoryLabel = `${category.gender} ${category.ageCategory} - ${category.weightCategory} (Expo)`;
+
+    const doc = new JsPDFCtor({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const PW = 297, PH = 210;
+    const ML = 10, MT = 10, MB = 10;
+    const W = PW - ML * 2;
+
+    // Colors — same palette as bracket.js's fixture PDF for visual consistency
+    const NAVY  = [23, 48, 94];
+    const WHITE = [255, 255, 255];
+    const LTBG  = [235, 240, 248];
+    const GREEN = [21, 87, 36];
+    const GOLD  = [201, 168, 76];
+    const LINE  = [26, 58, 107];
+    const GRAY  = [80, 80, 80];
+    const BYEBG = [245, 240, 220];
+
+    const sf = c => doc.setFillColor(c[0], c[1], c[2]);
+    const ss = c => doc.setDrawColor(c[0], c[1], c[2]);
+    const st = c => doc.setTextColor(c[0], c[1], c[2]);
+    const ln = (x1, y1, x2, y2, lw, c) => {
+      ss(c || LINE); doc.setLineWidth(lw || 0.3); doc.line(x1, y1, x2, y2);
+    };
+    const txt = (t, x, y, sz, bold, col, align) => {
+      doc.setFontSize(sz || 9);
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      st(col || [0, 0, 0]);
+      doc.text(String(t), x, y, { align: align || 'left', baseline: 'middle' });
+    };
+    // Player cell: bg fill + 3-sided border (top, left, bottom — open right)
+    const drawCell = (x, y, w, h, name, bg, bold) => {
+      sf(bg || LTBG); doc.rect(x, y, w, h, 'F');
+      ln(x, y, x + w, y, 0.35);
+      ln(x, y, x, y + h, 0.35);
+      ln(x, y + h, x + w, y + h, 0.35);
+      if (name) {
+        const s = doc.splitTextToSize(name, w - 3)[0];
+        txt(s, x + 2, y + h / 2, 7.5, bold || false, [25, 25, 25], 'left');
+      }
+    };
+    const drawSeed = (x, y, w, h, seed) => {
+      sf(NAVY); doc.rect(x, y, w, h, 'F');
+      if (seed != null) txt(String(seed), x + w / 2, y + h / 2, 6.5, true, WHITE, 'center');
+    };
+    const drawJunc = (cx, cy, sz, label) => {
+      const hs = sz / 2;
+      sf(NAVY); doc.rect(cx - hs, cy - hs, sz, sz, 'F');
+      if (label != null) txt(String(label), cx, cy, 5, true, WHITE, 'center');
+    };
+
+    // ── LAYOUT ── one row per match: [SEED][PLAYER CELL][ARM]→[GOLD BOX]
+    const HEADER_H = 18, GOLD_LINE_H = 0.8, LABEL_H = 7, FOOTER_H = 10;
+    const CONTENT_TOP = MT + HEADER_H + GOLD_LINE_H + LABEL_H + 2;
+    const CONTENT_H = PH - CONTENT_TOP - MB - FOOTER_H;
+    const SEED_W = 7, ARM_W = 12, JUNC_SZ = 5, GOLD_W = 55;
+    const ROUND_W = W - SEED_W - ARM_W - GOLD_W;
+    const roundX = ML + SEED_W;
+    const armCX = roundX + ROUND_W + ARM_W / 2;
+    const goldX = armCX + JUNC_SZ / 2 + 3;
+    const goldBoxW = GOLD_W - 6;
+
+    const MATCH_H = 24; // fixed per-match block height — consistent sizing regardless of category size
+    const rowsPerPage = Math.max(1, Math.floor(CONTENT_H / MATCH_H));
+
+    const drawPageChrome = () => {
+      sf(NAVY); doc.rect(ML, MT, W, HEADER_H, 'F');
+      txt(champTitle.toUpperCase(), PW / 2, MT + HEADER_H * 0.37, 14, true, WHITE, 'center');
+      txt(categoryLabel.toUpperCase(), PW / 2, MT + HEADER_H * 0.74, 9, false, [190, 205, 230], 'center');
+      sf(GOLD); doc.rect(ML, MT + HEADER_H, W, GOLD_LINE_H, 'F');
+
+      const labelY = MT + HEADER_H + GOLD_LINE_H + LABEL_H / 2 + 0.5;
+      txt('PLAYERS (DIRECT MATCH)', roundX + ROUND_W / 2, labelY, 7.5, true, NAVY, 'center');
+      txt('GOLD (WINNER)', goldX + goldBoxW / 2, labelY, 7.5, true, NAVY, 'center');
+      ln(ML, MT + HEADER_H + GOLD_LINE_H + LABEL_H, ML + W,
+        MT + HEADER_H + GOLD_LINE_H + LABEL_H, 0.25, [180, 180, 180]);
+
+      const footerY = PH - FOOTER_H / 2 - 2;
+      ln(ML, PH - FOOTER_H - 2, ML + W, PH - FOOTER_H - 2, 0.3, [150, 150, 150]);
+      txt(`${champTitle}  |  ${categoryLabel}`, ML, footerY, 7, false, GRAY, 'left');
+      txt(`Generated: ${new Date().toLocaleDateString('en-IN')}`, ML + W, footerY, 7, false, GRAY, 'right');
+    };
+
+    // Matches first, then byes (auto-Gold walkovers) — one flat ordered list
+    // so both share the same page-break logic below.
+    const blocks = matches.map((m, idx) => ({ type: 'match', match: m, num: idx + 1 }))
+      .concat(byes.map((p, idx) => ({ type: 'bye', player: p, seed: matches.length * 2 + idx + 1 })));
+
+    if (blocks.length === 0) {
+      drawPageChrome();
+      txt('No matches generated yet.', PW / 2, CONTENT_TOP + 10, 10, false, GRAY, 'center');
+    }
+
+    blocks.forEach((block, i) => {
+      if (i % rowsPerPage === 0) {
+        if (i > 0) doc.addPage();
+        drawPageChrome();
+      }
+      const blockTop = CONTENT_TOP + (i % rowsPerPage) * MATCH_H;
+
+      if (block.type === 'match') {
+        const match = block.match;
+        const pH = Math.min(MATCH_H * 0.34, 9.5);
+        const gap = MATCH_H - 2 * pH;
+        const yP1 = blockTop + gap * 0.25;
+        const yP2 = yP1 + pH + gap * 0.5;
+        const midY = (yP1 + pH + yP2) / 2;
+
+        drawSeed(ML, yP1, SEED_W, pH, block.num * 2 - 1);
+        drawSeed(ML, yP2, SEED_W, pH, block.num * 2);
+
+        const n1 = match.player1 ? match.player1.playerName + (match.player1.centerName ? ` (${match.player1.centerName})` : '') : 'TBD';
+        const n2 = match.player2 ? match.player2.playerName + (match.player2.centerName ? ` (${match.player2.centerName})` : '') : 'TBD';
+        drawCell(roundX, yP1, ROUND_W, pH, n1);
+        drawCell(roundX, yP2, ROUND_W, pH, n2);
+
+        ln(roundX + ROUND_W, yP1 + pH / 2, armCX, yP1 + pH / 2);
+        ln(roundX + ROUND_W, yP2 + pH / 2, armCX, yP2 + pH / 2);
+        ln(armCX, yP1 + pH / 2, armCX, yP2 + pH / 2);
+        drawJunc(armCX, midY, JUNC_SZ, block.num);
+
+        const winner = match.status === 'completed' && match.winner
+          ? (match.winner === match.player1?.id ? match.player1 : match.player2)
+          : null;
+        if (winner) {
+          sf(GREEN); doc.rect(goldX, midY - 5, goldBoxW, 10, 'F');
+          txt(winner.playerName, goldX + goldBoxW / 2, midY, 8, true, WHITE, 'center');
+          ln(armCX + JUNC_SZ / 2, midY, goldX, midY, 0.3, GREEN);
+        } else {
+          ln(armCX + JUNC_SZ / 2, midY, goldX + goldBoxW, midY, 0.3, LINE);
+          txt('GOLD', goldX + goldBoxW / 2, midY, 8, true, NAVY, 'center');
+        }
+      } else {
+        // BYE — single player, automatic Gold (no opponent to pair with)
+        const pH = Math.min(MATCH_H * 0.34, 9.5);
+        const y = blockTop + (MATCH_H - pH) / 2;
+        const midY = y + pH / 2;
+
+        drawSeed(ML, y, SEED_W, pH, block.seed);
+        const name = block.player.playerName + (block.player.centerName ? ` (${block.player.centerName})` : '') + ' — BYE';
+        drawCell(roundX, y, ROUND_W, pH, name, BYEBG, true);
+
+        ln(roundX + ROUND_W, midY, armCX, midY);
+        drawJunc(armCX, midY, JUNC_SZ, null);
+
+        sf(GREEN); doc.rect(goldX, midY - 5, goldBoxW, 10, 'F');
+        txt(block.player.playerName, goldX + goldBoxW / 2, midY, 8, true, WHITE, 'center');
+      }
+    });
+
+    const safeKey = this.currentCategory.replace(/[^a-zA-Z0-9]/g, '_');
+    doc.save(`Expo_Fixture_${safeKey}_${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 };
 
