@@ -285,6 +285,69 @@
             color: var(--text-gray);
         }
 
+        /* ── FINAL MATCH — special highlight so it stands out from every other card ── */
+        @keyframes finalGlowPulse {
+            0%, 100% { box-shadow: 0 0 26px rgba(255,215,0,0.45), 0 12px 28px rgba(0,0,0,.35); }
+            50% { box-shadow: 0 0 52px rgba(255,215,0,0.9), 0 12px 34px rgba(0,0,0,.45); }
+        }
+
+        @keyframes finalBgShimmer {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+
+        @keyframes finalTrophyBounce {
+            0%, 55%, 100% { transform: translateY(0) rotate(0deg); }
+            20% { transform: translateY(-3px) rotate(-14deg); }
+            40% { transform: translateY(-1px) rotate(14deg); }
+        }
+
+        @keyframes finalTextGlow {
+            0%, 100% { text-shadow: 0 0 8px rgba(255,215,0,0.5); }
+            50% { text-shadow: 0 0 18px rgba(255,215,0,0.95); }
+        }
+
+        .final-match {
+            border: 3px solid #FFD700 !important;
+            background: linear-gradient(120deg, rgba(26,26,46,0.98) 0%, rgba(72,54,10,0.92) 25%, rgba(26,26,46,0.98) 50%, rgba(72,54,10,0.92) 75%, rgba(26,26,46,0.98) 100%) !important;
+            background-size: 300% 300%;
+            animation: lmFadeUp .35s ease, finalBgShimmer 5s ease infinite, finalGlowPulse 2.2s ease-in-out infinite;
+        }
+
+        .final-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: linear-gradient(90deg, #FFD700, #FFF3B0, #FFA500, #FFD700);
+            background-size: 300% 100%;
+            color: #1a1a2e;
+            font-size: 0.82rem;
+            font-weight: 900;
+            padding: 5px 14px;
+            border-radius: 20px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            margin-right: 8px;
+            box-shadow: 0 0 16px rgba(255,215,0,0.6);
+            animation: finalBgShimmer 2.2s linear infinite;
+        }
+
+        .final-badge .final-trophy {
+            display: inline-block;
+            animation: finalTrophyBounce 1.5s ease-in-out infinite;
+        }
+
+        .final-match .match-category {
+            color: #FFD700 !important;
+            animation: finalTextGlow 2.2s ease-in-out infinite;
+        }
+
+        .final-round-label {
+            color: #FFD700;
+            font-weight: 800;
+        }
+
         @media (max-width: 480px) {
             .live-grid {
                 grid-template-columns: 1fr;
@@ -430,7 +493,14 @@
                 ? '<div class="live-badge"><span class="live-dot"></span> LIVE</div>'
                 : '<div class="next-badge">⏭️ UP NEXT</div>';
             const courtBadgeHtml = entry.court ? ('<div class="court-badge">🏟️ Court ' + entry.court + '</div>') : '';
-            const cardClass = entry.isLive ? 'live-card' : 'next-card';
+            const isFinal = entry.roundName === 'Final';
+            const cardClass = (entry.isLive ? 'live-card' : 'next-card') + (isFinal ? ' final-match' : '');
+            const finalBadgeHtml = isFinal
+                ? '<div class="final-badge"><span class="final-trophy">🏆</span> Championship Final</div>'
+                : '';
+            const roundLabelHtml = isFinal
+                ? '<span class="final-round-label">🏆 ' + entry.roundName + '</span>'
+                : entry.roundName;
             const championshipHtml = championshipName
                 ? '<div class="section-subtitle" style="margin-top:0;margin-bottom:10px;">🏆 ' + championshipName + '</div>'
                 : '';
@@ -439,6 +509,7 @@
                 courtBadgeHtml +
                 statusBadgeHtml +
                 divisionBadgeHtml +
+                finalBadgeHtml +
                 championshipHtml +
                 '<div class="match-category">' + formatCategoryKey(entry.categoryKey) + '</div>' +
                 '<div class="match-vs-row">' +
@@ -446,7 +517,7 @@
                     '<div class="vs-col">VS</div>' +
                     '<div class="player-box player-red"><div class="p-name">' + p2.playerName + '</div><div class="p-center">' + (p2.centerName || '') + '</div></div>' +
                 '</div>' +
-                '<div class="match-meta">📍 ' + entry.roundName + (startTime ? ' &nbsp;|&nbsp; ⏱️ Started ' + startTime : '') + '</div>' +
+                '<div class="match-meta">📍 ' + roundLabelHtml + (startTime ? ' &nbsp;|&nbsp; ⏱️ Started ' + startTime : '') + '</div>' +
             '</div>';
         }
 
