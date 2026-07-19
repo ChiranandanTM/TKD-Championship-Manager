@@ -1735,8 +1735,8 @@ const BRACKET = {
           <div class="matches">
       `;
 
-      round.forEach(match => {
-        html += this.renderMatch(match, roundIndex, matchNumMap[match.matchId]);
+      round.forEach((match, matchIndexInRound) => {
+        html += this.renderMatch(match, roundIndex, matchNumMap[match.matchId], matchIndexInRound);
       });
 
       // Render the bye-player card for this round (if any)
@@ -1769,7 +1769,7 @@ const BRACKET = {
                 </div>
               </div>
               <div class="match-completed-info">
-                <span class="winner-badge">🏆 Champion — Won by Walkover</span>
+                <span class="winner-badge">🥇 Gold — Won by Walkover</span>
               </div>
             </div>
           </div>
@@ -1812,7 +1812,7 @@ const BRACKET = {
   },
 
   // Render individual match
-  renderMatch(match, roundIndex, matchNumber) {
+  renderMatch(match, roundIndex, matchNumber, matchIndexInRound = 0) {
     const player1 = match.player1;
     const player2 = match.player2;
     const isPendingStatus = match.status === 'pending';
@@ -1920,8 +1920,25 @@ const BRACKET = {
 
         ${isCompleted ? `
           <div class="match-completed-info">
-            <span class="winner-badge">✅ Winner: ${match.winner === player1?.id ? player1.playerName : player2.playerName}</span>
-            ${match.eliminated ? `<span class="eliminated-badge">❌ Eliminated: ${match.eliminated === player1?.id ? player1.playerName : player2.playerName}</span>` : ''}
+            ${(() => {
+              const totalRounds = this.getExpectedTotalRounds(this.currentBracket);
+              let winLabel = '✅ Winner';
+              let loseLabel = '❌ Eliminated';
+              if (roundIndex === totalRounds - 1) {
+                winLabel = '🥇 Gold';
+                loseLabel = '🥈 Silver';
+              } else if (roundIndex === totalRounds - 2) {
+                loseLabel = matchIndexInRound === 0 ? '🥉 1st Bronze' : '🥉 2nd Bronze';
+              }
+              const winnerName = match.winner === player1?.id ? player1.playerName : player2.playerName;
+              const loserName = match.eliminated === player1?.id ? player1.playerName : player2.playerName;
+              
+              let htmlStr = `<span class="winner-badge">${winLabel}: ${winnerName}</span>`;
+              if (match.eliminated) {
+                htmlStr += `<span class="eliminated-badge">${loseLabel}: ${loserName}</span>`;
+              }
+              return htmlStr;
+            })()}
           </div>
         ` : ''}
       </div>
@@ -2324,7 +2341,7 @@ const BRACKET = {
       const byePlayers = this.currentBracket.byePlayers || {};
       const byePlayer = byePlayers['0'];
       if (byePlayer) {
-        rankings.push({ rank: 1, player: byePlayer, note: 'Champion (walkover)' });
+        rankings.push({ rank: 1, medal: 'Gold', player: byePlayer, note: 'Winner (walkover)' });
       }
       return rankings;
     }
@@ -2335,16 +2352,16 @@ const BRACKET = {
     const champion = finalMatch.player1.id === finalMatch.winner ? finalMatch.player1 : finalMatch.player2;
     const runnerUp = finalMatch.player1.id === finalMatch.winner ? finalMatch.player2 : finalMatch.player1;
 
-    rankings.push({ rank: 1, player: champion, note: 'Champion' });
-    rankings.push({ rank: 2, player: runnerUp, note: 'Runner-up' });
+    rankings.push({ rank: 1, medal: 'Gold', player: champion, note: 'Winner' });
+    rankings.push({ rank: 2, medal: 'Silver', player: runnerUp, note: 'Runner-up' });
 
     // Semi-final losers get 3rd (if semi-final exists)
     if (totalRounds >= 2) {
       const semiRound = rounds[totalRounds - 2];
-      semiRound.forEach(match => {
+      semiRound.forEach((match, index) => {
         if (match.player1 && match.player2 && match.winner && match.eliminated) {
           const loser = match.player1.id === match.eliminated ? match.player1 : match.player2;
-          rankings.push({ rank: 3, player: loser, note: '3rd Place' });
+          rankings.push({ rank: 3, medal: index === 0 ? '1st Bronze' : '2nd Bronze', player: loser, note: `Losing Semifinalist ${index + 1}` });
         }
       });
     }
@@ -2359,7 +2376,7 @@ const BRACKET = {
         if (match.eliminated) {
           const loser = match.player1 && match.player1.id === match.eliminated ? match.player1 : match.player2;
           if (loser && !addedIds.has(loser.id)) {
-            rankings.push({ rank: rankNum++, player: loser, note: `Eliminated in ${this.getRoundName(ri, totalRounds)}` });
+            rankings.push({ rank: rankNum++, medal: '', player: loser, note: `Eliminated in ${this.getRoundName(ri, totalRounds)}` });
             addedIds.add(loser.id);
           }
         }
@@ -3230,14 +3247,14 @@ const BRACKET = {
     // ── SHEET 1: FINAL RANKINGS ──────────────────────────────────────────
     const rankings = this.buildRankings();
     const rankRows = [
-      ['Rank', 'Player Name', 'Center / Club', 'Result']
+      ['Rank', 'Medal', 'Player Name', 'Center / Club', 'Result']
     ];
     rankings.forEach(r => {
       if (!r.player) return; // guard against corrupted ranking entries
-      rankRows.push([r.rank, r.player.playerName, r.player.centerName || '', r.note]);
+      rankRows.push([r.rank, r.medal || '', r.player.playerName, r.player.centerName || '', r.note]);
     });
     const wsRank = XLSX.utils.aoa_to_sheet(rankRows);
-    wsRank['!cols'] = [{ wch: 6 }, { wch: 28 }, { wch: 28 }, { wch: 22 }];
+    wsRank['!cols'] = [{ wch: 6 }, { wch: 12 }, { wch: 28 }, { wch: 28 }, { wch: 22 }];
     XLSX.utils.book_append_sheet(wb, wsRank, 'Rankings');
 
     // ── SHEET 2: MATCH RESULTS ───────────────────────────────────────────

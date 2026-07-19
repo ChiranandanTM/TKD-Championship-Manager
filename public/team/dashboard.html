@@ -287,7 +287,13 @@
                 <button class="medal-filter-btn active" data-medal-filter="all" onclick="setMedalFilter('all')">All</button>
                 <button class="medal-filter-btn" data-medal-filter="Gold" onclick="setMedalFilter('Gold')">🥇 Gold</button>
                 <button class="medal-filter-btn" data-medal-filter="Silver" onclick="setMedalFilter('Silver')">🥈 Silver</button>
-                <button class="medal-filter-btn" data-medal-filter="Bronze" onclick="setMedalFilter('Bronze')">🥉 Bronze</button>
+                <div style="display:inline-block; position:relative;">
+                    <button class="medal-filter-btn" id="bronzeFilterBtn" data-medal-filter="Bronze" onclick="toggleBronzeDropdown(event)">🥉 Bronze</button>
+                    <div id="bronzeDropdown" style="display:none; position:absolute; top:100%; left:0; background:rgba(14,18,42,.98); border:1px solid rgba(255,215,0,.3); border-radius:10px; padding:8px; z-index:100; box-shadow: 0 8px 24px rgba(0,0,0,0.6); margin-top:8px; min-width: 150px; flex-direction:column; gap:6px;">
+                        <button class="medal-filter-btn" style="width:100%; text-align:left;" onclick="setMedalFilter('1st Bronze'); toggleBronzeDropdown()">🥉 1st Bronze</button>
+                        <button class="medal-filter-btn" style="width:100%; text-align:left;" onclick="setMedalFilter('2nd Bronze'); toggleBronzeDropdown()">🥉 2nd Bronze</button>
+                    </div>
+                </div>
                 <span class="td-flbl" style="margin-left:8px">Category:</span>
                 <select id="ageCategoryFilter" class="category-filter-select" onchange="setAgeCategoryFilter(this.value)">
                     <option value="all">All Categories</option>
@@ -322,6 +328,8 @@
         let _playersUnsubscribers = [];
 
         const MEDAL_PRIORITY = {
+            '1st Bronze': 1,
+            '2nd Bronze': 1,
             Bronze: 1,
             Silver: 2,
             Gold: 3
@@ -382,9 +390,9 @@
                 // Semi-final losers: bronze
                 if (rounds.length >= 2) {
                     const semiFinalRound = rounds[rounds.length - 2] || [];
-                    semiFinalRound.forEach(match => {
+                    semiFinalRound.forEach((match, index) => {
                         if (!match || match.status !== 'completed' || !match.eliminated) return;
-                        setBestMedal(medalMap, match.eliminated, 'Bronze');
+                        setBestMedal(medalMap, match.eliminated, index === 0 ? '1st Bronze' : '2nd Bronze');
                     });
                 }
             });
@@ -401,8 +409,8 @@
             if (medalType === 'Silver') {
                 return '<span class="medal-badge medal-silver">🥈 Silver</span>';
             }
-            if (medalType === 'Bronze') {
-                return '<span class="medal-badge medal-bronze">🥉 Bronze</span>';
+            if (medalType === 'Bronze' || medalType === '1st Bronze' || medalType === '2nd Bronze') {
+                return `<span class="medal-badge medal-bronze">🥉 ${medalType}</span>`;
             }
 
             return '';
@@ -413,6 +421,16 @@
                 const isActive = btn.getAttribute('data-medal-filter') === currentMedalFilter;
                 btn.classList.toggle('active', isActive);
             });
+            
+            const mainBronze = document.getElementById('bronzeFilterBtn');
+            if (mainBronze) {
+                if (currentMedalFilter === '1st Bronze' || currentMedalFilter === '2nd Bronze') {
+                    mainBronze.classList.add('active');
+                    mainBronze.innerHTML = currentMedalFilter === '1st Bronze' ? '🥉 1st Bronze' : '🥉 2nd Bronze';
+                } else {
+                    mainBronze.innerHTML = '🥉 Bronze';
+                }
+            }
         }
 
         function getPlayerAgeCategory(player) {
@@ -955,6 +973,25 @@
             updateMedalFilterButtons();
             renderPlayersList();
         }
+
+        window.toggleBronzeDropdown = function(e) {
+            if (e) e.stopPropagation();
+            const dropdown = document.getElementById('bronzeDropdown');
+            if (dropdown) {
+                dropdown.style.display = dropdown.style.display === 'none' ? 'flex' : 'none';
+            }
+        };
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('bronzeDropdown');
+            const btn = document.getElementById('bronzeFilterBtn');
+            if (dropdown && dropdown.style.display !== 'none') {
+                if (!dropdown.contains(e.target) && e.target !== btn) {
+                    dropdown.style.display = 'none';
+                }
+            }
+        });
 
         // Age category dropdown filter handler
         window.setAgeCategoryFilter = function(category) {
