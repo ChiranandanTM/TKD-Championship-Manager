@@ -135,6 +135,13 @@ body::before {
   text-shadow: 0 0 12px rgba(0, 229, 255, 0.22);
 }
 
+.site-credit-footer .credit-address {
+  font-size: 0.72rem;
+  letter-spacing: 0.2px;
+  color: #8e98a8;
+  margin-bottom: 8px;
+}
+
 @keyframes creditSweep {
   0% {
     left: -120%;

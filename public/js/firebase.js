@@ -86,16 +86,67 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// ── Retry DB ops once on permission-denied after forcing a fresh token ───────
+// A cached ID token can expire while a tab is idle/backgrounded. The
+// visibilitychange/reconnect handlers above refresh it, but that refresh
+// races against whatever the resuming page does next, so a call can still go
+// out with a stale token and get rejected. Wrapping get/set/update/remove
+// here means every call site gets one automatic retry after a forced token
+// refresh (or a short wait for auth to hydrate), instead of surfacing a
+// permission-denied error the user has to work around by re-logging in.
+function isPermissionDeniedError(error) {
+  const msg = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toLowerCase();
+  // RTDB uses "PERMISSION_DENIED", Firestore uses "permission-denied".
+  return msg.includes('permission denied') || code.includes('permission_denied') || code.includes('permission-denied');
+}
+
+function waitForAuthUser(timeoutMs = 3500) {
+  if (auth.currentUser) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) finish(true);
+    });
+    function finish(result) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(result);
+    }
+  });
+}
+
+function withAuthRetry(fn) {
+  return async (...args) => {
+    try {
+      return await fn(...args);
+    } catch (error) {
+      if (!isPermissionDeniedError(error)) throw error;
+
+      if (auth.currentUser) {
+        await auth.currentUser.getIdToken(true).catch(() => {});
+      } else {
+        await waitForAuthUser();
+      }
+
+      return await fn(...args);
+    }
+  };
+}
+
 // ── Export everything globally ────────────────────────────────────────────────
 window.firebaseApp = app;
 window.auth = auth;
 window.database = database;
 window.storage = storage;
 window.dbRef = ref;
-window.dbSet = set;
-window.dbGet = get;
-window.dbUpdate = update;
-window.dbRemove = remove;
+window.dbSet = withAuthRetry(set);
+window.dbGet = withAuthRetry(get);
+window.dbUpdate = withAuthRetry(update);
+window.dbRemove = withAuthRetry(remove);
 window.dbOnValue = onValue;
 window.dbPush = push;
 window.dbQuery = query;
@@ -121,11 +172,11 @@ window.dbOnChildRemoved = onChildRemoved;
 window.firestore = firestore;
 window.fsCollection = collection;
 window.fsDoc = doc;
-window.fsAddDoc = addDoc;
-window.fsSetDoc = setDoc;
-window.fsGetDoc = getDoc;
-window.fsUpdateDoc = updateDoc;
-window.fsDeleteDoc = deleteDoc;
+window.fsAddDoc = withAuthRetry(addDoc);
+window.fsSetDoc = withAuthRetry(setDoc);
+window.fsGetDoc = withAuthRetry(getDoc);
+window.fsUpdateDoc = withAuthRetry(updateDoc);
+window.fsDeleteDoc = withAuthRetry(deleteDoc);
 window.fsQuery = fsQuery;
 window.fsWhere = where;
 window.fsOrderBy = orderBy;
