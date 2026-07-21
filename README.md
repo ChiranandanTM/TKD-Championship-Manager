@@ -10,7 +10,7 @@
 
 Production URL: https://taekowndo-championship.web.app
 
-This is a complete championship operations platform built for Taekwondo events. It manages team onboarding, player registration, auto-categorization, bracket lifecycle, live match tracking, standings, and championship archival. Features multi-role authentication, browser history protection for public users, and comprehensive form management.
+This is a complete championship operations platform built for Taekwondo events. It manages team onboarding, player registration (Official and Expo divisions), auto-categorization, dual bracket lifecycles (Official single-elimination + Expo single-match), court-based live match tracking, referee coordination with real-time court messaging, standings, and championship archival. Features 4-role authentication (Admin, Judge, Team, Referee), browser history protection for public users, comprehensive form management, and Excel export tooling throughout.
 
 ## Table of Contents
 
@@ -35,9 +35,10 @@ This is a complete championship operations platform built for Taekwondo events. 
 - [19. Bracket Export Tools](#19-bracket-export-tools)
 - [20. Roadmap Ideas](#20-roadmap-ideas)
 - [21. Recent Updates (May 2026)](#21-recent-updates-may-2026)
-- [22. Credits](#22-credits)
+- [22. Recent Updates (July 2026)](#22-recent-updates-july-2026)
+- [23. Credits](#23-credits)
 
-> **Latest commit:** `bracket-pdf-generator` — May 25 2026
+> **Latest updates:** Expo Competition System, Live Matches redesign, referee auth fixes, Excel export tooling — Jul 21 2026
 
 ## 1. Project Summary
 
@@ -45,12 +46,14 @@ TKD Championship Manager is a Firebase-hosted web app for managing tournament op
 
 Primary capabilities:
 
-- Multi-role login and authorization (admin, judge, team)
-- Dynamic registration form configured by admin
+- Multi-role login and authorization (admin, judge, team, referee)
+- Dynamic registration form configured by admin, with per-player Official/Expo/Official & Expo division selection
 - Automatic age and weight category derivation
-- Bracket generation and round progression
-- Live match status handling
-- PDF and Excel export from bracket workflows
+- Official bracket: single-elimination generation, round progression, bye/walkover handling, bronze-medal semi-final logic
+- Expo bracket: independent single-match competition system (no rounds, no bronze — winner gets Gold, runner-up Silver)
+- Court-based live match tracking across both divisions, with real-time court-to-court pairing of the live and up-next match
+- Referee coordination: dedicated login/dashboard, assigned court, real-time messaging with admin
+- PDF and Excel export from bracket workflows, team dashboards, and championship statistics
 - Team-level registration deadlines and lock controls
 - Championship history archive and restore
 
@@ -58,44 +61,49 @@ Primary capabilities:
 
 | Area | What it does |
 | --- | --- |
-| Authentication | Admin/Judge use Firebase Auth email-password. Team uses username-password against `teams` node with session-based role protection. |
-| Public Registration | Public users can register players with image upload/capture, form validation, and phone number contact information. |
+| Authentication | Admin/Judge use Firebase Auth email-password. Team uses username-password against `teams` node. Referee uses a referee-ID/password login that also signs in anonymously to Firebase Auth (see [Section 17](#17-security-notes)) so RTDB/Firestore rules can resolve their role. All roles session-protected. |
+| Public Registration | Public users can register players with image upload/capture, form validation, phone number, and Official/Expo/Official & Expo division selection. |
 | Browser History Protection | Public users are prevented from accessing login pages via browser back button navigation. Four-layer protection system ensures security. |
 | Registration | Team registers players with image upload/capture and form validation. Phone number required for all players. |
 | Category Logic | Age category derives from DOB. Weight category derives from gender + age category + weight. |
-| Brackets | Create and manage rounds, match outcomes, and progression. |
-| Live Match Ops | Live and pending match views with frequent updates. |
+| Official Brackets | Create and manage rounds, match outcomes, bye/walkover handling, bronze medal (semi-final losers), and progression. |
+| Expo Brackets | Independent parallel competition system — flat match list (no rounds), single match per player, automatic Gold for an unpaired (odd-count) player. |
+| Live Match Ops | Live Matches board merges Official + Expo matches, grouped and paired by court, with clear division badges (🏆 Official / 🎯 Expo) and a "To Be Decided" state when no court is active. |
+| Referee Operations | Referees log in to a dedicated dashboard, are assigned a fixed court (pre-selected automatically when starting a match), and exchange real-time messages with admin per-court or broadcast. |
 | Standings | Championship standings and medal-oriented tracking. |
-| Admin Tools | Team creation, form editor, weight category editor, championship management. |
-| Export | PDF fixtures (landscape A3), Excel fixture sheets, and Excel result export in bracket workflows. |
+| Admin Tools | Team creation, form editor, weight category editor, referee management, championship management, championship statistics with Excel export. |
+| Export | PDF fixtures (landscape A3) and Excel fixture/results sheets from bracket workflows (Official + Expo); Excel exports of player roster/results from the Team Dashboard; Excel export of full team-wise/category-wise player statistics from the Admin Dashboard. |
 | Caching | Service worker plus runtime cache strategies for faster repeat loads. |
 
 ## 3. Role Access Matrix
 
 | Role | Main capabilities |
 | --- | --- |
-| Admin | Full control: teams, form config, weight categories, championship lifecycle, bracket operations, archive/restore. |
+| Admin | Full control: teams, form config, weight categories, referee management, championship lifecycle, bracket operations (Official + Expo), archive/restore, statistics export. |
 | Judge | Match handling and bracket progression actions (as allowed by pages and rules). |
-| Team | Login with team credentials, register/edit players, manage own team workflow and filters. |
+| Team | Login with team credentials, register/edit players (Official/Expo/Both), manage own team workflow and filters, export roster/results to Excel. |
+| Referee | Login with referee ID, assigned to a fixed court, run Official/Expo matches from the shared bracket page, view the Live Matches board, message admin in real time. |
 
 ## 4. Architecture
 
 ```mermaid
 flowchart LR
   A[Browser UI<br/>public/*.html + public/js/*.js] --> B[Firebase Hosting]
-  A --> C[Firebase Auth]
+  A --> C[Firebase Auth<br/>email/password + anonymous]
   A --> D[Realtime Database]
   A --> E[Firebase Storage]
   A --> F[Service Worker Cache]
+  A --> G[Firestore<br/>court messaging]
 
   D --> D1[users]
   D --> D2[teams]
-  D --> D3[players]
-  D --> D4[brackets]
-  D --> D5[matchHistory]
+  D --> D3[players / expoPlayers]
+  D --> D4[brackets / expoBrackets]
+  D --> D5[matchHistory / expoMatchHistory]
   D --> D6[championships]
   D --> D7[formConfig]
   D --> D8[weightCategories]
+  D --> D9[referees]
 ```
 
 ## 5. Page Map
@@ -103,19 +111,24 @@ flowchart LR
 | Route | Purpose |
 | --- | --- |
 | `/index.html` | Entry login page for Admin/Judge and Team tabs |
+| `/admin-login.html` | Dedicated admin login (email/password) |
+| `/coach-login.html` | Dedicated team/coach login |
+| `/referee-login.html` | Referee login (ID/password + anonymous Firebase Auth sign-in) |
 | `/player-register.html` | Public player registration form (no authentication required) |
 | `/thank-you.html` | Post-registration success page with history protection and close functionality |
 | `/leaderboard.html` | Public leaderboard view |
 | `/register.html` | Team player registration/edit form |
-| `/admin/dashboard.html` | Main admin control center |
-| `/admin/bracket.html` | Tournament bracket operations |
-| `/admin/Live-matches.html` | Live and up-next match board |
+| `/admin/dashboard.html` | Main admin control center — team management, championship statistics (with Excel export), navigation hub |
+| `/admin/bracket.html` | Tournament bracket operations — Official and Expo tabs, shared by admin/judge/referee roles |
+| `/admin/Live-matches.html` | Court-based Live/Up-Next match board — merges Official + Expo, division badges, real-time sync |
 | `/admin/form-preview.html` | Team-facing form preview |
 | `/admin/weight-categories.html` | Weight category management |
 | `/admin/championships.html` | Championship CRUD manager |
 | `/admin/standings.html` | Standings manager |
-| `/team/dashboard.html` | Team roster dashboard, medal filter, age-category dropdown filter |
-| `/referee/dashboard.html` | Referee-specific match operations dashboard |
+| `/admin/referees.html` | Referee account management (create/edit referees, assign court numbers) |
+| `/admin/edit-form.html` | Registration form field editor |
+| `/team/dashboard.html` | Team roster dashboard — medal filter, age-category filter, search, Excel export of player info and results |
+| `/referee/dashboard.html` | Referee-specific dashboard — assigned court, nav to Bracket/Live Matches, court messaging inbox |
 
 ## 6. Repository Structure
 
@@ -143,15 +156,16 @@ flowchart LR
     ├── register.html
     ├── admin/
     │   ├── dashboard.html
-    │   ├── bracket.html
+    │   ├── bracket.html             # Official + Expo tabs
     │   ├── championships.html
     │   ├── form-preview.html
-    │   ├── Live-matches.html
+    │   ├── Live-matches.html        # Court-based Official+Expo live board
     │   ├── standings.html
     │   ├── weight-categories.html
+    │   ├── referees.html            # Referee account + court management
     │   └── edit-form.html
     ├── team/
-    │   └── dashboard.html
+    │   └── dashboard.html           # Roster + Excel export (player info/results)
     ├── referee/
     │   └── dashboard.html
     ├── coach-login.html
@@ -167,7 +181,8 @@ flowchart LR
         ├── modal.js
         ├── registration.js
         ├── public-registration.js   # Public form submission handler
-        ├── bracket.js
+        ├── bracket.js               # Official bracket engine
+        ├── expoBracket.js           # Expo bracket engine (independent tree)
         ├── championship-manager.js
         ├── category-logic.js
         ├── form-config.js
@@ -178,6 +193,9 @@ flowchart LR
         ├── custom-select.js
         ├── performance-cache.js
         ├── history-protection.js    # Browser history protection module
+        ├── image-optimizer.js       # Adaptive image compression
+        ├── messaging.js             # Firestore admin↔referee court messaging
+        ├── notifications.js         # Real-time popup/sound notifications
         ├── leaderboard.js
         ├── service-worker.js
         └── referee-manager.js
@@ -195,14 +213,17 @@ flowchart LR
 | `public/js/category-logic.js` | Age and weight category functions |
 | `public/js/form-config.js` | Form configuration loading/saving and defaults, phone number field configuration |
 | `public/js/history-protection.js` | Browser history protection module, session tracking, history barriers, popstate handling |
-| `public/js/bracket.js` | Bracket rendering (v3.0), match progression, PDF/Excel fixture export, Excel results export |
+| `public/js/bracket.js` | Official bracket rendering (v3.0), match progression, bye/bronze logic, PDF/Excel fixture export, Excel results export |
+| `public/js/expoBracket.js` | Expo bracket — independent flat match-list competition system (no rounds/bronze), Excel/PDF export |
 | `public/js/championship-manager.js` | Archive, restore, create, and championship data operations |
-| `public/js/player-manager.js` | Player deletion and related cleanup workflows |
-| `public/js/team-deadline-manager.js` | Team deadline and lock management |
-| `public/js/referee-manager.js` | Referee operations and match management |
+| `public/js/player-manager.js` | Player deletion and related cleanup workflows (Official + Expo trees) |
+| `public/js/Team-deadline-manager.js` | Team deadline and lock management |
+| `public/js/referee-manager.js` | Referee account CRUD and court assignment (used by `admin/referees.html`) |
+| `public/js/messaging.js` | Firestore-based real-time messaging between admin and referees, per-court or broadcast |
+| `public/js/notifications.js` | Real-time popup/browser/sound notifications for new messages (admin + referee) |
 | `public/js/leaderboard.js` | Public leaderboard display and filtering |
-| `public/js/image-optimizer.js` | Advanced image optimization with adaptive quality, format support, EXIF handling |
-| `public/js/service-worker.js` | App shell precache and fetch strategies |
+| `public/js/image-optimizer.js` | Adaptive image compression (binary-search quality + dimension safety net), format support, EXIF handling |
+| `public/js/service-worker.js` | App shell precache and fetch strategies (manually versioned `CACHE_NAME` — bump on any cached-script change) |
 
 ## 8. Firebase Configuration
 
@@ -233,14 +254,18 @@ When changing Firebase credentials, update both places.
 
 ### Primary nodes
 
-- `users`
+- `users` — role lookup keyed by Firebase Auth UID (admin/judge/team/referee); referees have **two** entries: `users/<refId>` and `users/<anonymousUid>` (the latter is what RTDB rules actually check against — see [Section 17](#17-security-notes))
 - `teams`
-- `players`
+- `referees` — referee accounts, including assigned `courtNumber`
+- `players` — Official-division players (also holds "Official & Expo" players)
+- `expoPlayers` — Expo-only players (players registered "Official & Expo" live in both trees, keyed by the same player ID)
 - `playerImages`                  — dedicated node for player profile images (base64); keyed by playerId
-- `brackets`
+- `brackets` — Official single-elimination brackets, keyed by `gender-ageCategory-weightCategory`
+- `expoBrackets` — Expo brackets (flat match list + byes), same category-key convention, fully independent tree
 - `currentMatch`
 - `matchResults`
 - `matchHistory`
+- `expoMatchHistory` — completed Expo match records, isolated from `matchHistory`
 - `championships`
 - `championshipHistory`
 - `championshipSettings`
@@ -254,16 +279,19 @@ When changing Firebase credentials, update both places.
 | Node | Read | Write |
 | --- | --- | --- |
 | `teams` | public | admin at root; per-team write allowed for own UID or admin |
-| `users` | authenticated | currently permissive root write with per-uid conditions |
-| `players` | public | currently open write |
+| `users` | admin only | root: self or admin; `role` child: admin, or self on first write only |
+| `referees` | public | admin (an `assignedRefs` sub-field is writable by any authenticated user) |
+| `players` / `expoPlayers` | public | currently open write |
+| `playerImages` | public | open write, validated to ≤50,000 characters per image |
 | `formConfig` | public | admin |
 | `weightCategories` | public | admin |
-| `brackets` | public | admin/judge/team |
-| `currentMatch` | public | admin/judge |
-| `matchResults` | public | admin/judge/team |
-| `matchHistory` | public | admin/judge/team |
+| `brackets` / `expoBrackets` | public | admin/judge/referee |
+| `currentMatch` | public | admin/judge/referee |
+| `matchResults` / `matchHistory` / `expoMatchHistory` | public | admin/judge/referee |
 | `championships` | public | admin (with judge write in some subpaths like standings/matches) |
 | `championshipHistory` | public | admin |
+
+> Note: referee write access resolves through `users/<anonymousUid>`, not `users/<refId>` — the anonymous UID is what Firebase Auth actually presents as `auth.uid` in RTDB rule evaluation.
 
 ## 10. Local Development Setup
 
@@ -470,18 +498,20 @@ The application includes an advanced image optimization system that automaticall
 1. Player uploads/captures profile image
 2. Image is validated for format and size
 3. Advanced optimizer automatically:
-   - Checks if image already under 200KB (skips unnecessary compression)
-   - Resizes dimensions intelligently (max 600x600px)
+   - Checks if image is already small enough to skip compression
+   - Resizes dimensions intelligently (max 500x500px)
    - Extracts and preserves EXIF orientation
    - Adaptively adjusts quality using binary search
    - Converts to optimized JPEG format
-4. Compressed image is stored in database
+   - Runs a hard safety-net pass (progressive dimension shrink at minimum quality) if the base64 output would still be too large
+4. Compressed image is stored in `playerImages/<playerId>` as a base64 data URL
 
 **Optimization Targets:**
-- Target file size: ~50–80KB (tightened from the original 200KB target)
-- Maximum dimensions: 600x600px
+- Target blob size: ~35KB (tightened from an original 200KB target). This is intentionally well under the naive "50–80KB" figure you might expect, because the *stored* value is base64 text, not the raw binary — base64 inflates size by ~4/3, and `firebase-rules.json` caps `playerImages/<id>` at 50,000 characters. A 35KB blob keeps the encoded string safely under that cap with margin; an 80KB blob would have exceeded it and silently failed to save.
+- Maximum dimensions: 500x500px
 - Minimum dimensions: 200x200px
-- Quality range: 60-80% (maintains visual clarity)
+- Quality range: 30-75% (maintains visual clarity)
+- Hard safety ceiling: 49,000 characters on the final data URL (just under Firebase's 50,000-char validation limit) — if quality-only compression can't get there, dimensions are shrunk further until it does
 - Final format: JPEG (optimal for compression)
 
 ### Supported Formats
@@ -496,10 +526,10 @@ Unsupported formats are rejected with helpful error messages.
 
 **Smart Compression:**
 - Binary search algorithm for optimal quality level
-- Adaptive quality adjustment (60-80% range)
+- Adaptive quality adjustment (30-75% range)
 - Dimension optimization while preserving aspect ratio
-- Only compresses if file exceeds 200KB target
-- Iterative quality reduction to hit target size
+- Only re-encodes if the file (and its base64 form) isn't already small enough
+- Iterative quality reduction to hit target size, plus a dimension-shrink fallback that guarantees the Firebase 50,000-character cap is never exceeded
 
 **Image Quality Preservation:**
 - Maintains correct orientation via EXIF data
@@ -539,10 +569,10 @@ Unsupported formats are rejected with helpful error messages.
 
 ### Technical Details
 
-**Module:** `public/js/image-optimizer.js` (300+ lines)
+**Module:** `public/js/image-optimizer.js` (370+ lines)
 
 **Key Functions:**
-- `optimizeImage(file)` - Main optimization entry point
+- `optimizeImage(file)` - Main optimization entry point, includes the hard safety-net shrink pass
 - `validateFileFormat(file)` - Check MIME type and size
 - `calculateOptimalDimensions()` - Smart dimension scaling
 - `adaptiveQualityCompression()` - Binary search for optimal quality
@@ -551,20 +581,21 @@ Unsupported formats are rejected with helpful error messages.
 
 **Configuration:**
 ```javascript
-maxFileSizeTarget: 50–80KB  // Target compressed size (tightened May 2026)
-maxDimensions: 600px        // Maximum width/height
-minDimensions: 200px        // Minimum width/height
-initialQuality: 80%         // Starting quality
-minQuality: 60%             // Lowest acceptable quality
-qualityStep: 5%             // Adjustment granularity
+maxFileSizeTarget: 35KB      // Target compressed blob size (tightened Jul 2026 — see note above)
+maxDimensions: 500px         // Maximum width/height
+minDimensions: 200px         // Minimum width/height
+initialQuality: 75%          // Starting quality
+minQuality: 30%              // Lowest acceptable quality
+qualityStep: 5%               // Adjustment granularity
+maxDataUrlLength: 49000      // Hard safety ceiling, just under Firebase's 50,000-char cap
 ```
 
 ### Performance Impact
 
 **File Size Reduction:**
-- Large images: 60-80% smaller (typical 5MB → 200KB)
-- Medium images: 30-50% smaller (typical 1MB → 300KB)
-- Small images: No additional compression (already <200KB)
+- Large images: 90%+ smaller (typical 5MB → ~35KB)
+- Medium images: 80-90% smaller (typical 1MB → ~35KB)
+- Small images: No additional compression if already small enough to fit the base64 cap as-is
 
 **Processing Time:**
 - Desktop: <500ms average
@@ -572,9 +603,9 @@ qualityStep: 5%             // Adjustment granularity
 - Variable based on image size and device performance
 
 **Storage Savings:**
-- Per player: ~150-200KB vs 2-5MB originally
-- 100 players: ~15-20MB vs 200-500MB
-- 1000 players: ~150-200MB vs 2-5GB
+- Per player: ~35KB vs 2-5MB originally
+- 100 players: ~3.5MB vs 200-500MB
+- 1000 players: ~35MB vs 2-5GB
 
 ### User Experience
 
@@ -613,9 +644,9 @@ Note: Requires Canvas API and FileReader API (standard in all modern browsers)
 - [ ] PNG images convert to optimized JPEG
 - [ ] WEBP images handled correctly
 - [ ] EXIF orientation preserved (test with rotated camera photos)
-- [ ] Images <200KB not compressed further
+- [ ] Images already small enough are not re-compressed unnecessarily
 - [ ] Aspect ratio maintained after compression
-- [ ] Quality visually acceptable (60-80%)
+- [ ] Quality visually acceptable (30-75% range)
 - [ ] Error handling for unsupported formats
 - [ ] Error handling for corrupted files
 - [ ] Works on mobile camera capture
@@ -645,6 +676,17 @@ Before wider public rollout, recommended hardening:
 2. Tighten root-level write paths in `users`.
 3. Split admin/judge/team write scopes more strictly.
 4. Add explicit validation rules for critical fields.
+
+### Referee Authentication Model
+
+Referees don't have a Firebase email/password account. Instead, `referee-login.html`:
+
+1. Validates the referee ID/password against the `referees/<refId>` node directly.
+2. Writes a role record to `users/<refId>` (readable by anyone, matching the `refId` used to log in).
+3. Signs in **anonymously** to Firebase Auth (`signInAnonymously`) so the browser has a real `auth.uid` — this UID is stable per browser, not tied to `refId`.
+4. Writes a **second** role record to `users/<anonymousUid>`, because every RTDB rule that checks role does so via `root.child('users').child(auth.uid).child('role')` — and `auth.uid` at request time is the anonymous UID, not the referee ID.
+
+Step 4 is easy to miss when touching this flow — if it's ever skipped or fails silently, referees can still log in and use the UI normally, but every write they make to `brackets`, `expoBrackets`, `matchHistory`, etc. gets silently rejected by the security rules (the local UI still optimistically updates, masking the failure until another client refreshes and sees the change never actually saved). This exact bug was found and fixed in July 2026 — see [Section 22](#22-recent-updates-july-2026).
 
 ### History Protection Security
 
@@ -684,8 +726,8 @@ The browser history protection system adds an additional security layer:
 - Convert to JPEG or PNG and try again
 
 **Problem:** Image quality looks degraded
-- Quality reduced to 60-80% depending on file size target
-- This is intentional for storage optimization
+- Quality reduced to 30-75% depending on how much compression was needed to fit the 35KB target
+- This is intentional for storage optimization and to stay under Firebase's per-image size cap
 - Visual clarity maintained for identification purposes
 
 **Problem:** Large image upload failing
@@ -715,13 +757,32 @@ The browser history protection system adds an additional security layer:
 
 ## 19. Bracket Export Tools
 
-### Client-side exports (from `/admin/bracket.html`)
+### Official bracket exports (from `/admin/bracket.html`)
 
 | Button | Output | Library |
 | --- | --- | --- |
 | Download Fixture PDF | `Fixture_<category>_<date>.pdf` (landscape A3) | jsPDF (CDN) |
 | Download Fixture Excel | `Fixture_<category>_<date>.xlsx` | SheetJS/XLSX (CDN) |
 | Export Results | `Results_<category>_<date>.xlsx` (auto on bracket complete) | SheetJS/XLSX (CDN) |
+
+### Expo bracket exports (from `/admin/bracket.html` → Expo tab, via `expoBracket.js`)
+
+| Button | Output | Library |
+| --- | --- | --- |
+| Download Fixture (Excel) | `Expo_Fixture_<category>.xlsx` | SheetJS/XLSX (CDN) |
+| Export Results (Excel) | `Expo_Results_<category>.xlsx` (auto-prompted when all matches complete) | SheetJS/XLSX (CDN) |
+| Download Results (PDF) | `Expo_Results_<category>.pdf` | jsPDF (CDN) |
+
+### Team Dashboard exports (from `/team/dashboard.html`)
+
+| Button | Output | Notes |
+| --- | --- | --- |
+| Download Player Information | `<Team>_Player_Information.xlsx` | Every field shown on the Player Card, sorted Mini → Sub-Junior → Cadet → Junior → Senior |
+| Download Result | `<Team>_Results.xlsx` | Official Result and Expo Result kept in separate columns (Gold/Silver/Bronze/No Medal/N/A) |
+
+### Admin Championship Statistics export (from `/admin/dashboard.html`)
+
+The **Export to Excel** button on the Championship Statistics panel produces `<Championship>_Statistics_<date>.xlsx` — one sheet organized **Team → Age Category**, with merged section-header rows and a full player-detail table (name, category, gender, age, weight, weight category, division, status, contact/guardian fields, submission date) repeated under each category group.
 
 ### Standalone bracket template generator
 
@@ -801,7 +862,38 @@ The script outputs `TKD_Bracket_Template.xlsx` in the current directory (landsca
 - ✅ Adaptive image quality compression (binary search algorithm)
 - ✅ Comprehensive audit completed, performance optimizations applied
 
-## 22. Credits
+## 22. Recent Updates (July 2026)
+
+### Expo Competition System
+
+- ✅ Fully independent parallel competition system alongside Official brackets — its own Firebase trees (`expoPlayers/`, `expoBrackets/`, `expoMatchHistory/`), never merged with Official data
+- ✅ Per-player division selection during registration: **Official**, **Expo**, or **Official & Expo** (players in the "Both" division live in both trees under the same player ID)
+- ✅ Expo bracket engine: flat single-match list (no rounds, no bronze) — winner gets Gold, an unpaired player (odd headcount) is automatically awarded Gold as a walkover
+- ✅ Team Dashboard medal display shows Official and Expo results independently for dual-division players, instead of one badge overwriting the other
+
+### Live Matches Page Redesign
+
+- ✅ Now merges Official and Expo matches into one board, each tagged with a clear division badge (🏆 Official / 🎯 Expo)
+- ✅ Live and Up Next cards are paired by court — Up Next only shows for a bracket that currently has a live match on some court, avoiding stale/orphaned "next match" cards
+- ✅ "To Be Decided" empty state when no court is currently active
+- ✅ Modernized cards (rounded corners, hover lift, fade-in), mobile breakpoint for the VS row and court badge
+
+### Referee Auth & Court Fixes
+
+- ✅ Fixed a silent permission failure where referee-started matches updated the referee's own screen but never persisted to Firebase — the anonymous Auth UID had no corresponding `users/<anonymousUid>` RTDB record for rules to resolve against
+- ✅ The court-number dropdown on Start Match now pre-selects the referee's assigned court automatically (still editable), so Live Matches always has a court to display instead of relying on a manual selection that was easy to skip
+
+### Excel Export Tooling
+
+- ✅ Team Dashboard: **Download Player Information** and **Download Result** buttons (see [Section 19](#19-bracket-export-tools))
+- ✅ Admin Dashboard: **Export to Excel** button on Championship Statistics, grouped Team → Age Category
+
+### Image Compression Fix
+
+- ✅ Compression target tightened from 80KB to 35KB after discovering the base64-encoded output of an 80KB blob (~109KB as text) could exceed the 50,000-character Firebase validation cap on `playerImages/<id>`, silently failing the image save after the player record had already been written
+- ✅ Added a hard safety-net pass that progressively shrinks dimensions at minimum quality until the final data URL is guaranteed to fit
+
+## 23. Credits
 
 - Built and developed by Chiranandan T M
 - Co-supporter: Sharan B N

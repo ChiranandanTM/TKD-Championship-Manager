@@ -14,6 +14,7 @@
     <link rel="preconnect" href="https://www.gstatic.com">
     <link rel="stylesheet" href="/assets/css/main.css">
     <script defer src="/js/modal.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* ── Admin nav active state ── */
         .admin-nav-btn {
@@ -78,6 +79,7 @@
             0% {
                 transform: translateX(0);
             }
+
             100% {
                 transform: translateX(-100%);
             }
@@ -86,136 +88,506 @@
     <style>
         /* ── Messaging bell + panel ───────────────────────────────────────────── */
         .msg-bell-btn {
-            background: linear-gradient(135deg, rgba(255,215,0,0.15), rgba(255,215,0,0.05));
-            border: 2px solid var(--border-gold); color: var(--border-gold);
-            border-radius: 10px; padding: 10px 18px; font-size: 1.1rem;
-            cursor: pointer; transition: all 0.25s ease;
-            display: flex; align-items: center; gap: 8px; font-weight: 700;
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 215, 0, 0.05));
+            border: 2px solid var(--border-gold);
+            color: var(--border-gold);
+            border-radius: 10px;
+            padding: 10px 18px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 700;
         }
-        .msg-bell-btn:hover { background: rgba(255,215,0,0.25); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255,215,0,0.3); }
+
+        .msg-bell-btn:hover {
+            background: rgba(255, 215, 0, 0.25);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 215, 0, 0.3);
+        }
+
         .msg-badge {
-            background: var(--accent-red); color: #fff;
-            font-size: 0.75rem; font-weight: 900;
-            min-width: 22px; height: 22px; border-radius: 11px;
-            display: inline-flex; align-items: center; justify-content: center; padding: 0 6px;
+            background: var(--accent-red);
+            color: #fff;
+            font-size: 0.75rem;
+            font-weight: 900;
+            min-width: 22px;
+            height: 22px;
+            border-radius: 11px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 6px;
             animation: pulse-msg 1.5s ease-in-out infinite;
         }
-        @keyframes pulse-msg { 0%,100%{transform:scale(1)} 50%{transform:scale(1.15)} }
+
+        @keyframes pulse-msg {
+
+            0%,
+            100% {
+                transform: scale(1)
+            }
+
+            50% {
+                transform: scale(1.15)
+            }
+        }
 
         @keyframes bell-shake {
-            0%,100% { transform: translateY(0) rotate(0deg); }
-            15%      { transform: translateY(-3px) rotate(-12deg); }
-            30%      { transform: translateY(0)   rotate(10deg); }
-            45%      { transform: translateY(-2px) rotate(-8deg); }
-            60%      { transform: translateY(0)   rotate(6deg); }
-            75%      { transform: translateY(-1px) rotate(-3deg); }
+
+            0%,
+            100% {
+                transform: translateY(0) rotate(0deg);
+            }
+
+            15% {
+                transform: translateY(-3px) rotate(-12deg);
+            }
+
+            30% {
+                transform: translateY(0) rotate(10deg);
+            }
+
+            45% {
+                transform: translateY(-2px) rotate(-8deg);
+            }
+
+            60% {
+                transform: translateY(0) rotate(6deg);
+            }
+
+            75% {
+                transform: translateY(-1px) rotate(-3deg);
+            }
         }
+
         .bell-new-msg {
             animation: bell-shake 0.6s ease forwards !important;
-            box-shadow: 0 0 22px rgba(255,215,0,0.7) !important;
+            box-shadow: 0 0 22px rgba(255, 215, 0, 0.7) !important;
             border-color: #FFD700 !important;
-            background: rgba(255,215,0,0.3) !important;
+            background: rgba(255, 215, 0, 0.3) !important;
         }
 
-        .msg-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:6000; }
-        .msg-overlay.open { display:block; }
+        .msg-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 6000;
+        }
+
+        .msg-overlay.open {
+            display: block;
+        }
 
         .msg-panel {
-            position:fixed; top:0; right:0;
-            width:440px; max-width:100vw; height:100vh;
-            background:linear-gradient(160deg,rgba(12,18,42,0.99) 0%,rgba(22,33,62,0.99) 100%);
-            border-left:2px solid var(--border-gold);
-            box-shadow:-8px 0 40px rgba(0,0,0,0.6);
-            display:flex; flex-direction:column; z-index:6001;
-            transform:translateX(100%); transition:transform 0.35s cubic-bezier(0.4,0,0.2,1);
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 440px;
+            max-width: 100vw;
+            height: 100vh;
+            background: linear-gradient(160deg, rgba(12, 18, 42, 0.99) 0%, rgba(22, 33, 62, 0.99) 100%);
+            border-left: 2px solid var(--border-gold);
+            box-shadow: -8px 0 40px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            z-index: 6001;
+            transform: translateX(100%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .msg-panel.open { transform:translateX(0); }
+
+        .msg-panel.open {
+            transform: translateX(0);
+        }
+
         .msg-panel-header {
-            background:linear-gradient(90deg,rgba(255,215,0,0.12),rgba(0,229,255,0.08));
-            border-bottom:1px solid rgba(255,215,0,0.25);
-            padding:20px 24px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+            background: linear-gradient(90deg, rgba(255, 215, 0, 0.12), rgba(0, 229, 255, 0.08));
+            border-bottom: 1px solid rgba(255, 215, 0, 0.25);
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
         }
-        .msg-panel-title { font-size:1.2rem; font-weight:800; color:var(--border-gold); letter-spacing:0.5px; }
-        .msg-close-btn { background:none; border:none; color:var(--text-gray); font-size:1.4rem; cursor:pointer; padding:4px 8px; border-radius:6px; transition:all 0.2s; }
-        .msg-close-btn:hover { color:var(--accent-red); background:rgba(255,23,68,0.1); }
 
-        .msg-compose { padding:20px 24px; border-bottom:1px solid rgba(255,255,255,0.07); flex-shrink:0; }
-        .msg-compose-label { font-size:0.78rem; font-weight:700; color:var(--accent-cyan); text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
+        .msg-panel-title {
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--border-gold);
+            letter-spacing: 0.5px;
+        }
+
+        .msg-close-btn {
+            background: none;
+            border: none;
+            color: var(--text-gray);
+            font-size: 1.4rem;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .msg-close-btn:hover {
+            color: var(--accent-red);
+            background: rgba(255, 23, 68, 0.1);
+        }
+
+        .msg-compose {
+            padding: 20px 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+            flex-shrink: 0;
+        }
+
+        .msg-compose-label {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
         .msg-select {
-            width:100%; background:rgba(0,0,0,0.4);
-            border:1.5px solid rgba(255,215,0,0.35); border-radius:8px;
-            color:var(--text-white); font-size:0.9rem; padding:9px 12px;
-            cursor:pointer; margin-bottom:10px; transition:border-color 0.2s;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1.5px solid rgba(255, 215, 0, 0.35);
+            border-radius: 8px;
+            color: var(--text-white);
+            font-size: 0.9rem;
+            padding: 9px 12px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            transition: border-color 0.2s;
         }
-        .msg-select:focus { outline:none; border-color:var(--border-gold); }
-        .msg-type-row { display:flex; gap:8px; margin-bottom:10px; }
-        .msg-type-btn { flex:1; padding:8px; border-radius:8px; font-size:0.85rem; font-weight:700; cursor:pointer; border:2px solid transparent; transition:all 0.2s; }
-        .msg-type-btn.info  { background:rgba(0,229,255,0.1); border-color:rgba(0,229,255,0.3); color:var(--accent-cyan); }
-        .msg-type-btn.info.active  { background:rgba(0,229,255,0.25); border-color:var(--accent-cyan); }
-        .msg-type-btn.urgent{ background:rgba(255,23,68,0.1); border-color:rgba(255,23,68,0.3); color:var(--accent-red); }
-        .msg-type-btn.urgent.active{ background:rgba(255,23,68,0.25); border-color:var(--accent-red); }
+
+        .msg-select:focus {
+            outline: none;
+            border-color: var(--border-gold);
+        }
+
+        .msg-type-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .msg-type-btn {
+            flex: 1;
+            padding: 8px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .msg-type-btn.info {
+            background: rgba(0, 229, 255, 0.1);
+            border-color: rgba(0, 229, 255, 0.3);
+            color: var(--accent-cyan);
+        }
+
+        .msg-type-btn.info.active {
+            background: rgba(0, 229, 255, 0.25);
+            border-color: var(--accent-cyan);
+        }
+
+        .msg-type-btn.urgent {
+            background: rgba(255, 23, 68, 0.1);
+            border-color: rgba(255, 23, 68, 0.3);
+            color: var(--accent-red);
+        }
+
+        .msg-type-btn.urgent.active {
+            background: rgba(255, 23, 68, 0.25);
+            border-color: var(--accent-red);
+        }
+
         .msg-textarea {
-            width:100%; box-sizing:border-box;
-            background:rgba(0,0,0,0.35); border:1.5px solid rgba(255,255,255,0.12); border-radius:8px;
-            color:var(--text-white); font-size:0.9rem; font-family:inherit;
-            padding:10px 12px; resize:none; height:72px; margin-bottom:10px; transition:border-color 0.2s;
+            width: 100%;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1.5px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            color: var(--text-white);
+            font-size: 0.9rem;
+            font-family: inherit;
+            padding: 10px 12px;
+            resize: none;
+            height: 72px;
+            margin-bottom: 10px;
+            transition: border-color 0.2s;
         }
-        .msg-textarea:focus { outline:none; border-color:var(--border-gold); }
-        .msg-textarea::placeholder { color:#555; }
+
+        .msg-textarea:focus {
+            outline: none;
+            border-color: var(--border-gold);
+        }
+
+        .msg-textarea::placeholder {
+            color: #555;
+        }
+
         .msg-send-btn {
-            width:100%; background:linear-gradient(135deg,#FFD700,#FFC107);
-            color:#000; font-weight:800; border:none; border-radius:8px;
-            padding:12px; font-size:0.95rem; cursor:pointer; transition:all 0.2s;
+            width: 100%;
+            background: linear-gradient(135deg, #FFD700, #FFC107);
+            color: #000;
+            font-weight: 800;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: all 0.2s;
         }
-        .msg-send-btn:hover { opacity:0.9; transform:translateY(-1px); }
-        .msg-send-btn:disabled { opacity:0.45; cursor:not-allowed; transform:none; }
 
-        .msg-feed-label { padding:14px 24px 8px; font-size:0.78rem; font-weight:700; color:var(--text-gray); text-transform:uppercase; letter-spacing:1px; flex-shrink:0; }
-        .msg-feed { flex:1; overflow-y:auto; padding:0 16px 20px; }
-        .msg-feed::-webkit-scrollbar { width:4px; }
-        .msg-feed::-webkit-scrollbar-thumb { background:rgba(255,215,0,0.2); border-radius:2px; }
+        .msg-send-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
 
-        .msg-item { border-radius:10px; padding:12px 14px; margin-bottom:10px; animation:fadeInUp 0.3s ease; }
-        .msg-item.sent { background:linear-gradient(135deg,rgba(0,229,255,0.08),rgba(0,229,255,0.04)); border:1px solid rgba(0,229,255,0.2); border-left:3px solid var(--accent-cyan); }
-        .msg-item.sent.urgent-msg { background:linear-gradient(135deg,rgba(255,23,68,0.1),rgba(255,23,68,0.05)); border:1px solid rgba(255,23,68,0.25); border-left:3px solid var(--accent-red); }
-        .msg-item.reply { background:linear-gradient(135deg,rgba(255,215,0,0.07),rgba(255,215,0,0.03)); border:1px solid rgba(255,215,0,0.15); border-left:3px solid var(--border-gold); }
-        .msg-item-meta { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.75rem; }
-        .msg-item-from { font-weight:700; color:var(--accent-cyan); }
-        .msg-item.reply .msg-item-from { color:var(--border-gold); }
-        .msg-item.sent.urgent-msg .msg-item-from { color:var(--accent-red); }
-        .msg-item-time { color:#555; }
-        .msg-item-target { font-size:0.72rem; color:#666; margin-bottom:5px; }
-        .msg-item-text { font-size:0.9rem; color:var(--text-white); line-height:1.45; }
-        .msg-tag { display:inline-block; font-size:0.65rem; font-weight:700; padding:2px 7px; border-radius:4px; margin-right:6px; text-transform:uppercase; }
-        .msg-tag.broadcast { background:rgba(0,229,255,0.2); color:var(--accent-cyan); }
-        .msg-tag.court     { background:rgba(255,215,0,0.2); color:var(--border-gold); }
-        .msg-tag.urgent    { background:rgba(255,23,68,0.25); color:#ff6b8a; }
-        .msg-tag.reply-tag { background:rgba(255,215,0,0.15); color:var(--border-gold); }
-        .msg-reply-area { margin-top: 8px; display: none; }
-        .msg-reply-area.open { display: block; }
-        .msg-reply-input { flex-grow: 1; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1.5px solid rgba(0,229,255,0.3); border-radius: 8px; color: var(--text-white); font-size: 0.85rem; font-family: inherit; padding: 9px 12px; resize: none; height: 40px; transition: border-color 0.2s; }
-        .msg-reply-input:focus { outline: none; border-color: var(--accent-cyan); }
-        .msg-reply-input::placeholder { color: #555; }
-        .msg-reply-btn { background: linear-gradient(135deg, var(--accent-cyan), #006BFF); color: #000; font-weight: 800; border: none; border-radius: 7px; padding: 0 16px; font-size: 0.85rem; cursor: pointer; transition: opacity 0.2s; }
-        .msg-reply-btn:hover { opacity: 0.85; }
-        .msg-reply-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-        .msg-open-reply-btn { background: none; border: 1px solid rgba(0,229,255,0.3); color: var(--accent-cyan); border-radius: 6px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; margin-top: 6px; }
-        .msg-open-reply-btn:hover { background: rgba(0,229,255,0.1); }
-        .quick-reply-btn { background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3); color: var(--accent-cyan); border-radius: 6px; padding: 4px 10px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
-        .quick-reply-btn:hover { background: rgba(0,229,255,0.2); }
-        .msg-empty { text-align: center; padding: 40px 20px; color: #555; font-size: 0.9rem; }
+        .msg-send-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .msg-feed-label {
+            padding: 14px 24px 8px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: var(--text-gray);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+
+        .msg-feed {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 16px 20px;
+        }
+
+        .msg-feed::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .msg-feed::-webkit-scrollbar-thumb {
+            background: rgba(255, 215, 0, 0.2);
+            border-radius: 2px;
+        }
+
+        .msg-item {
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 10px;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        .msg-item.sent {
+            background: linear-gradient(135deg, rgba(0, 229, 255, 0.08), rgba(0, 229, 255, 0.04));
+            border: 1px solid rgba(0, 229, 255, 0.2);
+            border-left: 3px solid var(--accent-cyan);
+        }
+
+        .msg-item.sent.urgent-msg {
+            background: linear-gradient(135deg, rgba(255, 23, 68, 0.1), rgba(255, 23, 68, 0.05));
+            border: 1px solid rgba(255, 23, 68, 0.25);
+            border-left: 3px solid var(--accent-red);
+        }
+
+        .msg-item.reply {
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.07), rgba(255, 215, 0, 0.03));
+            border: 1px solid rgba(255, 215, 0, 0.15);
+            border-left: 3px solid var(--border-gold);
+        }
+
+        .msg-item-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 0.75rem;
+        }
+
+        .msg-item-from {
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
+
+        .msg-item.reply .msg-item-from {
+            color: var(--border-gold);
+        }
+
+        .msg-item.sent.urgent-msg .msg-item-from {
+            color: var(--accent-red);
+        }
+
+        .msg-item-time {
+            color: #555;
+        }
+
+        .msg-item-target {
+            font-size: 0.72rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .msg-item-text {
+            font-size: 0.9rem;
+            color: var(--text-white);
+            line-height: 1.45;
+        }
+
+        .msg-tag {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+            margin-right: 6px;
+            text-transform: uppercase;
+        }
+
+        .msg-tag.broadcast {
+            background: rgba(0, 229, 255, 0.2);
+            color: var(--accent-cyan);
+        }
+
+        .msg-tag.court {
+            background: rgba(255, 215, 0, 0.2);
+            color: var(--border-gold);
+        }
+
+        .msg-tag.urgent {
+            background: rgba(255, 23, 68, 0.25);
+            color: #ff6b8a;
+        }
+
+        .msg-tag.reply-tag {
+            background: rgba(255, 215, 0, 0.15);
+            color: var(--border-gold);
+        }
+
+        .msg-reply-area {
+            margin-top: 8px;
+            display: none;
+        }
+
+        .msg-reply-area.open {
+            display: block;
+        }
+
+        .msg-reply-input {
+            flex-grow: 1;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1.5px solid rgba(0, 229, 255, 0.3);
+            border-radius: 8px;
+            color: var(--text-white);
+            font-size: 0.85rem;
+            font-family: inherit;
+            padding: 9px 12px;
+            resize: none;
+            height: 40px;
+            transition: border-color 0.2s;
+        }
+
+        .msg-reply-input:focus {
+            outline: none;
+            border-color: var(--accent-cyan);
+        }
+
+        .msg-reply-input::placeholder {
+            color: #555;
+        }
+
+        .msg-reply-btn {
+            background: linear-gradient(135deg, var(--accent-cyan), #006BFF);
+            color: #000;
+            font-weight: 800;
+            border: none;
+            border-radius: 7px;
+            padding: 0 16px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .msg-reply-btn:hover {
+            opacity: 0.85;
+        }
+
+        .msg-reply-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .msg-open-reply-btn {
+            background: none;
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            color: var(--accent-cyan);
+            border-radius: 6px;
+            padding: 5px 12px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 6px;
+        }
+
+        .msg-open-reply-btn:hover {
+            background: rgba(0, 229, 255, 0.1);
+        }
+
+        .quick-reply-btn {
+            background: rgba(0, 229, 255, 0.1);
+            border: 1px solid rgba(0, 229, 255, 0.3);
+            color: var(--accent-cyan);
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .quick-reply-btn:hover {
+            background: rgba(0, 229, 255, 0.2);
+        }
+
+        .msg-empty {
+            text-align: center;
+            padding: 40px 20px;
+            color: #555;
+            font-size: 0.9rem;
+        }
 
         /* Delete button on each message */
         .msg-delete-btn {
-            background: none; border: none;
-            color: rgba(255,80,80,0.5); font-size: 0.85rem;
-            cursor: pointer; padding: 2px 6px; border-radius: 4px;
-            transition: all 0.2s; line-height: 1;
+            background: none;
+            border: none;
+            color: rgba(255, 80, 80, 0.5);
+            font-size: 0.85rem;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            line-height: 1;
         }
-        .msg-delete-btn:hover { color: var(--accent-red); background: rgba(255,23,68,0.12); }
+
+        .msg-delete-btn:hover {
+            color: var(--accent-red);
+            background: rgba(255, 23, 68, 0.12);
+        }
+
         .msg-item-new-from-ref {
-            background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,215,0,0.03));
-            border: 1px solid rgba(255,215,0,0.2);
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.08), rgba(255, 215, 0, 0.03));
+            border: 1px solid rgba(255, 215, 0, 0.2);
             border-left: 3px solid var(--border-gold);
         }
     </style>
@@ -538,15 +910,17 @@
                 <option value="broadcast">📢 All Courts (Broadcast)</option>
             </select>
             <div class="msg-type-row">
-                <button class="msg-type-btn info active" id="msgTypeInfo"   onclick="setMsgType('info')">ℹ️ Info</button>
-                <button class="msg-type-btn urgent"      id="msgTypeUrgent" onclick="setMsgType('urgent')">🔴 Urgent</button>
+                <button class="msg-type-btn info active" id="msgTypeInfo" onclick="setMsgType('info')">ℹ️ Info</button>
+                <button class="msg-type-btn urgent" id="msgTypeUrgent" onclick="setMsgType('urgent')">🔴 Urgent</button>
             </div>
             <textarea class="msg-textarea" id="msgText" maxlength="500"
                 placeholder="Type your message to the court referee..."></textarea>
             <button class="msg-send-btn" id="msgSendBtn" onclick="sendAdminMessage()">Send Message</button>
         </div>
         <div class="msg-feed-label">💬 Message History</div>
-        <div class="msg-feed" id="msgFeed"><div class="msg-empty">No messages yet.</div></div>
+        <div class="msg-feed" id="msgFeed">
+            <div class="msg-empty">No messages yet.</div>
+        </div>
     </div>
 
     <div class="page-header">
@@ -579,7 +953,8 @@
                 Bracket</button>
             <button class="admin-nav-btn" id="navLive" onclick="window.open('Live-matches.html','_blank')">⚡ Live
                 Matches</button>
-            <button class="admin-nav-btn" id="navLeaderboard" onclick="window.open('/leaderboard.html','_blank')">🏆 Best Team Leaderboard</button>
+            <button class="admin-nav-btn" id="navLeaderboard" onclick="window.open('/leaderboard.html','_blank')">🏆
+                Best Team Leaderboard</button>
             <button class="admin-nav-btn" id="navPreview" onclick="window.open('form-preview.html','_blank')">👁️
                 Preview Form</button>
             <button class="admin-nav-btn" id="navNewChamp" onclick="showSection('newChampionship')">➕ New
@@ -596,10 +971,16 @@
                     <h2 style="margin:0;font-size:1.6rem">Championship Statistics</h2>
                     <p style="color:#555;margin:4px 0 0;font-size:.88rem">Live overview of the current championship</p>
                 </div>
-                <button onclick="loadStatistics()"
-                    style="padding:10px 20px;background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.3);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;font-size:.88rem"
-                    onmouseover="this.style.background='rgba(255,215,0,.16)'"
-                    onmouseout="this.style.background='rgba(255,215,0,.08)'">Refresh</button>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto">
+                    <button onclick="exportChampionshipStatisticsToExcel()" id="exportStatsBtn"
+                        style="padding:10px 20px;background:rgba(0,229,255,.08);border:2px solid rgba(0,229,255,.35);border-radius:10px;color:#00E5FF;font-weight:700;cursor:pointer;font-size:.88rem"
+                        onmouseover="this.style.background='rgba(0,229,255,.18)'"
+                        onmouseout="this.style.background='rgba(0,229,255,.08)'">📥 Export to Excel</button>
+                    <button onclick="loadStatistics()"
+                        style="padding:10px 20px;background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.3);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;font-size:.88rem"
+                        onmouseover="this.style.background='rgba(255,215,0,.16)'"
+                        onmouseout="this.style.background='rgba(255,215,0,.08)'">Refresh</button>
+                </div>
             </div>
 
             <!-- Vibrant stat cards -->
@@ -729,15 +1110,21 @@
     <!-- ═══════════════════════════════════════════════════════════
          EDIT CHAMPIONSHIP MODAL
     ═══════════════════════════════════════════════════════════ -->
-    <div id="editChampModal" style="display:none;position:fixed;z-index:2000;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);overflow-y:auto">
-        <div style="max-width:560px;margin:60px auto 40px;background:linear-gradient(150deg,rgba(14,18,42,.99),rgba(20,30,58,.98));border:2px solid rgba(255,215,0,.35);border-radius:20px;padding:36px;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.7)">
+    <div id="editChampModal"
+        style="display:none;position:fixed;z-index:2000;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);overflow-y:auto">
+        <div
+            style="max-width:560px;margin:60px auto 40px;background:linear-gradient(150deg,rgba(14,18,42,.99),rgba(20,30,58,.98));border:2px solid rgba(255,215,0,.35);border-radius:20px;padding:36px;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.7)">
 
             <!-- Close button -->
-            <button onclick="closeEditChampModal()" style="position:absolute;top:16px;right:18px;background:none;border:none;color:#666;font-size:1.8rem;cursor:pointer;line-height:1;transition:color .2s" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#666'">&times;</button>
+            <button onclick="closeEditChampModal()"
+                style="position:absolute;top:16px;right:18px;background:none;border:none;color:#666;font-size:1.8rem;cursor:pointer;line-height:1;transition:color .2s"
+                onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#666'">&times;</button>
 
             <!-- Header -->
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:28px">
-                <div style="width:42px;height:42px;background:linear-gradient(135deg,#FFD700,#FFC107);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">✏️</div>
+                <div
+                    style="width:42px;height:42px;background:linear-gradient(135deg,#FFD700,#FFC107);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">
+                    ✏️</div>
                 <div>
                     <div style="font-size:1.2rem;font-weight:900;color:#fff">Edit Championship</div>
                     <div style="font-size:.8rem;color:#555;margin-top:2px">Changes are saved to Firebase instantly</div>
@@ -745,8 +1132,10 @@
             </div>
 
             <!-- Active-sync notice (shown only when editing active champ) -->
-            <div id="editChampActiveNotice" style="display:none;background:linear-gradient(135deg,rgba(0,230,118,.1),rgba(0,150,80,.06));border:1.5px solid rgba(0,230,118,.45);border-radius:12px;padding:12px 16px;margin-bottom:20px;font-size:.82rem;color:#00E676;line-height:1.5">
-                ✅ <strong>This is the currently active championship.</strong><br>Saving will also update the registration form, ticker, and all display areas automatically.
+            <div id="editChampActiveNotice"
+                style="display:none;background:linear-gradient(135deg,rgba(0,230,118,.1),rgba(0,150,80,.06));border:1.5px solid rgba(0,230,118,.45);border-radius:12px;padding:12px 16px;margin-bottom:20px;font-size:.82rem;color:#00E676;line-height:1.5">
+                ✅ <strong>This is the currently active championship.</strong><br>Saving will also update the
+                registration form, ticker, and all display areas automatically.
             </div>
 
             <input type="hidden" id="editChampId">
@@ -755,45 +1144,63 @@
             <div style="display:flex;flex-direction:column;gap:16px">
                 <!-- Name -->
                 <div>
-                    <label style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">🏆 Championship Name *</label>
+                    <label
+                        style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">🏆
+                        Championship Name *</label>
                     <input id="editChampName" type="text" placeholder="e.g., TAEKWONDO CHAMPIONSHIP 2026"
                         style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s"
-                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'" onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
+                        onblur="this.style.borderColor='rgba(255,215,0,.2)'">
                 </div>
                 <!-- Location/Venue -->
                 <div>
-                    <label style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">🏟️ Venue / Location</label>
+                    <label
+                        style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">🏟️
+                        Venue / Location</label>
                     <input id="editChampLocation" type="text" placeholder="e.g., National Sports Complex"
                         style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s"
-                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'" onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
+                        onblur="this.style.borderColor='rgba(255,215,0,.2)'">
                 </div>
                 <!-- Description / Address -->
                 <div>
-                    <label style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">📍 Address / Description</label>
+                    <label
+                        style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">📍
+                        Address / Description</label>
                     <input id="editChampDescription" type="text" placeholder="e.g., Bengaluru, Karnataka, India"
                         style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s"
-                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'" onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
+                        onblur="this.style.borderColor='rgba(255,215,0,.2)'">
                 </div>
                 <!-- Date -->
                 <div>
-                    <label style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">📅 Championship Date</label>
+                    <label
+                        style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">📅
+                        Championship Date</label>
                     <input id="editChampDate" type="date"
                         style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s;color-scheme:dark"
-                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'" onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
+                        onblur="this.style.borderColor='rgba(255,215,0,.2)'">
                 </div>
                 <!-- Organizer -->
                 <div>
-                    <label style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">🏅 Organizer</label>
+                    <label
+                        style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">🏅
+                        Organizer</label>
                     <input id="editChampOrganizer" type="text" placeholder="e.g., Karnataka Taekwondo Association"
                         style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s"
-                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'" onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
+                        onblur="this.style.borderColor='rgba(255,215,0,.2)'">
                 </div>
                 <!-- Status -->
                 <div>
-                    <label style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">🔖 Status</label>
+                    <label
+                        style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">🔖
+                        Status</label>
                     <select id="editChampStatus"
                         style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s;cursor:pointer"
-                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'" onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
+                        onblur="this.style.borderColor='rgba(255,215,0,.2)'">
                         <option value="draft" style="background:#1a1a2e">Draft</option>
                         <option value="active" style="background:#1a1a2e">Active</option>
                         <option value="completed" style="background:#1a1a2e">Completed</option>
@@ -802,12 +1209,21 @@
             </div>
 
             <!-- Error message area -->
-            <div id="editChampError" style="display:none;background:rgba(255,23,68,.1);border:1.5px solid #FF1744;border-radius:10px;padding:12px 16px;margin-top:16px;font-size:.85rem;color:#FF1744"></div>
+            <div id="editChampError"
+                style="display:none;background:rgba(255,23,68,.1);border:1.5px solid #FF1744;border-radius:10px;padding:12px 16px;margin-top:16px;font-size:.85rem;color:#FF1744">
+            </div>
 
             <!-- Action buttons -->
             <div style="display:flex;gap:12px;margin-top:28px">
-                <button onclick="closeEditChampModal()" style="flex:1;padding:14px;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.12);border-radius:12px;color:#888;font-weight:700;font-size:.92rem;cursor:pointer;transition:all .2s" onmouseover="this.style.borderColor='rgba(255,255,255,.3)';this.style.color='#ccc'" onmouseout="this.style.borderColor='rgba(255,255,255,.12)';this.style.color='#888'">Cancel</button>
-                <button onclick="saveChampionshipEdit()" id="editChampSaveBtn" style="flex:2;padding:14px;background:linear-gradient(135deg,rgba(255,215,0,.18),rgba(255,193,7,.1));border:2px solid rgba(255,215,0,.7);border-radius:12px;color:#FFD700;font-weight:900;font-size:.95rem;cursor:pointer;transition:all .2s;letter-spacing:.3px" onmouseover="this.style.background='rgba(255,215,0,.28)';this.style.boxShadow='0 6px 20px rgba(255,215,0,.25)'" onmouseout="this.style.background='linear-gradient(135deg,rgba(255,215,0,.18),rgba(255,193,7,.1))';this.style.boxShadow='none'">💾 Save Changes</button>
+                <button onclick="closeEditChampModal()"
+                    style="flex:1;padding:14px;background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.12);border-radius:12px;color:#888;font-weight:700;font-size:.92rem;cursor:pointer;transition:all .2s"
+                    onmouseover="this.style.borderColor='rgba(255,255,255,.3)';this.style.color='#ccc'"
+                    onmouseout="this.style.borderColor='rgba(255,255,255,.12)';this.style.color='#888'">Cancel</button>
+                <button onclick="saveChampionshipEdit()" id="editChampSaveBtn"
+                    style="flex:2;padding:14px;background:linear-gradient(135deg,rgba(255,215,0,.18),rgba(255,193,7,.1));border:2px solid rgba(255,215,0,.7);border-radius:12px;color:#FFD700;font-weight:900;font-size:.95rem;cursor:pointer;transition:all .2s;letter-spacing:.3px"
+                    onmouseover="this.style.background='rgba(255,215,0,.28)';this.style.boxShadow='0 6px 20px rgba(255,215,0,.25)'"
+                    onmouseout="this.style.background='linear-gradient(135deg,rgba(255,215,0,.18),rgba(255,193,7,.1))';this.style.boxShadow='none'">💾
+                    Save Changes</button>
             </div>
         </div>
     </div>
@@ -1022,8 +1438,35 @@
             try {
                 const playersRef = dbRef(database, 'players');
                 const playersSnapshot = await dbGet(playersRef);
-                const playerCount = playersSnapshot.exists() ? Object.keys(playersSnapshot.val()).length : 0;
-                document.getElementById('totalPlayers').textContent = playerCount;
+
+                // Expo-only players (Competition Category "Expo") live only in
+                // expoPlayers/, never in players/, so they'd otherwise be missing
+                // from every count and the table below. "Official & Expo" players
+                // are already in players/, so skip them here via seenIds to avoid
+                // double-counting.
+                const seenIds = new Set();
+                const players = [];
+                if (playersSnapshot.exists()) {
+                    playersSnapshot.forEach(child => {
+                        players.push({ id: child.key, ...child.val() });
+                        seenIds.add(child.key);
+                    });
+                }
+                try {
+                    const expoPlayersSnapshot = await dbGet(dbRef(database, 'expoPlayers'));
+                    if (expoPlayersSnapshot.exists()) {
+                        expoPlayersSnapshot.forEach(child => {
+                            if (!seenIds.has(child.key)) {
+                                players.push({ id: child.key, ...child.val() });
+                                seenIds.add(child.key);
+                            }
+                        });
+                    }
+                } catch (expoErr) {
+                    console.warn('⚠️ Could not load Expo players (non-fatal):', expoErr.message);
+                }
+
+                document.getElementById('totalPlayers').textContent = players.length;
 
                 const teamsRef = dbRef(database, 'teams');
                 const teamsSnapshot = await dbGet(teamsRef);
@@ -1041,17 +1484,30 @@
                         }
                     });
                 }
+
+                // Also count completed Expo matches (isolated expoMatchHistory/ tree),
+                // non-fatally — a permission/rules issue there must never break the
+                // rest of the statistics panel.
+                try {
+                    const expoHistorySnapshot = await dbGet(dbRef(database, 'expoMatchHistory'));
+                    if (expoHistorySnapshot.exists()) {
+                        const allExpoHistory = expoHistorySnapshot.val();
+                        Object.keys(allExpoHistory).forEach(categoryKey => {
+                            if (allExpoHistory[categoryKey]) {
+                                matchCount += Object.keys(allExpoHistory[categoryKey]).length;
+                            }
+                        });
+                    }
+                } catch (expoErr) {
+                    console.warn('⚠️ Could not load Expo match history (non-fatal):', expoErr.message);
+                }
+
                 document.getElementById('completedMatches').textContent = matchCount;
 
                 const pill = document.getElementById('playerCountPill');
 
-                if (playersSnapshot.exists()) {
-                    const players = [];
-                    playersSnapshot.forEach(child => {
-                        players.push({ id: child.key, ...child.val() });
-                    });
-
-                    console.log('📊 Total players fetched from Firebase:', players.length);
+                if (players.length > 0) {
+                    console.log('📊 Total players fetched from Firebase (incl. Expo-only):', players.length);
                     players.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
                     const teamsSnapshotForMap = await dbGet(dbRef(database, 'teams'));
@@ -1067,7 +1523,7 @@
                     let html = '<table class="st-table" id="statsPlayerTable">';
                     html += '<thead><tr>';
                     html += '<th style="width:52px;text-align:center">#</th>';
-                    html += '<th>Name</th><th>Team</th><th>Gender</th><th>Category</th><th>Weight</th><th>Submitted</th>';
+                    html += '<th>Name</th><th>Team</th><th>Gender</th><th>Category</th><th>Weight</th><th>Event</th><th>Submitted</th>';
                     html += '</tr></thead><tbody>';
 
                     players.forEach((player, index) => {
@@ -1078,6 +1534,7 @@
                         const categories = player.categories ? player.categories.map(c => `<span class="st-cat">${c}</span>`).join(' ') : 'N/A';
                         const weightCategory = player.weightCategory || 'N/A';
                         const submittedTime = UI.formatTimestamp(player.submittedAt) || 'N/A';
+                        const competitionCategory = player.competitionCategory || 'Official';
 
                         html += `<tr>`;
                         html += `<td class="st-num">${index + 1})</td>`;
@@ -1086,6 +1543,7 @@
                         html += `<td>${genderClass ? `<span class="${genderClass}">${gender}</span>` : gender}</td>`;
                         html += `<td>${categories}</td>`;
                         html += `<td class="st-wt">${weightCategory}</td>`;
+                        html += `<td>${competitionCategory}</td>`;
                         html += `<td class="st-time">${submittedTime}</td>`;
                         html += `</tr>`;
                     });
@@ -1101,6 +1559,182 @@
                 console.error('Error loading statistics:', error);
             }
         }
+
+        // ── Export Championship Statistics to Excel (read-only — no data written) ──
+        // Reuses the exact same data source and dedup logic as loadStatistics()
+        // above (players/ + expoPlayers/, skipping ids already seen so "Official &
+        // Expo" players aren't double-counted) so the export always matches what
+        // the Statistics panel is currently showing.
+
+        function getStatsAgeCategorySortRank(category) {
+            const order = { Mini: 1, 'Sub-Junior': 2, Cadet: 3, Junior: 4, Senior: 5 };
+            return order[category] || 99;
+        }
+
+        function getStatsDivisionLabel(competitionCategory) {
+            const category = competitionCategory || 'Official';
+            if (category === 'Expo') return 'Expo';
+            if (category === 'Official & Expo') return 'Official & Expo';
+            return 'Official';
+        }
+
+        async function exportChampionshipStatisticsToExcel() {
+            const btn = document.getElementById('exportStatsBtn');
+            const originalText = btn ? btn.textContent : '';
+
+            try {
+                if (typeof XLSX === 'undefined') {
+                    MODAL.error('Excel library is still loading. Please try again in a moment.');
+                    return;
+                }
+                if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing export...'; }
+
+                const [playersSnapshot, teamsSnapshot, formConfigSnapshot] = await Promise.all([
+                    dbGet(dbRef(database, 'players')),
+                    dbGet(dbRef(database, 'teams')),
+                    dbGet(dbRef(database, 'formConfig'))
+                ]);
+
+                const seenIds = new Set();
+                const players = [];
+                if (playersSnapshot.exists()) {
+                    playersSnapshot.forEach(child => {
+                        players.push({ id: child.key, ...child.val() });
+                        seenIds.add(child.key);
+                    });
+                }
+                try {
+                    const expoPlayersSnapshot = await dbGet(dbRef(database, 'expoPlayers'));
+                    if (expoPlayersSnapshot.exists()) {
+                        expoPlayersSnapshot.forEach(child => {
+                            if (!seenIds.has(child.key)) {
+                                players.push({ id: child.key, ...child.val() });
+                                seenIds.add(child.key);
+                            }
+                        });
+                    }
+                } catch (expoErr) {
+                    console.warn('⚠️ Could not load Expo players for export (non-fatal):', expoErr.message);
+                }
+
+                if (players.length === 0) {
+                    MODAL.error('No players registered in the current championship yet.');
+                    return;
+                }
+
+                const teamsMap = {};
+                if (teamsSnapshot.exists()) {
+                    teamsSnapshot.forEach(child => {
+                        teamsMap[child.key] = child.val().teamName || 'Unnamed Team';
+                    });
+                }
+
+                // Group: Team -> Age Category -> [players]
+                const byTeam = {};
+                players.forEach(player => {
+                    const teamName = teamsMap[player.teamId] || player.centerName || 'Unassigned Team';
+                    const ageCategory = player.ageCategory || (Array.isArray(player.categories) ? player.categories[0] : '') || 'Unspecified';
+                    if (!byTeam[teamName]) byTeam[teamName] = {};
+                    if (!byTeam[teamName][ageCategory]) byTeam[teamName][ageCategory] = [];
+                    byTeam[teamName][ageCategory].push(player);
+                });
+
+                const sortedTeamNames = Object.keys(byTeam).sort((a, b) => a.localeCompare(b));
+
+                const headers = ['#', 'Player Name', 'Team', 'Category', 'Age Group', 'Gender', 'Age', 'Weight (kg)',
+                    'Weight Category', 'Division', 'Status', 'Center Name', 'District', 'Taluk', 'Phone Number',
+                    'Father Name', 'Mother Name', 'Date of Birth', 'Submitted At'];
+
+                const rows = [];
+                let rowIndex = 0;
+                const merges = [];
+
+                const pushMergedHeaderRow = (text) => {
+                    rows.push([text]);
+                    merges.push({ s: { r: rowIndex, c: 0 }, e: { r: rowIndex, c: headers.length - 1 } });
+                    rowIndex++;
+                };
+                const pushRow = (row) => { rows.push(row); rowIndex++; };
+
+                sortedTeamNames.forEach(teamName => {
+                    const categories = byTeam[teamName];
+                    const teamPlayerCount = Object.values(categories).reduce((sum, list) => sum + list.length, 0);
+
+                    pushMergedHeaderRow(`TEAM: ${teamName}  (${teamPlayerCount} player${teamPlayerCount !== 1 ? 's' : ''})`);
+
+                    const sortedCategories = Object.keys(categories).sort((a, b) => {
+                        const rankA = getStatsAgeCategorySortRank(a);
+                        const rankB = getStatsAgeCategorySortRank(b);
+                        if (rankA !== rankB) return rankA - rankB;
+                        return a.localeCompare(b);
+                    });
+
+                    sortedCategories.forEach(ageCategory => {
+                        const list = categories[ageCategory];
+                        pushMergedHeaderRow(`  Category: ${ageCategory}  (${list.length} player${list.length !== 1 ? 's' : ''})`);
+                        pushRow(headers);
+
+                        list.forEach((player, idx) => {
+                            const bracketCategory = player.gender && player.ageCategory && player.weightCategory
+                                ? `${player.gender} · ${player.ageCategory} · ${player.weightCategory}`
+                                : 'N/A';
+
+                            pushRow([
+                                idx + 1,
+                                player.playerName || 'N/A',
+                                teamName,
+                                bracketCategory,
+                                ageCategory,
+                                player.gender || 'N/A',
+                                (player.age !== undefined && player.age !== null && player.age !== '') ? player.age : 'N/A',
+                                (player.weight !== undefined && player.weight !== null && player.weight !== '') ? player.weight : 'N/A',
+                                player.weightCategory || 'N/A',
+                                getStatsDivisionLabel(player.competitionCategory),
+                                player.status === 'approved' ? 'Approved' : 'Pending',
+                                player.centerName || 'N/A',
+                                player.district || 'N/A',
+                                player.taluk || 'N/A',
+                                player.phoneNumber || 'N/A',
+                                player.fatherName || 'N/A',
+                                player.motherName || 'N/A',
+                                player.dob || 'N/A',
+                                (typeof UI !== 'undefined' ? UI.formatTimestamp(player.submittedAt) : player.submittedAt) || 'N/A'
+                            ]);
+                        });
+
+                        pushRow([]); // spacer row between category groups
+                    });
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+                ws['!merges'] = merges;
+
+                // Auto-size columns based on the widest cell content in each column
+                ws['!cols'] = headers.map((_, colIdx) => {
+                    let maxLen = 10;
+                    rows.forEach(row => {
+                        const cellVal = row[colIdx] != null ? String(row[colIdx]) : '';
+                        if (cellVal.length > maxLen) maxLen = cellVal.length;
+                    });
+                    return { wch: Math.min(maxLen + 2, 40) };
+                });
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Championship Statistics');
+
+                const champTitle = (formConfigSnapshot.exists() && formConfigSnapshot.val().championship?.title) || 'Championship';
+                const safeTitle = champTitle.replace(/[^a-z0-9]+/gi, '_');
+                const fileName = `${safeTitle}_Statistics_${new Date().toISOString().slice(0, 10)}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+
+            } catch (error) {
+                console.error('❌ Error exporting championship statistics:', error);
+                if (typeof MODAL !== 'undefined') MODAL.error('Failed to export championship statistics. Please try again.');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = originalText; }
+            }
+        }
+        window.exportChampionshipStatisticsToExcel = exportChampionshipStatisticsToExcel;
 
         async function loadAllChampionships() {
             const listEl = document.getElementById('overallChampionshipsList');
@@ -1251,11 +1885,11 @@
                     const champSnap = await dbGet(champRef);
                     if (!champSnap.exists()) throw new Error('Championship not found');
                     const champ = champSnap.val();
-                    
+
                     // Archive current championship before loading new one
                     await CHAMPIONSHIP_MANAGER.archiveCurrentChampionship();
                     await CHAMPIONSHIP_MANAGER.clearCurrentData();
-                    
+
                     // Update formConfig with new championship (keeps it as active)
                     const formConfigRef = dbRef(database, 'formConfig');
                     await dbSet(formConfigRef, {
@@ -1268,11 +1902,11 @@
                             champId: champId
                         }
                     });
-                    
+
                     // Mark championship as active in the collection (do NOT delete it)
                     const updateRef = dbRef(database, `championships/${champId}/status`);
                     await dbSet(updateRef, 'active');
-                    
+
                     UI.hideLoading();
                     MODAL.success('✅ Championship loaded! Page will reload now.');
                     setTimeout(() => window.location.reload(), 1000);
@@ -1290,10 +1924,10 @@
                 try {
                     // Archive the current active championship first
                     await CHAMPIONSHIP_MANAGER.archiveCurrentChampionship();
-                    
+
                     // Restore the selected championship from history
                     await CHAMPIONSHIP_MANAGER.restoreChampionship(championshipId);
-                    
+
                     // Mark the championship as active
                     const historyData = await dbGet(dbRef(database, `championshipHistory/${championshipId}`));
                     if (historyData.exists()) {
@@ -1303,7 +1937,7 @@
                             championship: champData.championship || { title: 'Loaded Championship' }
                         });
                     }
-                    
+
                     // Note: Keep the archived championship in history - do NOT delete it
                     UI.hideLoading();
                     MODAL.success('✅ Championship loaded! Page will reload now.');
@@ -1329,14 +1963,14 @@
                 const c = snap.val().championship;
 
                 // Populate modal — use formConfig field names (title/venue/address)
-                document.getElementById('editChampId').value          = c.champId || '__active__';
-                document.getElementById('editChampMode').value        = 'active';
-                document.getElementById('editChampName').value        = c.title       || '';
-                document.getElementById('editChampLocation').value    = c.venue       || '';
-                document.getElementById('editChampDescription').value = c.address     || '';
-                document.getElementById('editChampDate').value        = c.date        || '';
-                document.getElementById('editChampOrganizer').value   = c.organizer   || '';
-                document.getElementById('editChampStatus').value      = 'active';
+                document.getElementById('editChampId').value = c.champId || '__active__';
+                document.getElementById('editChampMode').value = 'active';
+                document.getElementById('editChampName').value = c.title || '';
+                document.getElementById('editChampLocation').value = c.venue || '';
+                document.getElementById('editChampDescription').value = c.address || '';
+                document.getElementById('editChampDate').value = c.date || '';
+                document.getElementById('editChampOrganizer').value = c.organizer || '';
+                document.getElementById('editChampStatus').value = 'active';
 
                 // Always show the active-sync notice for this mode
                 document.getElementById('editChampActiveNotice').style.display = 'block';
@@ -1362,14 +1996,14 @@
                 const data = snap.val();
                 const c = data.championship || {};
 
-                document.getElementById('editChampId').value          = archiveId;
-                document.getElementById('editChampMode').value        = 'archived';
-                document.getElementById('editChampName').value        = c.title       || data.championshipName || '';
-                document.getElementById('editChampLocation').value    = c.venue       || '';
-                document.getElementById('editChampDescription').value = c.address     || '';
-                document.getElementById('editChampDate').value        = c.date        || '';
-                document.getElementById('editChampOrganizer').value   = c.organizer   || '';
-                document.getElementById('editChampStatus').value      = 'completed';
+                document.getElementById('editChampId').value = archiveId;
+                document.getElementById('editChampMode').value = 'archived';
+                document.getElementById('editChampName').value = c.title || data.championshipName || '';
+                document.getElementById('editChampLocation').value = c.venue || '';
+                document.getElementById('editChampDescription').value = c.address || '';
+                document.getElementById('editChampDate').value = c.date || '';
+                document.getElementById('editChampOrganizer').value = c.organizer || '';
+                document.getElementById('editChampStatus').value = 'completed';
 
                 document.getElementById('editChampActiveNotice').style.display = 'none';
 
@@ -1395,13 +2029,13 @@
                 const c = snap.val();
 
                 // Pre-fill fields
-                document.getElementById('editChampId').value          = champId;
-                document.getElementById('editChampName').value        = c.name        || '';
-                document.getElementById('editChampLocation').value    = c.location    || '';
+                document.getElementById('editChampId').value = champId;
+                document.getElementById('editChampName').value = c.name || '';
+                document.getElementById('editChampLocation').value = c.location || '';
                 document.getElementById('editChampDescription').value = c.description || '';
-                document.getElementById('editChampDate').value        = c.date        || '';
-                document.getElementById('editChampOrganizer').value   = c.organizer   || '';
-                document.getElementById('editChampStatus').value      = c.status      || 'draft';
+                document.getElementById('editChampDate').value = c.date || '';
+                document.getElementById('editChampOrganizer').value = c.organizer || '';
+                document.getElementById('editChampStatus').value = c.status || 'draft';
 
                 // Show/hide active-sync notice
                 const configSnap = await dbGet(dbRef(database, 'formConfig'));
@@ -1411,7 +2045,7 @@
                 // Clear any previous errors
                 const errEl = document.getElementById('editChampError');
                 errEl.style.display = 'none';
-                errEl.textContent   = '';
+                errEl.textContent = '';
 
                 // Show modal
                 document.getElementById('editChampModal').style.display = 'block';
@@ -1426,39 +2060,39 @@
         }
 
         async function saveChampionshipEdit() {
-            const mode    = document.getElementById('editChampMode').value || 'champ';
+            const mode = document.getElementById('editChampMode').value || 'champ';
             const champId = document.getElementById('editChampId').value;
-            const name    = document.getElementById('editChampName').value.trim();
+            const name = document.getElementById('editChampName').value.trim();
 
             if (!name) {
                 const errEl = document.getElementById('editChampError');
-                errEl.textContent   = '❌ Championship name is required.';
+                errEl.textContent = '❌ Championship name is required.';
                 errEl.style.display = 'block';
                 return;
             }
 
             const saveBtn = document.getElementById('editChampSaveBtn');
-            saveBtn.disabled    = true;
+            saveBtn.disabled = true;
             saveBtn.textContent = '⏳ Saving…';
 
             try {
-                const location    = document.getElementById('editChampLocation').value.trim();
+                const location = document.getElementById('editChampLocation').value.trim();
                 const description = document.getElementById('editChampDescription').value.trim();
-                const date        = document.getElementById('editChampDate').value.trim();
-                const organizer   = document.getElementById('editChampOrganizer').value.trim();
-                const status      = document.getElementById('editChampStatus').value;
+                const date = document.getElementById('editChampDate').value.trim();
+                const organizer = document.getElementById('editChampOrganizer').value.trim();
+                const status = document.getElementById('editChampStatus').value;
 
                 if (mode === 'active') {
                     // ── Update formConfig.championship directly ─────────────
-                    const configRef  = dbRef(database, 'formConfig');
+                    const configRef = dbRef(database, 'formConfig');
                     const configSnap = await dbGet(configRef);
-                    const config     = configSnap.exists() ? configSnap.val() : {};
+                    const config = configSnap.exists() ? configSnap.val() : {};
                     config.championship = {
                         ...(config.championship || {}),
-                        title:     name,
-                        venue:     location,
-                        address:   description,
-                        date:      date,
+                        title: name,
+                        venue: location,
+                        address: description,
+                        date: date,
                         organizer: organizer
                     };
                     await dbSet(configRef, config);
@@ -1475,12 +2109,12 @@
 
                     // Invalidate cache
                     if (typeof PERFORMANCE_CACHE !== 'undefined') {
-                        try { PERFORMANCE_CACHE.invalidate('formConfig'); } catch (_) {}
+                        try { PERFORMANCE_CACHE.invalidate('formConfig'); } catch (_) { }
                     }
 
                 } else if (mode === 'archived') {
                     // ── Update championshipHistory/{id}.championship ────────
-                    const archiveRef  = dbRef(database, `championshipHistory/${champId}`);
+                    const archiveRef = dbRef(database, `championshipHistory/${champId}`);
                     const archiveSnap = await dbGet(archiveRef);
                     if (archiveSnap.exists()) {
                         const data = archiveSnap.val();
@@ -1507,32 +2141,32 @@
 
             } catch (err) {
                 const errEl = document.getElementById('editChampError');
-                errEl.textContent   = '❌ Save failed: ' + err.message;
+                errEl.textContent = '❌ Save failed: ' + err.message;
                 errEl.style.display = 'block';
             } finally {
-                saveBtn.disabled    = false;
+                saveBtn.disabled = false;
                 saveBtn.textContent = '💾 Save Changes';
             }
         }
 
         // Close modal when clicking backdrop
-        document.getElementById('editChampModal').addEventListener('click', function(e) {
+        document.getElementById('editChampModal').addEventListener('click', function (e) {
             if (e.target === this) closeEditChampModal();
         });
 
         // ─────────────────────────────────────────────────────────────────────
-        window.showSection          = showSection;
+        window.showSection = showSection;
         window.switchToChampionship = switchToChampionship;
-        window.deleteChampionship   = deleteChampionship;
+        window.deleteChampionship = deleteChampionship;
         window.deleteNewChampionship = deleteNewChampionship;
-        window.loadNewChampionship  = loadNewChampionship;
+        window.loadNewChampionship = loadNewChampionship;
         window.loadAllChampionships = loadAllChampionships;
-        window.loadStatistics       = loadStatistics;
-        window.editChampionship          = editChampionship;
-        window.editActiveChampionship     = editActiveChampionship;
-        window.editArchivedChampionship   = editArchivedChampionship;
-        window.closeEditChampModal        = closeEditChampModal;
-        window.saveChampionshipEdit       = saveChampionshipEdit;
+        window.loadStatistics = loadStatistics;
+        window.editChampionship = editChampionship;
+        window.editActiveChampionship = editActiveChampionship;
+        window.editArchivedChampionship = editArchivedChampionship;
+        window.closeEditChampModal = closeEditChampModal;
+        window.saveChampionshipEdit = saveChampionshipEdit;
 
         let modulesReady = false;
 
@@ -1607,9 +2241,9 @@
 
     <!-- ── Admin Messaging Panel ──────────────────────────────────────────── -->
     <script type="module">
-        var _msgType        = 'info';
+        var _msgType = 'info';
         var _msgUnsubscribe = null;
-        var _panelOpen      = false;
+        var _panelOpen = false;
 
         // Wait until Firebase modules are loaded (synchronous globals set by firebase.js)
         function waitForModulesReady(cb) {
@@ -1660,7 +2294,7 @@
                 const select = document.getElementById('msgTarget');
                 if (!select) return;
                 const sorted = Array.from(courts).sort((a, b) => Number(a) - Number(b));
-                let options  = '<option value="broadcast">&#x1F4E2; All Courts (Broadcast)</option>';
+                let options = '<option value="broadcast">&#x1F4E2; All Courts (Broadcast)</option>';
                 sorted.forEach(cn => {
                     options += '<option value="court_' + cn + '">&#x1F3DF; Court ' + cn + '</option>';
                 });
@@ -1700,13 +2334,13 @@
         // ── Message type ───────────────────────────────────────────────────
         window.setMsgType = function (type) {
             _msgType = type;
-            document.getElementById('msgTypeInfo').classList.toggle('active',   type === 'info');
+            document.getElementById('msgTypeInfo').classList.toggle('active', type === 'info');
             document.getElementById('msgTypeUrgent').classList.toggle('active', type === 'urgent');
         };
 
         // ── Send ───────────────────────────────────────────────────────────
         window.sendAdminMessage = async function () {
-            const to   = document.getElementById('msgTarget').value;
+            const to = document.getElementById('msgTarget').value;
             const text = document.getElementById('msgText').value.trim();
             if (!text) return;
             const btn = document.getElementById('msgSendBtn');
@@ -1731,7 +2365,7 @@
             }
         };
 
-        window.sendAdminQuickReply = async function(msgId, to, text, btnEl) {
+        window.sendAdminQuickReply = async function (msgId, to, text, btnEl) {
             btnEl.disabled = true;
             try {
                 await window.MESSAGING.sendMessage(to, text, 'info');
@@ -1741,7 +2375,7 @@
             }
         };
 
-        window.sendAdminCustomReply = async function(msgId, to, btnEl) {
+        window.sendAdminCustomReply = async function (msgId, to, btnEl) {
             const area = document.getElementById('admin-reply-' + msgId);
             const input = area && area.querySelector('.msg-reply-input');
             if (!input || !input.value.trim()) return;
@@ -1764,16 +2398,16 @@
                 return;
             }
             feed.innerHTML = msgs.map(m => {
-                const fromRef  = m.fromRole === 'referee';
-                const isReply  = m.isReply === true && fromRef;
+                const fromRef = m.fromRole === 'referee';
+                const isReply = m.isReply === true && fromRef;
                 const isRefNew = fromRef && !m.isReply;          // referee-initiated new message
                 const isUrgent = m.type === 'urgent';
                 const isAdminMsg = !fromRef;
 
                 // CSS class
                 let cls = 'sent';
-                if (isReply)   cls = 'reply';
-                if (isRefNew)  cls = 'reply msg-item-new-from-ref';
+                if (isReply) cls = 'reply';
+                if (isRefNew) cls = 'reply msg-item-new-from-ref';
                 if (isAdminMsg && isUrgent) cls = 'sent urgent-msg';
 
                 const time = m.timestamp
@@ -1808,30 +2442,30 @@
                     const courtId = m.courtNumber ? 'court_' + m.courtNumber : 'broadcast';
                     replySection = '<button class="msg-open-reply-btn" onclick="toggleReply(\'' + m.id + '\')">&#x21A9; Reply</button>' +
                         '<div class="msg-reply-area" id="admin-reply-' + m.id + '">' +
-                            '<div class="quick-replies" style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">' +
-                                '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Acknowledged\', this)">Acknowledged</button>' +
-                                '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Will check\', this)">Will check</button>' +
-                                '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Please proceed\', this)">Please proceed</button>' +
-                            '</div>' +
-                            '<div style="display:flex; gap:8px;">' +
-                                '<textarea class="msg-reply-input" placeholder="Type your reply..."></textarea>' +
-                                '<button class="msg-reply-btn" onclick="sendAdminCustomReply(\'' + m.id + '\', \'' + courtId + '\', this)">Send</button>' +
-                            '</div>' +
+                        '<div class="quick-replies" style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">' +
+                        '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Acknowledged\', this)">Acknowledged</button>' +
+                        '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Will check\', this)">Will check</button>' +
+                        '<button class="quick-reply-btn" onclick="sendAdminQuickReply(\'' + m.id + '\', \'' + courtId + '\', \'Please proceed\', this)">Please proceed</button>' +
+                        '</div>' +
+                        '<div style="display:flex; gap:8px;">' +
+                        '<textarea class="msg-reply-input" placeholder="Type your reply..."></textarea>' +
+                        '<button class="msg-reply-btn" onclick="sendAdminCustomReply(\'' + m.id + '\', \'' + courtId + '\', this)">Send</button>' +
+                        '</div>' +
                         '</div>';
                 }
 
                 return '<div class="msg-item ' + cls + '" id="msg-' + m.id + '">' +
                     '<div class="msg-item-meta">' +
-                        '<span class="msg-item-from">' + senderLabel + '</span>' +
-                        '<span style="display:flex;align-items:center;gap:8px;">' +
-                            '<span class="msg-item-time">' + time + '</span>' +
-                            deleteBtn +
-                        '</span>' +
+                    '<span class="msg-item-from">' + senderLabel + '</span>' +
+                    '<span style="display:flex;align-items:center;gap:8px;">' +
+                    '<span class="msg-item-time">' + time + '</span>' +
+                    deleteBtn +
+                    '</span>' +
                     '</div>' +
                     '<div class="msg-item-target">' + targetTag + urgentTag + '</div>' +
                     '<div class="msg-item-text">' + escHtml(m.text) + '</div>' +
                     replySection +
-                '</div>';
+                    '</div>';
             }).join('');
         }
 
@@ -1856,13 +2490,13 @@
 
         function updateBadge(msgs) {
             if (_panelOpen) return;
-            const uid   = sessionStorage.getItem('firebaseUid') ||
-                          (window.auth && window.auth.currentUser ? window.auth.currentUser.uid : null);
+            const uid = sessionStorage.getItem('firebaseUid') ||
+                (window.auth && window.auth.currentUser ? window.auth.currentUser.uid : null);
             const count = uid ? msgs.filter(m => m.fromRole === 'referee' && (!m.readBy || !m.readBy[uid])).length : 0;
             const badge = document.getElementById('adminBadge');
-            const bell  = document.getElementById('adminBellBtn');
+            const bell = document.getElementById('adminBellBtn');
             if (!badge) return;
-            badge.textContent   = count > 99 ? '99+' : count;
+            badge.textContent = count > 99 ? '99+' : count;
             badge.style.display = count > 0 ? 'flex' : 'none';
 
             // Shake + glow the bell when a NEW reply arrives from a referee
@@ -1875,7 +2509,7 @@
             _prevAdminUnread = count;
         }
 
-        function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+        function escHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 
         document.addEventListener('keydown', e => { if (e.key === 'Escape' && _panelOpen) closeMsgPanel(); });
     </script>

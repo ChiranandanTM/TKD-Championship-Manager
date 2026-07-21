@@ -323,52 +323,94 @@
     </div>
 
     <div class="container">
-        <!-- Status Filter Tabs -->
+        <!-- Competition Type Filter -->
         <div class="status-filter-tabs">
-            <button class="status-tab active" data-filter="all" onclick="BRACKET.filterByStatus('all')">
-                All Brackets
+            <button class="status-tab active" data-comp="official" onclick="switchCompetitionType('official')">
+                Official
             </button>
-            <button class="status-tab" data-filter="live" onclick="BRACKET.filterByStatus('live')">
-                🔴 Live
-            </button>
-            <button class="status-tab" data-filter="pending" onclick="BRACKET.filterByStatus('pending')">
-                ⏳ Pending
-            </button>
-            <button class="status-tab" data-filter="completed" onclick="BRACKET.filterByStatus('completed')">
-                ✅ Completed
+            <button class="status-tab" data-comp="expo" onclick="switchCompetitionType('expo')">
+                Expo
             </button>
         </div>
 
-        <!-- Age Group Filter -->
-        <div class="category-filter-row" style="margin-bottom:16px;">
-            <span class="category-filter-label">Age Group</span>
-            <div class="status-filter-tabs" id="ageCategoryFilter" style="margin-bottom:0;flex:1;">
-                <button class="status-tab active" onclick="BRACKET.filterByAgeCategory('all')">All</button>
+        <!-- ══════════════ OFFICIAL BRACKET SECTION (unchanged) ══════════════ -->
+        <div id="officialSection">
+            <!-- Status Filter Tabs -->
+            <div class="status-filter-tabs">
+                <button class="status-tab active" data-filter="all" onclick="BRACKET.filterByStatus('all')">
+                    All Brackets
+                </button>
+                <button class="status-tab" data-filter="live" onclick="BRACKET.filterByStatus('live')">
+                    🔴 Live
+                </button>
+                <button class="status-tab" data-filter="pending" onclick="BRACKET.filterByStatus('pending')">
+                    ⏳ Pending
+                </button>
+                <button class="status-tab" data-filter="completed" onclick="BRACKET.filterByStatus('completed')">
+                    ✅ Completed
+                </button>
             </div>
-        </div>
 
-        <div class="category-filter-row">
-            <label class="category-filter-label" for="categoryFilterSelect">Category Filter</label>
-            <select id="categoryFilterSelect" class="category-filter-select"
-                onchange="BRACKET.filterByCategory(this.value)">
-                <option value="all">All Categories</option>
-            </select>
-        </div>
-
-        <!-- Categories List -->
-        <div id="categoriesList">
-            <div class="categories-grid">
-                <div class="bracket-skeleton-card"></div>
-                <div class="bracket-skeleton-card"></div>
-                <div class="bracket-skeleton-card"></div>
-                <div class="bracket-skeleton-card"></div>
-                <div class="bracket-skeleton-card"></div>
-                <div class="bracket-skeleton-card"></div>
+         
+            <div class="category-filter-row">
+                <label class="category-filter-label" for="categoryFilterSelect">Category Filter</label>
+                <select id="categoryFilterSelect" class="category-filter-select"
+                    onchange="BRACKET.filterByCategory(this.value)">
+                    <option value="all">All Categories</option>
+                </select>
             </div>
+
+            <!-- Categories List -->
+            <div id="categoriesList">
+                <div class="categories-grid">
+                    <div class="bracket-skeleton-card"></div>
+                    <div class="bracket-skeleton-card"></div>
+                    <div class="bracket-skeleton-card"></div>
+                    <div class="bracket-skeleton-card"></div>
+                    <div class="bracket-skeleton-card"></div>
+                    <div class="bracket-skeleton-card"></div>
+                </div>
+            </div>
+
+            <!-- Bracket Display -->
+            <div id="bracketContainer" style="display: none;"></div>
         </div>
 
-        <!-- Bracket Display -->
-        <div id="bracketContainer" style="display: none;"></div>
+        <!-- ══════════════ EXPO BRACKET SECTION (new, isolated) ══════════════ -->
+        <div id="expoSection" style="display:none;">
+            <div class="status-filter-tabs" id="expoStatusTabs">
+                <button class="status-tab expo-status-tab active" data-filter="all" onclick="EXPO_BRACKET.filterByStatus('all')">
+                    All Expo Categories
+                </button>
+                <button class="status-tab expo-status-tab" data-filter="live" onclick="EXPO_BRACKET.filterByStatus('live')">
+                    Live
+                </button>
+                <button class="status-tab expo-status-tab" data-filter="pending" onclick="EXPO_BRACKET.filterByStatus('pending')">
+                    Pending
+                </button>
+                <button class="status-tab expo-status-tab" data-filter="completed" onclick="EXPO_BRACKET.filterByStatus('completed')">
+                    Completed
+                </button>
+            </div>
+
+            <div class="category-filter-row">
+                <label class="category-filter-label" for="expoCategoryFilterSelect">Category Filter</label>
+                <select id="expoCategoryFilterSelect" class="category-filter-select"
+                    onchange="EXPO_BRACKET.filterByCategory(this.value)">
+                    <option value="all">All Categories</option>
+                </select>
+            </div>
+
+            <div id="expoCategoriesList">
+                <div class="categories-grid">
+                    <div class="bracket-skeleton-card"></div>
+                    <div class="bracket-skeleton-card"></div>
+                    <div class="bracket-skeleton-card"></div>
+                </div>
+            </div>
+
+            <div id="expoBracketContainer" style="display: none;"></div>
+        </div>
     </div>
 
     <div class="site-credit-footer">
@@ -384,6 +426,320 @@
     <script type="module" src="/js/ui.js"></script>
     <script type="module" src="/js/category-logic.js"></script>
     <script type="module" src="/js/bracket.js"></script>
+    <script type="module" src="/js/expoBracket.js"></script>
+
+    <!-- Official / Expo competition type toggle. Expo is initialized lazily on
+         first switch so the default (Official) page load is completely unaffected. -->
+    <script>
+        let _expoInitialized = false;
+        function switchCompetitionType(type) {
+            document.querySelectorAll('.status-filter-tabs [data-comp]').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.querySelector(`.status-filter-tabs [data-comp="${type}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const officialSection = document.getElementById('officialSection');
+            const expoSection = document.getElementById('expoSection');
+
+            if (type === 'expo') {
+                officialSection.style.display = 'none';
+                expoSection.style.display = 'block';
+                if (!_expoInitialized && typeof EXPO_BRACKET !== 'undefined') {
+                    _expoInitialized = true;
+                    EXPO_BRACKET.init();
+                }
+            } else {
+                expoSection.style.display = 'none';
+                officialSection.style.display = 'block';
+            }
+        }
+
+        // Inject a "Download Fixture (Excel)" button INSIDE the Official bracket's
+        // own header (next to the existing Download Fixture PDF / Previous Matches
+        // buttons bracket.js renders), without editing bracket.js. bracket.js
+        // rebuilds #bracketContainer's innerHTML on every render (open category,
+        // start match, set winner, stop match, etc.), which wipes out anything
+        // injected here — so a MutationObserver re-injects it after each render.
+        function injectOfficialFixtureExcelButton() {
+            const header = document.querySelector('#bracketContainer .bracket-header');
+            if (!header) return;
+            const actionsWrap = header.querySelector(':scope > div');
+            if (!actionsWrap) return;
+
+            if (!actionsWrap.querySelector('.official-fixture-excel-btn')) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn-secondary official-fixture-excel-btn';
+                btn.style.cssText = 'padding:8px 18px;font-size:0.95rem;';
+                btn.textContent = '📥 Download Fixture (Excel)';
+                btn.onclick = downloadOfficialSimpleFixtureExcel;
+                actionsWrap.insertBefore(btn, actionsWrap.firstChild);
+            }
+
+            // Take over the existing "Download Fixture PDF" button bracket.js
+            // renders — same button, same label, but now generates the official
+            // fight-diagram-style layout instead of bracket.js's own PDF export.
+            const pdfBtn = actionsWrap.querySelector('button[onclick*="downloadFixturePDF"]');
+            if (pdfBtn && !pdfBtn.dataset.overridden) {
+                pdfBtn.dataset.overridden = 'true';
+                pdfBtn.onclick = downloadOfficialFightDiagramPDF;
+            }
+        }
+
+        const _officialBracketContainer = document.getElementById('bracketContainer');
+        if (_officialBracketContainer) {
+            new MutationObserver(injectOfficialFixtureExcelButton)
+                .observe(_officialBracketContainer, { childList: true, subtree: true });
+        }
+
+        // Plain player-list Excel export for the Official bracket — NOT the
+        // visual bracket-tree drawing BRACKET.downloadFixtureExcel() produces.
+        // Just the matches/byes in the same order the bracket was generated in
+        // (round by round, seed order within each round), with team names.
+        // Reads BRACKET's already-public currentBracket/categories data only —
+        // no bracket.js changes.
+        function downloadOfficialSimpleFixtureExcel() {
+            if (typeof BRACKET === 'undefined' || !BRACKET.currentBracket) {
+                if (typeof MODAL !== 'undefined') MODAL.warning('No bracket loaded.');
+                return;
+            }
+            if (typeof XLSX === 'undefined') {
+                if (typeof MODAL !== 'undefined') MODAL.error('Excel library not loaded.');
+                return;
+            }
+
+            const category = BRACKET.categories[BRACKET.currentCategory];
+            const bracket = BRACKET.currentBracket;
+            const toArr = o => Array.isArray(o) ? o : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
+            const rounds = toArr(bracket.rounds || []).map(r => toArr(r));
+
+            // Same simple layout as the Expo fixture export: Match #, Player 1,
+            // Center 1, Player 2, Center 2, Court — flattened across all rounds,
+            // numbered sequentially in the exact order the bracket was generated in.
+            const wsData = [['Match #', 'Player 1', 'Center 1', 'Player 2', 'Center 2', 'Court']];
+
+            let matchCounter = 1;
+            rounds.forEach((roundMatches) => {
+                roundMatches.forEach((match) => {
+                    const p1 = match.player1;
+                    const p2 = match.player2;
+                    wsData.push([
+                        matchCounter++,
+                        p1 ? p1.playerName : '',
+                        p1 ? (p1.centerName || p1.teamName || '') : '',
+                        p2 ? p2.playerName : '',
+                        p2 ? (p2.centerName || p2.teamName || '') : '',
+                        match.courtNumber || ''
+                    ]);
+                });
+            });
+
+            Object.values(bracket.byePlayers || {}).forEach(p => {
+                if (p) wsData.push(['BYE', p.playerName, p.centerName || p.teamName || '', '', '', '']);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Fixture');
+            const fileName = `Official_Fixture_${category.gender}_${category.ageCategory}_${category.weightCategory}.xlsx`.replace(/\s+/g, '_');
+            XLSX.writeFile(wb, fileName);
+        }
+
+        // "Bracket Sheet" style bracket PDF — classic printable tournament sheet:
+        // title block, Division/Category lines, seeded single-elimination tree
+        // with Match No. at every junction, a Champion line, and a Gold/Silver/
+        // Bronze/Bronze table. Reads only BRACKET's already-public currentBracket
+        // /categories data (same as the other export buttons) — no bracket.js
+        // changes. Replaces the existing "Download Fixture PDF" button's output.
+        async function downloadOfficialFightDiagramPDF() {
+            if (typeof BRACKET === 'undefined' || !BRACKET.currentBracket) {
+                if (typeof MODAL !== 'undefined') MODAL.warning('No bracket loaded.');
+                return;
+            }
+            const JsPDFCtor = (window.jspdf && window.jspdf.jsPDF) || (typeof jsPDF !== 'undefined' ? jsPDF : null);
+            if (!JsPDFCtor) {
+                if (typeof MODAL !== 'undefined') MODAL.error('PDF library not loaded.');
+                return;
+            }
+
+            const category = BRACKET.categories[BRACKET.currentCategory];
+            const bracket = BRACKET.currentBracket;
+            const toArr = o => Array.isArray(o) ? o : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
+            const rounds = toArr(bracket.rounds || []).map(r => toArr(r));
+            const byePlayers = bracket.byePlayers || {};
+
+            // Championship title/date — read-only lookup, same public data every
+            // other page on this app already reads from formConfig.
+            let champTitle = 'TAEKWONDO CHAMPIONSHIP';
+            let champDate = '';
+            try {
+                const snap = await dbGet(dbRef(database, 'formConfig'));
+                if (snap.exists() && snap.val().championship) {
+                    const c = snap.val().championship;
+                    if (c.title) champTitle = c.title.toUpperCase();
+                    if (c.date) {
+                        const d = new Date(c.date);
+                        if (!isNaN(d.getTime())) champDate = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase();
+                    }
+                }
+            } catch (_) { /* header still renders fine without a date */ }
+
+            const doc = new JsPDFCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+            const pageW = doc.internal.pageSize.getWidth();
+            const marginX = 40;
+            const rightMargin = 40;
+
+            // ── Header ──────────────────────────────────────────────────────
+            let y = 44;
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+            doc.text(champTitle, pageW / 2, y, { align: 'center' }); y += 15;
+            if (champDate) {
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+                doc.text(champDate, pageW / 2, y, { align: 'center' }); y += 14;
+            }
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+            doc.text('TAEKWONDO', pageW / 2, y, { align: 'center' }); y += 20;
+            doc.setFontSize(20);
+            doc.text('Bracket Sheet', pageW / 2, y, { align: 'center' }); y += 28;
+
+            // ── Division / Category ────────────────────────────────────────
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+            doc.text('DIVISION:', marginX, y);
+            doc.line(marginX + 62, y + 2, marginX + 260, y + 2);
+            doc.text((category.weightCategory || '').toUpperCase(), marginX + 68, y);
+            y += 24;
+
+            doc.text('CATEGORY:', marginX, y);
+            doc.line(marginX + 62, y + 2, marginX + 300, y + 2);
+            doc.text(`${category.ageCategory || ''} ${category.gender || ''}`.trim().toUpperCase(), marginX + 68, y);
+            y += 26;
+
+            const bracketTop = y;
+            const bottomReserve = 110; // room for the medal table at the foot of the page
+            const pageH = doc.internal.pageSize.getHeight();
+            const availableH = pageH - bracketTop - bottomReserve;
+
+            // ── Geometry ────────────────────────────────────────────────────
+            // bracket.js only builds each round's real match data once the round
+            // before it finishes (its own comment: "do NOT pre-build them here"),
+            // so a fresh, not-yet-played bracket only has rounds[0] populated —
+            // relying on rounds.length alone would draw Round 1 and then jump
+            // straight to CHAMPION, skipping every future round. bracket.js
+            // already precomputes expectedRoundMatchCounts for exactly this
+            // (its comment: "used by PDF and UI to show future-round structure
+            // before those rounds are actually built") — use it as the source of
+            // truth for how many rounds/matches-per-round the full tree has.
+            const expectedCounts = (bracket.expectedRoundMatchCounts && bracket.expectedRoundMatchCounts.length)
+                ? bracket.expectedRoundMatchCounts
+                : rounds.map(r => r.length);
+            const numRounds = Math.max(expectedCounts.length, rounds.length, 1);
+            const r1Count = Math.max(rounds[0] ? rounds[0].length : (expectedCounts[0] || 1), 1);
+            const slotH = Math.max(40, Math.min(95, availableH / r1Count));
+            const champColW = 110;
+            const colW = Math.max(90, Math.min(160, (pageW - marginX - rightMargin - champColW) / numRounds));
+            const lineLen = Math.min(95, colW * 0.62);
+
+            // Vertical center of round r (0-indexed), match j — round 0 centers are
+            // fixed slots; every later round's match centers on the midpoint of the
+            // two matches feeding it. Falls back to even spacing if a round's size
+            // doesn't cleanly halve the previous one (e.g. an odd bye pattern).
+            const centers = [];
+            centers[0] = rounds[0] ? rounds[0].map((_, j) => bracketTop + j * slotH + slotH / 2) : [bracketTop + slotH / 2];
+            for (let r = 1; r < numRounds; r++) {
+                const prev = centers[r - 1] || [];
+                const count = rounds[r] ? rounds[r].length : (expectedCounts[r] || Math.max(1, Math.ceil(prev.length / 2)));
+                const c = [];
+                for (let j = 0; j < count; j++) {
+                    const a = prev[j * 2], b = prev[j * 2 + 1];
+                    if (a !== undefined && b !== undefined) c.push((a + b) / 2);
+                    else if (a !== undefined) c.push(a);
+                    else c.push(bracketTop + j * slotH + slotH / 2);
+                }
+                centers[r] = c;
+            }
+
+            let matchCounter = 1;
+            doc.setLineWidth(1);
+
+            const drawSlot = (x, yc, player, label) => {
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+                doc.text(label ? `${label}` : '', x - 16, yc + 3);
+                doc.line(x, yc, x + lineLen, yc);
+                if (player) {
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+                    doc.text(player.playerName || '', x + 3, yc - 3);
+                    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+                    doc.text(player.centerName || player.teamName || '', x + 3, yc + 10);
+                } else {
+                    doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
+                    doc.text('TBD', x + 3, yc - 3);
+                }
+            };
+
+            for (let r = 0; r < numRounds; r++) {
+                const x = marginX + r * colW;
+                // Use real match data where the round has already been built;
+                // otherwise synthesize blank TBD placeholders sized to the
+                // expected match count so the full tree still draws correctly.
+                const expectedCount = expectedCounts[r] || (rounds[r] ? rounds[r].length : 1);
+                const roundMatches = rounds[r] || Array.from({ length: expectedCount }, () => ({ player1: null, player2: null, winner: null }));
+                const roundCenters = centers[r] || [];
+
+                roundMatches.forEach((match, j) => {
+                    const yTop = roundCenters[j] - slotH * 0.22;
+                    const yBot = roundCenters[j] + slotH * 0.22;
+                    drawSlot(x, yTop, match.player1, r === 0 ? (j * 2 + 1) : '');
+                    drawSlot(x, yBot, match.player2, r === 0 ? (j * 2 + 2) : '');
+
+                    // Connector: vertical bracket + stub reaching toward next round
+                    const xEnd = x + lineLen;
+                    const stubEnd = x + colW;
+                    doc.line(xEnd, yTop, xEnd, yBot);
+                    doc.line(xEnd, roundCenters[j], stubEnd, roundCenters[j]);
+
+                    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+                    doc.text('Match No:', xEnd + 4, roundCenters[j] - 8);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+                    doc.text(String(matchCounter++), xEnd + 4, roundCenters[j] - 8 + 15);
+                });
+
+                // Byes: rendered as an extra labeled slot below this round's real
+                // matches — bracket.js tracks at most one bye per round, advancing
+                // straight to the next round without a match.
+                const bye = byePlayers[String(r)];
+                if (bye) {
+                    const byeY = bracketTop + (roundMatches.length + 0.5) * slotH + r * 4;
+                    drawSlot(x, byeY, bye, '');
+                    doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
+                    doc.text('BYE (advances automatically)', x + lineLen + 8, byeY);
+                }
+            }
+
+            // ── Champion ────────────────────────────────────────────────────
+            const lastRoundCenters = centers[numRounds - 1] || [bracketTop + slotH / 2];
+            const champY = lastRoundCenters[0];
+            const champX = marginX + numRounds * colW;
+            doc.setLineWidth(1);
+            doc.line(champX, champY, champX + champColW - 10, champY);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+            doc.text('CHAMPION', champX, champY - 8);
+
+            // ── Medal table ─────────────────────────────────────────────────
+            const tableW = 320, rowH = 20, colSplit = 90;
+            const tableX = marginX, tableY = pageH - bottomReserve + 20;
+            const labels = ['GOLD:', 'SILVER:', 'BRONZE:', 'BRONZE:'];
+            doc.setLineWidth(0.75);
+            labels.forEach((label, i) => {
+                const ry = tableY + i * rowH;
+                doc.rect(tableX, ry, colSplit, rowH);
+                doc.rect(tableX + colSplit, ry, tableW - colSplit, rowH);
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+                doc.text(label, tableX + 4, ry + 14);
+            });
+
+            const fileName = `Fight_Diagram_${category.gender}_${category.ageCategory}_${category.weightCategory}.pdf`.replace(/\s+/g, '_');
+            doc.save(fileName);
+        }
+    </script>
 
     <script type="module">
         // ES modules are deferred and run after DOM is ready.

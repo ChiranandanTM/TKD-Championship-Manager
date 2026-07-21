@@ -13,6 +13,11 @@
     <link rel="stylesheet" href="/assets/css/main.css">
     <script defer src="/js/modal.js"></script>
     <style>
+        @keyframes lmFadeUp {
+            from { opacity: 0; transform: translateY(14px); }
+            to { opacity: 1; transform: none; }
+        }
+
         .live-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
@@ -23,17 +28,59 @@
         .live-card {
             background: linear-gradient(135deg, rgba(22,33,62,0.98) 0%, rgba(26,26,46,0.98) 100%);
             border: 3px solid var(--accent-red);
-            border-radius: var(--border-radius);
+            border-radius: 18px;
             padding: 24px;
-            box-shadow: 0 0 30px rgba(255,23,68,0.35);
+            box-shadow: 0 0 30px rgba(255,23,68,0.35), 0 12px 28px rgba(0,0,0,.3);
             position: relative;
+            transition: transform .25s, box-shadow .3s;
+            animation: lmFadeUp .35s ease;
+        }
+
+        .live-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0 36px rgba(255,23,68,0.45), 0 16px 34px rgba(0,0,0,.35);
         }
 
         .next-card {
             background: var(--card-black);
             border: 2px solid var(--border-gold);
-            border-radius: var(--border-radius);
+            border-radius: 18px;
             padding: 24px;
+            position: relative;
+            transition: transform .25s, box-shadow .3s;
+            animation: lmFadeUp .35s ease;
+        }
+
+        .next-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 26px rgba(0,0,0,.3);
+        }
+
+        .division-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            padding: 4px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.4px;
+            text-transform: uppercase;
+            border: 1.5px solid transparent;
+            margin-bottom: 10px;
+            margin-left: 8px;
+        }
+
+        .division-official {
+            background: rgba(0, 229, 255, 0.14);
+            color: var(--accent-cyan);
+            border-color: var(--accent-cyan);
+        }
+
+        .division-expo {
+            background: rgba(255, 215, 0, 0.14);
+            color: var(--border-gold);
+            border-color: var(--border-gold);
         }
 
         .live-badge {
@@ -88,9 +135,9 @@
         }
 
         .match-category {
-            font-size: 0.95rem;
+            font-size: 1.02rem;
             color: var(--accent-cyan);
-            font-weight: 700;
+            font-weight: 800;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: 14px;
@@ -208,6 +255,60 @@
             animation: blink 1.5s ease-in-out infinite;
         }
 
+        .section-subtitle {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-gray);
+            text-transform: none;
+            letter-spacing: 0.3px;
+            margin-top: -8px;
+            margin-bottom: 16px;
+        }
+
+        .to-be-decided {
+            padding: 56px 20px;
+        }
+
+        .to-be-decided .tbd-icon {
+            font-size: 3rem;
+            margin-bottom: 12px;
+        }
+
+        .to-be-decided .tbd-title {
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: var(--text-white);
+        }
+
+        .to-be-decided .tbd-sub {
+            margin-top: 8px;
+            color: var(--text-gray);
+        }
+
+        @media (max-width: 480px) {
+            .live-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .match-vs-row {
+                flex-direction: column;
+            }
+
+            .vs-col {
+                padding: 4px 0;
+            }
+
+            .match-category {
+                padding-right: 0;
+            }
+
+            .court-badge {
+                position: static;
+                display: inline-block;
+                margin-bottom: 10px;
+            }
+        }
+
     </style>
 </head>
 <body>
@@ -226,11 +327,13 @@
         </div>
 
         <div class="section-heading live-heading">🔴 Live Now</div>
+        <div class="section-subtitle">Official &amp; Expo matches, grouped by court</div>
         <div class="live-grid" id="liveGrid">
             <div class="empty-box">⏳ Waiting for live matches...</div>
         </div>
 
         <div class="section-heading next-heading">⏭️ Up Next</div>
+        <div class="section-subtitle">The next match queued on each currently active court</div>
         <div class="live-grid" id="nextGrid">
             <div class="empty-box">No upcoming matches queued.</div>
         </div>
@@ -287,47 +390,44 @@
             return key.replace(/-/g, ' · ');
         }
 
-        function renderCard(item, isLive) {
-            const p1 = item.match.player1;
-            const p2 = item.match.player2;
-            const court = item.match.courtNumber;
-            const startTime = item.match.startTime
-                ? new Date(item.match.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+        function renderMatchCard(entry) {
+            const p1 = entry.match.player1;
+            const p2 = entry.match.player2;
+            const startTime = (entry.isLive && entry.match.startTime)
+                ? new Date(entry.match.startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
                 : null;
+            const divisionBadgeHtml = entry.division === 'Expo'
+                ? '<span class="division-badge division-expo">🎯 Expo Match</span>'
+                : '<span class="division-badge division-official">🏆 Official Match</span>';
+            const statusBadgeHtml = entry.isLive
+                ? '<div class="live-badge"><span class="live-dot"></span> LIVE</div>'
+                : '<div class="next-badge">⏭️ UP NEXT</div>';
+            const courtBadgeHtml = entry.court ? ('<div class="court-badge">🏟️ Court ' + entry.court + '</div>') : '';
+            const cardClass = entry.isLive ? 'live-card' : 'next-card';
 
-            if (isLive) {
-                return '<div class="live-card">' +
-                    (court ? '<div class="court-badge">🏟️ Court ' + court + '</div>' : '') +
-                    '<div class="live-badge"><span class="live-dot"></span> LIVE</div>' +
-                    '<div class="match-category">' + formatCategoryKey(item.categoryKey) + '</div>' +
-                    '<div class="match-vs-row">' +
-                        '<div class="player-box player-blue"><div class="p-name">' + p1.playerName + '</div><div class="p-center">' + (p1.centerName || '') + '</div></div>' +
-                        '<div class="vs-col">VS</div>' +
-                        '<div class="player-box player-red"><div class="p-name">' + p2.playerName + '</div><div class="p-center">' + (p2.centerName || '') + '</div></div>' +
-                    '</div>' +
-                    '<div class="match-meta">📍 ' + item.roundName + (startTime ? ' &nbsp;|&nbsp; ⏱️ Started ' + startTime : '') + '</div>' +
-                '</div>';
-            } else {
-                return '<div class="next-card">' +
-                    '<div class="next-badge">⏭️ UP NEXT</div>' +
-                    '<div class="match-category">' + formatCategoryKey(item.categoryKey) + '</div>' +
-                    '<div class="match-vs-row">' +
-                        '<div class="player-box player-blue"><div class="p-name">' + p1.playerName + '</div><div class="p-center">' + (p1.centerName || '') + '</div></div>' +
-                        '<div class="vs-col">VS</div>' +
-                        '<div class="player-box player-red"><div class="p-name">' + p2.playerName + '</div><div class="p-center">' + (p2.centerName || '') + '</div></div>' +
-                    '</div>' +
-                    '<div class="match-meta">📍 ' + item.roundName + '</div>' +
-                '</div>';
-            }
+            return '<div class="' + cardClass + '">' +
+                courtBadgeHtml +
+                statusBadgeHtml +
+                divisionBadgeHtml +
+                '<div class="match-category">' + formatCategoryKey(entry.categoryKey) + '</div>' +
+                '<div class="match-vs-row">' +
+                    '<div class="player-box player-blue"><div class="p-name">' + p1.playerName + '</div><div class="p-center">' + (p1.centerName || '') + '</div></div>' +
+                    '<div class="vs-col">VS</div>' +
+                    '<div class="player-box player-red"><div class="p-name">' + p2.playerName + '</div><div class="p-center">' + (p2.centerName || '') + '</div></div>' +
+                '</div>' +
+                '<div class="match-meta">📍 ' + entry.roundName + (startTime ? ' &nbsp;|&nbsp; ⏱️ Started ' + startTime : '') + '</div>' +
+            '</div>';
         }
 
-        function processAndRender(snapshot) {
-            const liveMatches = [];
-            const nextMatches = [];
+        // Official brackets: rounds-based single elimination (status: pending | in-progress | completed).
+        // Mirrors the original per-category "first pending match" logic exactly — just also
+        // returns that lookup keyed by categoryKey so it can be paired with whichever court
+        // is currently playing that same bracket.
+        function collectOfficialMatches(allBrackets) {
+            const live = [];
+            const nextByKey = {};
 
-            if (snapshot.exists()) {
-                const allBrackets = snapshot.val();
-
+            if (allBrackets) {
                 Object.entries(allBrackets).forEach(function(entry) {
                     const categoryKey = entry[0];
                     const bracket = entry[1];
@@ -360,9 +460,9 @@
                             const roundName = getRoundName(roundIndex, totalRounds, actualRoundNumber);
 
                             if (match.status === 'in-progress') {
-                                liveMatches.push({ categoryKey, roundName, match });
+                                live.push({ division: 'Official', categoryKey, roundName, match });
                             } else if (match.status === 'pending' && !foundNext) {
-                                nextMatches.push({ categoryKey, roundName, match });
+                                nextByKey[categoryKey] = { roundName, match };
                                 foundNext = true;
                             }
                         });
@@ -370,36 +470,109 @@
                 });
             }
 
-            // Sort live by court number
-            liveMatches.sort(function(a, b) {
-                return (parseInt(a.match.courtNumber) || 999) - (parseInt(b.match.courtNumber) || 999);
+            return { live, nextByKey };
+        }
+
+        // Expo brackets: flat match list, no rounds, no bronze (status: pending | live | completed).
+        // Same shape of output as collectOfficialMatches so both feed the same combine step.
+        function collectExpoMatches(allExpoBrackets) {
+            const live = [];
+            const nextByKey = {};
+
+            if (allExpoBrackets) {
+                Object.entries(allExpoBrackets).forEach(function(entry) {
+                    const categoryKey = entry[0];
+                    const bracket = entry[1];
+                    if (!bracket) return;
+
+                    const matches = Array.isArray(bracket.matches)
+                        ? bracket.matches
+                        : Object.values(bracket.matches || {});
+
+                    let foundNext = false;
+
+                    matches.forEach(function(match, idx) {
+                        if (!match || !match.player1 || !match.player2) return;
+                        const roundName = 'Match ' + (idx + 1);
+
+                        if (match.status === 'live') {
+                            live.push({ division: 'Expo', categoryKey, roundName, match });
+                        } else if (match.status === 'pending' && !foundNext) {
+                            nextByKey[categoryKey] = { roundName, match };
+                            foundNext = true;
+                        }
+                    });
+                });
+            }
+
+            return { live, nextByKey };
+        }
+
+        function byCourtNumber(a, b) {
+            const ca = parseInt(a.court, 10);
+            const cb = parseInt(b.court, 10);
+            return (isNaN(ca) ? 999 : ca) - (isNaN(cb) ? 999 : cb);
+        }
+
+        let latestOfficialBrackets = null;
+        let latestExpoBrackets = null;
+
+        function renderAll() {
+            const official = collectOfficialMatches(latestOfficialBrackets);
+            const expo = collectExpoMatches(latestExpoBrackets);
+
+            // Live: every in-progress/live match across both divisions, tagged with its court.
+            const liveItems = official.live.concat(expo.live).map(function(item) {
+                return { division: item.division, categoryKey: item.categoryKey, roundName: item.roundName, match: item.match, isLive: true, court: item.match.courtNumber };
             });
+            liveItems.sort(byCourtNumber);
 
-            // Render live
+            // Up Next: only for brackets that currently HAVE a live match on some court — the
+            // next pending match in that same bracket is shown paired with that court's badge.
+            // A bracket with no live match right now contributes nothing here (no stale/orphaned
+            // "next" cards for courts that aren't actually running anything).
+            const nextItems = [];
+            liveItems.forEach(function(item) {
+                const nextByKey = item.division === 'Expo' ? expo.nextByKey : official.nextByKey;
+                const nextEntry = nextByKey[item.categoryKey];
+                if (nextEntry) {
+                    nextItems.push({ division: item.division, categoryKey: item.categoryKey, roundName: nextEntry.roundName, match: nextEntry.match, isLive: false, court: item.court });
+                }
+            });
+            nextItems.sort(byCourtNumber);
+
             const liveGrid = document.getElementById('liveGrid');
-            liveGrid.innerHTML = liveMatches.length > 0
-                ? liveMatches.map(function(item) { return renderCard(item, true); }).join('')
-                : '<div class="empty-box">No matches are live right now.</div>';
+            liveGrid.innerHTML = liveItems.length > 0
+                ? liveItems.map(renderMatchCard).join('')
+                : '<div class="empty-box to-be-decided"><div class="tbd-icon">🕐</div><div class="tbd-title">To Be Decided</div><div class="tbd-sub">No court currently has an active match.</div></div>';
 
-            // Render next
             const nextGrid = document.getElementById('nextGrid');
-            nextGrid.innerHTML = nextMatches.length > 0
-                ? nextMatches.map(function(item) { return renderCard(item, false); }).join('')
-                : '<div class="empty-box">No upcoming matches yet.</div>';
+            nextGrid.innerHTML = nextItems.length > 0
+                ? nextItems.map(renderMatchCard).join('')
+                : '<div class="empty-box">No upcoming matches queued right now.</div>';
 
             document.getElementById('lastUpdated').textContent =
                 'Updated: ' + new Date().toLocaleTimeString('en-IN');
         }
 
-        // ── REAL-TIME LISTENER ───────────────────────────────────────────────
-        // Polls until Firebase globals are ready, then attaches dbOnValue to /brackets
+        // ── REAL-TIME LISTENERS ──────────────────────────────────────────────
+        // Polls until Firebase globals are ready, then attaches read-only dbOnValue
+        // listeners to /brackets (Official) and /expoBrackets (Expo) — the same
+        // trees every other page reads. Neither listener ever writes data.
         function startListener() {
             if (typeof database === 'undefined' || typeof dbOnValue === 'undefined' || typeof dbRef === 'undefined') {
                 setTimeout(startListener, 100);
                 return;
             }
-            dbOnValue(dbRef(database, 'brackets'), processAndRender);
-            console.log('✅ Live listener attached to /brackets');
+            dbOnValue(dbRef(database, 'brackets'), function(snapshot) {
+                latestOfficialBrackets = snapshot.exists() ? snapshot.val() : null;
+                renderAll();
+            });
+            dbOnValue(dbRef(database, 'expoBrackets'), function(snapshot) {
+                latestExpoBrackets = snapshot.exists() ? snapshot.val() : null;
+                renderAll();
+            });
+            console.log('✅ Live listeners attached to /brackets and /expoBrackets');
         }
 
         startListener();

@@ -45,7 +45,11 @@ const REGISTRATION = {
   async loadPlayerData(playerId) {
     try {
       const playerRef = dbRef(database, `players/${playerId}`);
-      const snapshot = await dbGet(playerRef);
+      let snapshot = await dbGet(playerRef);
+      if (!snapshot.exists()) {
+        // Not in players/ — check expoPlayers/ (pure Expo-only registrant)
+        snapshot = await dbGet(dbRef(database, `expoPlayers/${playerId}`));
+      }
       if (snapshot.exists()) {
         const data = snapshot.val();
         // Load image from dedicated playerImages/ path (new format).
@@ -1020,15 +1024,21 @@ const REGISTRATION = {
 
       if (this.editingPlayerId) {
         // ── UPDATE: Verify player belongs to current team before updating ──
+        // Competition Category routing: a player may live under players/ (Official),
+        // expoPlayers/ (Expo), or both (Official & Expo) — check both trees.
         const existingRef = dbRef(database, `players/${this.editingPlayerId}`);
-        const existingSnapshot = await dbGet(existingRef);
+        const existingExpoRef = dbRef(database, `expoPlayers/${this.editingPlayerId}`);
+        const [existingSnapshot, existingExpoSnapshot] = await Promise.all([
+          dbGet(existingRef),
+          dbGet(existingExpoRef)
+        ]);
 
-        if (!existingSnapshot.exists()) {
+        if (!existingSnapshot.exists() && !existingExpoSnapshot.exists()) {
           throw new Error('Player record not found.');
         }
 
-        const existingData = existingSnapshot.val();
-        
+        const existingData = existingSnapshot.exists() ? existingSnapshot.val() : existingExpoSnapshot.val();
+
         // SECURITY: Ensure player being edited belongs to current logged-in team
         if (existingData.teamId !== currentTeamId) {
           throw new Error('❌ SECURITY: You can only edit players from your own team. This player belongs to another team.');
@@ -1043,8 +1053,19 @@ const REGISTRATION = {
         });
         delete formData.playerImage; // Ensure image is never written into the player record
 
+        // Route into players/ and/or expoPlayers/ based on Competition Category.
+        // Writing formData to both trees from the same object at the same save
+        // moment keeps them in lockstep — no separate sync step needed.
+        // Unrecognized/missing category defaults to Official-only (pre-feature behavior)
+        // so a blank value never results in the player being saved nowhere.
+        const wantsExpo = formData.competitionCategory === 'Expo' || formData.competitionCategory === 'Official & Expo';
+        const wantsOfficial = formData.competitionCategory !== 'Expo';
         const playerRef = dbRef(database, `players/${this.editingPlayerId}`);
-        await dbSet(playerRef, formData);
+        const expoPlayerRef = dbRef(database, `expoPlayers/${this.editingPlayerId}`);
+        await Promise.all([
+          dbSet(playerRef, wantsOfficial ? formData : null),
+          dbSet(expoPlayerRef, wantsExpo ? formData : null)
+        ]);
 
         // Persist image to playerImages/ path (new image or migrate legacy record)
         const imgRef = dbRef(database, `playerImages/${this.editingPlayerId}`);
@@ -1067,21 +1088,30 @@ const REGISTRATION = {
         formData.status = 'pending';
         delete formData.playerImage; // Ensure image is never written into the player record
 
-        const playersRef = dbRef(database, 'players');
-        const newPlayerRef = dbPush(playersRef);
+        // Generate one push id shared across players/ and expoPlayers/ so a single
+        // id always identifies this person in whichever tree(s) they belong to.
+        const newPlayerRef = dbPush(dbRef(database, 'players'));
+        const newPlayerId = newPlayerRef.key;
 
-        console.log(`✅ SECURITY: Creating new player ${newPlayerRef.key} for team ${currentTeamId}`);
+        console.log(`✅ SECURITY: Creating new player ${newPlayerId} for team ${currentTeamId}`);
 
         // Sanitize before saving
         Object.keys(formData).forEach(key => {
           if (formData[key] === undefined) delete formData[key];
         });
 
-        await dbSet(newPlayerRef, formData);
+        // Route into players/ and/or expoPlayers/ based on Competition Category.
+        // Unrecognized/missing category defaults to Official-only (pre-feature behavior).
+        const wantsExpo = formData.competitionCategory === 'Expo' || formData.competitionCategory === 'Official & Expo';
+        const wantsOfficial = formData.competitionCategory !== 'Expo';
+        await Promise.all([
+          wantsOfficial ? dbSet(newPlayerRef, formData) : Promise.resolve(),
+          wantsExpo ? dbSet(dbRef(database, `expoPlayers/${newPlayerId}`), formData) : Promise.resolve()
+        ]);
 
         // Write image to dedicated playerImages/ path (keeps player record image-free)
         if (_uploadedImageUrl) {
-          await dbSet(dbRef(database, `playerImages/${newPlayerRef.key}`), _uploadedImageUrl);
+          await dbSet(dbRef(database, `playerImages/${newPlayerId}`), _uploadedImageUrl);
         }
 
         clearTimeout(timeout);

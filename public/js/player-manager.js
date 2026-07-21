@@ -69,6 +69,7 @@ const PLAYER_MANAGER = {
         const cleanupUpdates = {};
         cleanupUpdates[`players/${playerId}`] = null;
         cleanupUpdates[`playerImages/${playerId}`] = null;
+        cleanupUpdates[`expoPlayers/${playerId}`] = null;
 
         // Clean bracket references so no ghost IDs remain
         try {
@@ -100,6 +101,36 @@ const PLAYER_MANAGER = {
           }
         } catch (bracketErr) {
           console.warn('⚠️ Bracket cleanup partial error (non-fatal):', bracketErr.message);
+        }
+
+        // Clean Expo bracket references (isolated tree — separate from brackets/ above)
+        try {
+          const expoBracketsSnap = await dbGet(dbRef(database, 'expoBrackets'));
+          if (expoBracketsSnap.exists()) {
+            expoBracketsSnap.forEach(bracketChild => {
+              const bracketId = bracketChild.key;
+              const bracketData = bracketChild.val();
+              if (Array.isArray(bracketData.matches)) {
+                bracketData.matches.forEach((matchData, idx) => {
+                  if (matchData.player1?.id === playerId) {
+                    cleanupUpdates[`expoBrackets/${bracketId}/matches/${idx}/player1`] = null;
+                  }
+                  if (matchData.player2?.id === playerId) {
+                    cleanupUpdates[`expoBrackets/${bracketId}/matches/${idx}/player2`] = null;
+                  }
+                });
+              }
+              if (Array.isArray(bracketData.byes)) {
+                bracketData.byes.forEach((byePlayer, idx) => {
+                  if (byePlayer?.id === playerId) {
+                    cleanupUpdates[`expoBrackets/${bracketId}/byes/${idx}`] = null;
+                  }
+                });
+              }
+            });
+          }
+        } catch (expoErr) {
+          console.warn('⚠️ Expo bracket cleanup partial error (non-fatal):', expoErr.message);
         }
 
         await dbUpdate(dbRef(database), cleanupUpdates);
@@ -151,6 +182,56 @@ const PLAYER_MANAGER = {
         });
       }
       console.log(`✅ Prepared cleanup for ${bracketsModified} brackets`);
+
+      // Step 1b: Clean up Expo bracket references (isolated tree)
+      console.log('🏆 Cleaning up Expo bracket references...');
+      const expoBracketsRef = dbRef(database, 'expoBrackets');
+      const expoBracketsSnap = await dbGet(expoBracketsRef);
+
+      let expoBracketsModified = 0;
+      if (expoBracketsSnap.exists()) {
+        const allExpoBrackets = expoBracketsSnap.val();
+        Object.entries(allExpoBrackets).forEach(([bracketId, bracketData]) => {
+          if (Array.isArray(bracketData.matches)) {
+            bracketData.matches.forEach((matchData, idx) => {
+              if (matchData.player1?.id === playerId) {
+                updates[`expoBrackets/${bracketId}/matches/${idx}/player1`] = null;
+                expoBracketsModified++;
+              }
+              if (matchData.player2?.id === playerId) {
+                updates[`expoBrackets/${bracketId}/matches/${idx}/player2`] = null;
+                expoBracketsModified++;
+              }
+            });
+          }
+          if (Array.isArray(bracketData.byes)) {
+            bracketData.byes.forEach((byePlayer, idx) => {
+              if (byePlayer?.id === playerId) {
+                updates[`expoBrackets/${bracketId}/byes/${idx}`] = null;
+                expoBracketsModified++;
+              }
+            });
+          }
+        });
+      }
+      console.log(`✅ Prepared cleanup for ${expoBracketsModified} expo bracket references`);
+
+      // Step 1c: Clean up Expo match history
+      console.log('📊 Cleaning up Expo match history...');
+      const expoMatchHistorySnap = await dbGet(dbRef(database, 'expoMatchHistory'));
+      if (expoMatchHistorySnap.exists()) {
+        const allExpoHistory = expoMatchHistorySnap.val();
+        Object.entries(allExpoHistory).forEach(([categoryKey, matches]) => {
+          Object.entries(matches || {}).forEach(([matchId, matchData]) => {
+            if (matchData.player1?.id === playerId) {
+              updates[`expoMatchHistory/${categoryKey}/${matchId}/player1`] = null;
+            }
+            if (matchData.player2?.id === playerId) {
+              updates[`expoMatchHistory/${categoryKey}/${matchId}/player2`] = null;
+            }
+          });
+        });
+      }
 
       // Step 2: Clean up match history
       console.log('📊 Cleaning up match history...');
@@ -236,6 +317,7 @@ const PLAYER_MANAGER = {
       console.log('🗑️ Deleting player record...');
       updates[`players/${playerId}`] = null;
       updates[`playerImages/${playerId}`] = null;
+      updates[`expoPlayers/${playerId}`] = null;
 
       // Step 7: Execute all deletions in a single batch operation
       console.log('💾 Executing batch delete operation...');
@@ -245,6 +327,7 @@ const PLAYER_MANAGER = {
       const successMsg = `✅ Player Deleted Successfully!\n\n` +
         `Deleted: ${playerName}\n` +
         `Brackets cleaned: ${bracketsModified}\n` +
+        `Expo brackets cleaned: ${expoBracketsModified}\n` +
         `Match history cleaned: ${matchHistoryModified}\n` +
         `Match results cleaned: ${matchResultsModified}\n` +
         `Overall standings cleaned: ${overallStandingsModified}\n` +

@@ -20,6 +20,7 @@ const FORM_CONFIG = {
       { id: 'dob', label: 'Date of Birth', type: 'date', required: true, order: 5 },
       { id: 'age', label: 'Age', type: 'number', required: true, readonly: true, order: 6 },
       { id: 'gender', label: 'Gender', type: 'select', options: ['Male', 'Female'], required: true, order: 7 },
+      { id: 'competitionCategory', label: 'Competition Category', type: 'select', options: ['Official', 'Expo', 'Official & Expo'], required: true, order: 7.5 },
       { id: 'centerName', label: 'Center Name', type: 'text', required: true, order: 8 },
       { id: 'weight', label: 'Weight (kg)', type: 'text', required: true, order: 9, info: 'Enter exact weight (e.g., 60 or 61.5)' },
       { id: 'weightCategory', label: 'Weight Category', type: 'text', required: true, readonly: true, order: 10 },
@@ -35,10 +36,10 @@ const FORM_CONFIG = {
 
   // Load form configuration from Firebase with caching for performance
   async loadConfig() {
-    
+
     try {
       console.log("📥 loadConfig called...");
-      
+
       // Check cache first to reduce Firebase calls (5 minute cache)
       if (typeof PERFORMANCE_CACHE !== 'undefined') {
         try {
@@ -56,10 +57,10 @@ const FORM_CONFIG = {
       console.log("database available:", typeof database !== 'undefined');
       console.log("dbRef available:", typeof dbRef !== 'undefined');
       console.log("dbGet available:", typeof dbGet !== 'undefined');
-      
+
       const configRef = dbRef(database, 'formConfig');
       const snapshot = await dbGet(configRef);
-      
+
       if (snapshot.exists()) {
         let config = snapshot.val();
         console.log("✅ Config data received from Firebase");
@@ -68,7 +69,7 @@ const FORM_CONFIG = {
           hasFields: !!config?.fields,
           fieldsCount: config?.fields?.length || 0
         });
-        
+
         // Validate config structure - ensure both championship and fields exist
         if (!config.championship || !config.fields) {
           console.warn("⚠️ Firebase config missing required structure, merging with defaults...");
@@ -77,7 +78,7 @@ const FORM_CONFIG = {
             fields: config?.fields || this.defaultConfig.fields
           };
         }
-        
+
         // Ensure phoneNumber field is properly configured
         if (config.fields) {
           const phoneField = config.fields.find(f => f.id === 'phoneNumber');
@@ -106,8 +107,18 @@ const FORM_CONFIG = {
             { id: 'playerCategory', label: 'Player Category', type: 'hidden', required: false, order: 99 },
             { id: 'categories', label: 'Categories', type: 'hidden', required: false, order: 99 }
           );
+
+          // MIGRATION: Backfill the Competition Category field into configs saved
+          // before this field existed. Only injects if missing entirely — an
+          // admin's own edit (via the live form editor) is left untouched.
+          if (!config.fields.some(f => f.id === 'competitionCategory')) {
+            config.fields.push({
+              id: 'competitionCategory', label: 'Competition Category', type: 'select',
+              options: ['Official', 'Expo', 'Official & Expo'], required: true, order: 7.5
+            });
+          }
         }
-        
+
         console.log("✅ Config ready to return, fields count:", config.fields?.length);
         return config;
       } else {

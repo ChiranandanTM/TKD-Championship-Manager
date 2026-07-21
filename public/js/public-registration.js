@@ -1037,10 +1037,12 @@ const PUBLIC_REGISTRATION = {
       // ═══════════════════════════════════════════════════════════════════════════
       submitBtn.textContent = 'Creating player record...';
 
-      // Use Firebase's push() for guaranteed unique ID generation
-      const playersRef = dbRef(database, 'players');
-      const newPlayerRef = dbPush(playersRef);
+      // Use Firebase's push() for guaranteed unique ID generation.
+      // The same id is shared across players/ and expoPlayers/ so a single id
+      // always identifies this person in whichever tree(s) they belong to.
+      const newPlayerRef = dbPush(dbRef(database, 'players'));
       const uniquePlayerId = newPlayerRef.key;
+      const expoPlayerRef = dbRef(database, `expoPlayers/${uniquePlayerId}`);
 
       console.log(`✅ UNIQUE ID GENERATED: ${uniquePlayerId}`);
       console.log(`✅ CONCURRENT-SAFE WRITE: Saving player ${formData.playerName} to team ${formData.teamId}`);
@@ -1051,8 +1053,14 @@ const PUBLIC_REGISTRATION = {
       });
       delete formData.playerImage; // Ensure image is never written into the player record
 
-      // Write to database with unique ID
-      await dbSet(newPlayerRef, formData);
+      // Route into players/ and/or expoPlayers/ based on Competition Category.
+      // Unrecognized/missing category defaults to Official-only (pre-feature behavior).
+      const wantsExpo = formData.competitionCategory === 'Expo' || formData.competitionCategory === 'Official & Expo';
+      const wantsOfficial = formData.competitionCategory !== 'Expo';
+      await Promise.all([
+        wantsOfficial ? dbSet(newPlayerRef, formData) : Promise.resolve(),
+        wantsExpo ? dbSet(expoPlayerRef, formData) : Promise.resolve()
+      ]);
 
       // Write image to dedicated playerImages/ path (keeps players/ image-free)
       if (_uploadedImageUrl) {
@@ -1065,7 +1073,7 @@ const PUBLIC_REGISTRATION = {
       // ═══════════════════════════════════════════════════════════════════════════
       // VERIFICATION: Read back the data to confirm it was saved correctly
       // ═══════════════════════════════════════════════════════════════════════════
-      const verifySnap = await dbGet(newPlayerRef);
+      const verifySnap = await dbGet(wantsOfficial ? newPlayerRef : expoPlayerRef);
       if (!verifySnap.exists()) {
         throw new Error('❌ Verification Failed: Player data could not be confirmed in database');
       }

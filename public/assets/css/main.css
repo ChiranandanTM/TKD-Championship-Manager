@@ -36,7 +36,7 @@
 body {
   font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
   background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%),
-    url('/assets/images/image.png') center/cover no-repeat;
+    url('/assets/images/tkd-background_3_optimized_500.png') center/cover no-repeat;
   background-attachment: fixed;
   background-blend-mode: overlay;
   color: var(--text-white);

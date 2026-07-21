@@ -21,7 +21,7 @@
     <script src="/js/history-protection.js"></script>
     <style>
         body {
-            background-image: url('/assets/images/tkd-background.png');
+            background-image: url('/assets/images/tkd-background_3_optimized_500.png');
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -472,12 +472,24 @@
                     updatedAt: new Date().toISOString()
                 });
 
-                // Sign in anonymously to Firebase Auth so Firestore security rules
-                // can identify this referee. The anonymous UID is stable per browser.
+                // Sign in anonymously to Firebase Auth so RTDB/Firestore security
+                // rules can identify this referee. The anonymous UID is stable per browser.
                 try {
                     const anonResult = await signInAnonymously(auth);
                     const anonUid = anonResult.user.uid;
                     sessionStorage.setItem('firebaseUid', anonUid);
+
+                    // Write users/{anonUid} so RTDB rules (which check
+                    // root.child('users').child(auth.uid).child('role')) can resolve
+                    // this referee's role — auth.uid is the anonymous uid, NOT refId,
+                    // so this is a separate record from users/{refId} written above.
+                    await set(ref(database, `users/${anonUid}`), {
+                        role: 'referee',
+                        refId: refId,
+                        courtNumber: data.courtNumber || '',
+                        updatedAt: new Date().toISOString()
+                    });
+
                     // Write userRoles doc so Firestore rules can resolve role + court
                     await setDoc(doc(firestore, 'userRoles', anonUid), {
                         role: 'referee',

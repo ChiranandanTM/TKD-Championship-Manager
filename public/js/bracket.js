@@ -1888,6 +1888,12 @@ const BRACKET = {
         </div>`;
     };
 
+    // Referees have one fixed assigned court (set at login) — pre-select it here so
+    // starting a match always records a courtNumber without an extra manual step.
+    // Admin/judge sessions have no assigned court, so the dropdown still defaults blank for them.
+    const _assignedCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+    const _courtOption = (n) => `<option value="${n}"${_assignedCourt === String(n) ? ' selected' : ''}>Court ${n}</option>`;
+
     let html = `
       <div class="match ${match.status}${isSameTeamMatch ? ' same-team-match' : ''}" data-match-id="${match.matchId}">
         ${matchNumber ? `<div class="match-number-badge">Match ${matchNumber}</div>` : ''}
@@ -1904,11 +1910,11 @@ const BRACKET = {
             <label style="display: block; font-size: 0.9rem; color: var(--accent-cyan); margin-bottom: 6px; font-weight: 700;">🏟️ Court Number</label>
             <select id="court_${match.matchId}" style="width: 100%; padding: 8px 12px; background: var(--secondary-black); border: 1px solid var(--accent-cyan); color: var(--text-white); border-radius: 6px; font-size: 1rem; margin-bottom: 10px;">
               <option value="">Select Court</option>
-              <option value="1">Court 1</option>
-              <option value="2">Court 2</option>
-              <option value="3">Court 3</option>
-              <option value="4">Court 4</option>
-              <option value="5">Court 5</option>
+              ${_courtOption(1)}
+              ${_courtOption(2)}
+              ${_courtOption(3)}
+              ${_courtOption(4)}
+              ${_courtOption(5)}
             </select>
             <button class="btn-start-match" onclick="BRACKET.startMatch('${match.matchId}')">
               ▶️ Start Match

@@ -2,19 +2,26 @@
 // ADVANCED IMAGE OPTIMIZER MODULE
 // ============================================
 // Automatically optimizes player profile images after upload
-// Target: ~50KB-80KB or lower while maintaining visual quality
+// Target: ~35KB blob or lower while maintaining visual quality
+//
+// Sizing note: the compressed blob is stored as a base64 data URL in
+// playerImages/{id}, which firebase-rules.json caps at 50,000 characters.
+// Base64 inflates raw bytes by ~4/3, so the target here must stay well
+// under 37.5KB (50000 chars / 4 * 3) to leave room for the data-URL
+// prefix and never trip that validation rule.
 // Supports: JPG, JPEG, PNG, WEBP
 
 const IMAGE_OPTIMIZER = {
   // Configuration
   config: {
-    maxFileSizeTarget: 80 * 1024,       // 80KB target
+    maxFileSizeTarget: 35 * 1024,       // 35KB target — keeps base64 output safely under the 50,000-char Firebase limit
     maxDimensions: 500,                 // Max 500x500px for display quality
     minDimensions: 200,                 // Min 200x200px
     initialQuality: 0.75,               // Start at 75% quality
     minQuality: 0.30,                   // Don't go below 30% quality
     supportedFormats: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'],
     qualityStep: 0.05,                  // Adjust quality by 5% steps
+    maxDataUrlLength: 49000,            // Hard safety ceiling, just under Firebase's 50,000-char cap
   },
 
   // Validate file format
@@ -215,8 +222,14 @@ const IMAGE_OPTIMIZER = {
 
         // Check if already small enough
         if (file.size <= this.config.maxFileSizeTarget) {
-          console.log(`✅ Image already optimized (${(file.size / 1024).toFixed(2)}KB < 80KB target)`);
-          return resolve({ blob: file, dataUrl: await this.fileToDataUrl(file), optimized: false });
+          const smallDataUrl = await this.fileToDataUrl(file);
+          if (smallDataUrl.length <= this.config.maxDataUrlLength) {
+            console.log(`✅ Image already optimized (${(file.size / 1024).toFixed(2)}KB < target, no re-encode needed)`);
+            return resolve({ blob: file, dataUrl: smallDataUrl, optimized: false });
+          }
+          // Small binary size but still too large as base64 (e.g. an already-JPEG file
+          // right at the edge) — fall through to the normal compression pipeline below
+          // instead of returning it as-is.
         }
 
         // Load image
@@ -247,18 +260,44 @@ const IMAGE_OPTIMIZER = {
           await this.fixImageOrientation(canvas, img, orientation);
 
           // Adaptive quality compression
-          const { blob, quality } = await this.adaptiveQualityCompression(
+          let { blob, quality } = await this.adaptiveQualityCompression(
             canvas,
             this.config.maxFileSizeTarget,
             this.config.initialQuality
           );
 
           // Convert to data URL
-          const dataUrl = await this.blobToDataUrl(blob);
+          let dataUrl = await this.blobToDataUrl(blob);
+
+          // Hard safety net: pathological images (rare, e.g. very high-detail source
+          // photos) can still exceed the target after quality-only compression.
+          // Progressively shrink dimensions at minimum quality until the base64
+          // output is guaranteed to fit Firebase's 50,000-char validation cap.
+          let safetyCanvas = canvas;
+          let safetyAttempts = 0;
+          while (dataUrl.length > this.config.maxDataUrlLength && safetyAttempts < 5) {
+            safetyAttempts++;
+            const shrunkWidth = Math.max(this.config.minDimensions, Math.round(safetyCanvas.width * 0.7));
+            const shrunkHeight = Math.max(this.config.minDimensions, Math.round(safetyCanvas.height * 0.7));
+            const shrunkCanvas = document.createElement('canvas');
+            shrunkCanvas.width = shrunkWidth;
+            shrunkCanvas.height = shrunkHeight;
+            const shrunkCtx = shrunkCanvas.getContext('2d', { alpha: false });
+            shrunkCtx.fillStyle = '#FFFFFF';
+            shrunkCtx.fillRect(0, 0, shrunkWidth, shrunkHeight);
+            shrunkCtx.drawImage(safetyCanvas, 0, 0, shrunkWidth, shrunkHeight);
+
+            blob = await new Promise((r) => shrunkCanvas.toBlob(r, 'image/jpeg', this.config.minQuality));
+            dataUrl = await this.blobToDataUrl(blob);
+            quality = this.config.minQuality;
+            safetyCanvas = shrunkCanvas;
+
+            console.log(`⚠️ SAFETY NET attempt ${safetyAttempts}: shrunk to ${shrunkWidth}x${shrunkHeight}, dataUrl=${dataUrl.length} chars`);
+          }
 
           console.log(`🎯 Compression complete:`);
           console.log(`   Original: ${(file.size / 1024).toFixed(2)}KB (${file.type})`);
-          console.log(`   Optimized: ${(blob.size / 1024).toFixed(2)}KB (JPEG @ ${(quality * 100).toFixed(0)}%)`);
+          console.log(`   Optimized: ${(blob.size / 1024).toFixed(2)}KB (JPEG @ ${(quality * 100).toFixed(0)}%), dataUrl=${dataUrl.length} chars`);
           console.log(`   Reduction: ${(100 - (blob.size / file.size * 100)).toFixed(1)}%`);
 
           // Create optimized File object
