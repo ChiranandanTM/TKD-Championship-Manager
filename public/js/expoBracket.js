@@ -22,6 +22,7 @@ const EXPO_BRACKET = {
   categoryStatuses: {},
   categoriesRenderRequestId: 0,
   _initialized: false,
+  _liveCourtNumber: null, // court this session registered live presence under, if any
 
   // Initialize the Expo system (called lazily the first time the Expo tab is opened)
   async init() {
@@ -299,10 +300,39 @@ const EXPO_BRACKET = {
     if (listEl) listEl.style.display = 'none';
     if (containerEl) containerEl.style.display = 'block';
 
+    // Bracket is now open for this referee's court — mark it active so the
+    // Live Matches page shows the Upcoming Match immediately, even before any
+    // score/timer starts. If a match is already live on this court (referee
+    // resumed/refreshed mid-match), restore it as the active match right away.
+    if (typeof LIVE_PRESENCE !== 'undefined') {
+      const assignedCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+      if (assignedCourt) {
+        let resumedMatchId = null;
+        (this.currentBracket.matches || []).forEach(match => {
+          if (match && match.status === 'live' && String(match.courtNumber) === assignedCourt) {
+            resumedMatchId = match.matchId;
+          }
+        });
+        this._liveCourtNumber = assignedCourt;
+        LIVE_PRESENCE.setCourtState(assignedCourt, {
+          categoryKey,
+          matchType: 'expo',
+          activeMatchId: resumedMatchId
+        });
+      }
+    }
+
     this.renderBracket();
   },
 
   closeCategory() {
+    // Referee is leaving the bracket entirely — the court disappears from
+    // the Live Matches page (both Live and Upcoming) until reopened.
+    if (typeof LIVE_PRESENCE !== 'undefined' && this._liveCourtNumber) {
+      LIVE_PRESENCE.closeCourt(this._liveCourtNumber);
+      this._liveCourtNumber = null;
+    }
+
     this.currentCategory = null;
     this.currentBracket = null;
     const listEl = document.getElementById('expoCategoriesList');
@@ -338,6 +368,24 @@ const EXPO_BRACKET = {
     await this.saveBracket(this.currentCategory, this.currentBracket);
     this.renderBracket();
     this.renderCategories();
+
+    // Flip this court's active match so it moves from Upcoming to Live on the
+    // Live Matches page. Cleared back to null when the match is stopped below.
+    if (match.courtNumber && typeof LIVE_PRESENCE !== 'undefined') {
+      const courtKey = String(match.courtNumber);
+      // Match started on a different court than the one this bracket session
+      // opened under (e.g. admin picking a court manually) — release the old
+      // court's presence so it doesn't keep showing a stale Upcoming Match.
+      if (this._liveCourtNumber && this._liveCourtNumber !== courtKey) {
+        LIVE_PRESENCE.closeCourt(this._liveCourtNumber);
+      }
+      this._liveCourtNumber = courtKey;
+      LIVE_PRESENCE.setCourtState(match.courtNumber, {
+        categoryKey: this.currentCategory,
+        matchType: 'expo',
+        activeMatchId: match.matchId
+      });
+    }
   },
 
   setWinner(matchId, playerId) {
@@ -356,6 +404,16 @@ const EXPO_BRACKET = {
 
     match.status = 'completed';
     match.endTime = new Date().toISOString();
+
+    // Match finished but the bracket stays open — clear the active match only,
+    // so Live disappears while Upcoming keeps showing the next scheduled match.
+    if (match.courtNumber && typeof LIVE_PRESENCE !== 'undefined') {
+      LIVE_PRESENCE.setCourtState(match.courtNumber, {
+        categoryKey: this.currentCategory,
+        matchType: 'expo',
+        activeMatchId: null
+      });
+    }
 
     await this.saveMatchToHistory(this.currentCategory, match);
 

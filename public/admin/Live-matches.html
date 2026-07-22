@@ -390,6 +390,33 @@
             return key.replace(/-/g, ' · ');
         }
 
+        // The bracket's `rounds` array only contains rounds generated SO FAR
+        // (e.g. just Round 1 early in the tournament) — using its length as
+        // "total rounds" mislabels every early match as "Final". Mirrors
+        // bracket.js's own getExpectedTotalRounds(): the true total is stored
+        // in expectedRoundMatchCounts, with a playerCount-based fallback.
+        function getExpectedTotalRounds(bracket) {
+            if (!bracket) return 0;
+
+            const expectedCounts = bracket.expectedRoundMatchCounts || [];
+            const expectedTotal = Array.isArray(expectedCounts)
+                ? expectedCounts.length
+                : Object.keys(expectedCounts).length;
+            if (expectedTotal > 0) return expectedTotal;
+
+            const playerCount = Number(bracket.playerCount);
+            if (Number.isFinite(playerCount) && playerCount > 1) {
+                let rounds = 0;
+                let cur = playerCount;
+                while (cur > 1) {
+                    rounds += 1;
+                    cur = Math.ceil(cur / 2);
+                }
+                return rounds;
+            }
+            return 0;
+        }
+
         function renderMatchCard(entry) {
             const p1 = entry.match.player1;
             const p2 = entry.match.player2;
@@ -404,11 +431,15 @@
                 : '<div class="next-badge">⏭️ UP NEXT</div>';
             const courtBadgeHtml = entry.court ? ('<div class="court-badge">🏟️ Court ' + entry.court + '</div>') : '';
             const cardClass = entry.isLive ? 'live-card' : 'next-card';
+            const championshipHtml = championshipName
+                ? '<div class="section-subtitle" style="margin-top:0;margin-bottom:10px;">🏆 ' + championshipName + '</div>'
+                : '';
 
             return '<div class="' + cardClass + '">' +
                 courtBadgeHtml +
                 statusBadgeHtml +
                 divisionBadgeHtml +
+                championshipHtml +
                 '<div class="match-category">' + formatCategoryKey(entry.categoryKey) + '</div>' +
                 '<div class="match-vs-row">' +
                     '<div class="player-box player-blue"><div class="p-name">' + p1.playerName + '</div><div class="p-center">' + (p1.centerName || '') + '</div></div>' +
@@ -439,7 +470,7 @@
                         ? bracket.rounds
                         : Object.values(bracket.rounds);
 
-                    const totalRounds = rounds.length;
+                    const totalRounds = getExpectedTotalRounds(bracket);
                     let foundNext = false;
 
                     // Iterate rounds in forward order (they're stored as Round 1, Quarter-Final, Semi-Final, Final)
@@ -514,31 +545,104 @@
             return (isNaN(ca) ? 999 : ca) - (isNaN(cb) ? 999 : cb);
         }
 
+        // Find a specific match by matchId inside an official bracket's rounds
+        // (used to resolve a liveCourts/{court} presence entry to real match data).
+        function findOfficialMatchById(allBrackets, categoryKey, matchId) {
+            const bracket = allBrackets && allBrackets[categoryKey];
+            if (!bracket || !bracket.rounds) return null;
+
+            const rounds = Array.isArray(bracket.rounds) ? bracket.rounds : Object.values(bracket.rounds);
+            const totalRounds = getExpectedTotalRounds(bracket);
+
+            for (let roundIndex = 0; roundIndex < rounds.length; roundIndex++) {
+                const round = rounds[roundIndex];
+                if (!round) continue;
+                const matches = Array.isArray(round) ? round : Object.values(round);
+                const actualRoundNumber = matches[0]?.round || (roundIndex + 1);
+                for (const match of matches) {
+                    if (match && match.matchId === matchId) {
+                        return { match, roundName: getRoundName(roundIndex, totalRounds, actualRoundNumber) };
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Find a specific match by matchId inside an expo bracket's flat match list.
+        function findExpoMatchById(allExpoBrackets, categoryKey, matchId) {
+            const bracket = allExpoBrackets && allExpoBrackets[categoryKey];
+            if (!bracket) return null;
+            const matches = Array.isArray(bracket.matches) ? bracket.matches : Object.values(bracket.matches || {});
+            const idx = matches.findIndex(function(m) { return m && m.matchId === matchId; });
+            if (idx === -1) return null;
+            return { match: matches[idx], roundName: 'Match ' + (idx + 1) };
+        }
+
         let latestOfficialBrackets = null;
         let latestExpoBrackets = null;
+        let latestLiveCourts = null;
+        let championshipName = '';
 
         function renderAll() {
             const official = collectOfficialMatches(latestOfficialBrackets);
             const expo = collectExpoMatches(latestExpoBrackets);
 
-            // Live: every in-progress/live match across both divisions, tagged with its court.
-            const liveItems = official.live.concat(expo.live).map(function(item) {
-                return { division: item.division, categoryKey: item.categoryKey, roundName: item.roundName, match: item.match, isLive: true, court: item.match.courtNumber };
-            });
-            liveItems.sort(byCourtNumber);
-
-            // Up Next: only for brackets that currently HAVE a live match on some court — the
-            // next pending match in that same bracket is shown paired with that court's badge.
-            // A bracket with no live match right now contributes nothing here (no stale/orphaned
-            // "next" cards for courts that aren't actually running anything).
+            // Each liveCourts/{court} entry means "this court has a bracket open right
+            // now" — written the instant a referee opens a bracket, and removed the
+            // instant they stop/navigate away/disconnect. That entry's activeMatchId
+            // tells us whether a specific match is currently being scored:
+            //   - activeMatchId set  -> show that match as Live
+            //   - activeMatchId null -> bracket open, nothing started yet
+            // Either way, the court's next scheduled match is shown as Upcoming for as
+            // long as the bracket stays open — independent of whether anything is live.
+            const liveItems = [];
             const nextItems = [];
-            liveItems.forEach(function(item) {
-                const nextByKey = item.division === 'Expo' ? expo.nextByKey : official.nextByKey;
-                const nextEntry = nextByKey[item.categoryKey];
-                if (nextEntry) {
-                    nextItems.push({ division: item.division, categoryKey: item.categoryKey, roundName: nextEntry.roundName, match: nextEntry.match, isLive: false, court: item.court });
-                }
-            });
+
+            if (latestLiveCourts) {
+                Object.keys(latestLiveCourts).forEach(function(courtNumber) {
+                    const presence = latestLiveCourts[courtNumber];
+                    if (!presence || !presence.categoryKey) return;
+
+                    const isExpo = presence.matchType === 'expo';
+                    const nextByKey = isExpo ? expo.nextByKey : official.nextByKey;
+
+                    if (presence.activeMatchId) {
+                        const found = isExpo
+                            ? findExpoMatchById(latestExpoBrackets, presence.categoryKey, presence.activeMatchId)
+                            : findOfficialMatchById(latestOfficialBrackets, presence.categoryKey, presence.activeMatchId);
+
+                        // Presence points at data that's gone or already completed
+                        // (e.g. a stale write) — skip rather than show a wrong/stale card.
+                        const expectedStatus = isExpo ? 'live' : 'in-progress';
+                        if (found && found.match.status === expectedStatus) {
+                            liveItems.push({
+                                division: isExpo ? 'Expo' : 'Official',
+                                categoryKey: presence.categoryKey,
+                                roundName: found.roundName,
+                                match: found.match,
+                                isLive: true,
+                                court: courtNumber
+                            });
+                        }
+                    }
+
+                    // This court's bracket is open — show its next scheduled match as
+                    // Upcoming whether or not a match is live yet on it.
+                    const nextEntry = nextByKey[presence.categoryKey];
+                    if (nextEntry) {
+                        nextItems.push({
+                            division: isExpo ? 'Expo' : 'Official',
+                            categoryKey: presence.categoryKey,
+                            roundName: nextEntry.roundName,
+                            match: nextEntry.match,
+                            isLive: false,
+                            court: courtNumber
+                        });
+                    }
+                });
+            }
+
+            liveItems.sort(byCourtNumber);
             nextItems.sort(byCourtNumber);
 
             const liveGrid = document.getElementById('liveGrid');
@@ -557,8 +661,10 @@
 
         // ── REAL-TIME LISTENERS ──────────────────────────────────────────────
         // Polls until Firebase globals are ready, then attaches read-only dbOnValue
-        // listeners to /brackets (Official) and /expoBrackets (Expo) — the same
-        // trees every other page reads. Neither listener ever writes data.
+        // listeners to /brackets (Official), /expoBrackets (Expo), /liveCourts (the
+        // per-court live presence written by the referee's bracket page) and
+        // /formConfig/championship (name shown on every card). None of these
+        // listeners ever write data.
         function startListener() {
             if (typeof database === 'undefined' || typeof dbOnValue === 'undefined' || typeof dbRef === 'undefined') {
                 setTimeout(startListener, 100);
@@ -572,7 +678,15 @@
                 latestExpoBrackets = snapshot.exists() ? snapshot.val() : null;
                 renderAll();
             });
-            console.log('✅ Live listeners attached to /brackets and /expoBrackets');
+            dbOnValue(dbRef(database, 'liveCourts'), function(snapshot) {
+                latestLiveCourts = snapshot.exists() ? snapshot.val() : null;
+                renderAll();
+            });
+            dbOnValue(dbRef(database, 'formConfig/championship'), function(snapshot) {
+                championshipName = (snapshot.exists() && snapshot.val().title) ? snapshot.val().title : '';
+                renderAll();
+            });
+            console.log('✅ Live listeners attached to /brackets, /expoBrackets, /liveCourts and /formConfig/championship');
         }
 
         startListener();
