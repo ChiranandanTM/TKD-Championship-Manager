@@ -130,6 +130,20 @@ const UI = {
     document.getElementById('teamFormName').focus();
   },
 
+  // Toggle password visibility in create team modal
+  toggleTeamPasswordVisibility() {
+    const input = document.getElementById('teamFormPassword');
+    const icon = document.getElementById('teamFormPasswordToggleIcon');
+    const btn = document.getElementById('teamFormPasswordToggle');
+    if (!input || !icon) return;
+    const showing = input.type === 'text';
+    input.type = showing ? 'password' : 'text';
+    if (btn) btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+    icon.innerHTML = showing
+      ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>'
+      : '<path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+  },
+
   // Close create team modal
   closeCreateTeamModal() {
     const modal = document.getElementById('createTeamModal');
@@ -169,7 +183,12 @@ const UI = {
 
             <div style="display: flex; flex-direction: column;">
               <label style="color: var(--text-gray); margin-bottom: 8px; font-size: 0.95rem;">Password <span style="color: var(--accent-red);">*</span></label>
-              <input type="password" id="teamFormPassword" placeholder="Set initial password" required style="padding: 12px; background: var(--primary-black); border: 2px solid var(--text-gray); border-radius: 6px; color: var(--text-white); font-size: 1rem;" />
+              <div style="position: relative; display: flex; align-items: center;">
+                <input type="password" id="teamFormPassword" placeholder="Set initial password" required style="padding: 12px; padding-right: 44px; width: 100%; background: var(--primary-black); border: 2px solid var(--text-gray); border-radius: 6px; color: var(--text-white); font-size: 1rem; box-sizing: border-box;" />
+                <button type="button" onclick="UI.toggleTeamPasswordVisibility()" id="teamFormPasswordToggle" aria-label="Show password" style="position: absolute; right: 8px; background: transparent; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center;">
+                  <svg id="teamFormPasswordToggleIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+              </div>
             </div>
 
             <div style="display: flex; gap: 15px; margin-top: 20px;">

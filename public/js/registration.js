@@ -2,6 +2,18 @@
 // PLAYER REGISTRATION FORM LOGIC
 // ============================================
 
+// Fixed Poomsae registration options. Independent of the admin-configurable
+// formConfig fields — always rendered, always collected, regardless of what
+// dynamic fields the admin has set up. Not a Kyorugi field: never affects
+// competitionCategory/players-expoPlayers routing.
+const POOMSAE_CATEGORY_OPTIONS = [
+  'Official Individual', 'Expo Individual',
+  'Official Pair', 'Expo Pair',
+  'Official Group', 'Expo Group',
+  'Official Mixed Group', 'Expo Mixed Group',
+  'Official Freestyle', 'Expo Freestyle'
+];
+
 const REGISTRATION = {
   currentImageFile: null,
   currentImageURL: null,
@@ -253,6 +265,8 @@ const REGISTRATION = {
         }
       });
 
+      formHTML += this.renderPoomsaeSection();
+
       const buttonText = this.editingPlayerId ? 'Update Player' : 'Register Player';
       formHTML += `
         <div class="form-group">
@@ -274,6 +288,7 @@ const REGISTRATION = {
         // Delay so custom select dropdowns finish initializing first
         setTimeout(() => {
           this.populateFormData(playerData);
+          this.updateKyorugiFieldRequirements();
           setTimeout(() => this.updateWeightCategory(), 200);
         }, 300);
       }
@@ -325,6 +340,15 @@ const REGISTRATION = {
         }
       }
     });
+
+    // Poomsae checkboxes share a `name` (no shared `id`), so the generic
+    // getElementById(key) loop above can't reach them — pre-fill separately.
+    if (Array.isArray(playerData.poomsaeCategories)) {
+      playerData.poomsaeCategories.forEach(category => {
+        const checkbox = document.querySelector(`input[name="poomsaeCategories"][value="${category}"]`);
+        if (checkbox) checkbox.checked = true;
+      });
+    }
 
     // Re-derive ageCategory from DOB
     if (playerData.dob) {
@@ -536,6 +560,36 @@ const REGISTRATION = {
     }
   },
 
+  // Render the fixed Poomsae Registration section (not part of the dynamic
+  // formConfig fields). Purely additive — a player with no boxes checked is
+  // treated as Kyorugi-only, matching pre-feature behavior.
+  renderPoomsaeSection() {
+    let html = `<div class="form-group" data-field-id="poomsaeCategories">`;
+    html += `<label>Poomsae Registration <span class="field-info" style="font-size: 0.85em; color: #888;">(optional — leave unchecked if this player is Kyorugi-only)</span></label>`;
+    html += `<div class="checkbox-group">`;
+    POOMSAE_CATEGORY_OPTIONS.forEach(opt => {
+      html += `
+        <label class="checkbox-label">
+          <input type="checkbox" name="poomsaeCategories" value="${opt}"> ${opt}
+        </label>
+      `;
+    });
+    html += `</div></div>`;
+    return html;
+  },
+
+  // Weight and Competition Category are Kyorugi-specific — a player who has
+  // selected at least one Poomsae category (and only wants Poomsae) should
+  // be able to submit without them. Kyorugi-only/mixed registrations keep
+  // the original required behavior unchanged.
+  updateKyorugiFieldRequirements() {
+    const anyPoomsaeChecked = document.querySelectorAll('#registrationForm input[name="poomsaeCategories"]:checked').length > 0;
+    const weightInput = document.getElementById('weight');
+    const competitionCategoryInput = document.getElementById('competitionCategory');
+    if (weightInput) weightInput.required = !anyPoomsaeChecked;
+    if (competitionCategoryInput) competitionCategoryInput.required = !anyPoomsaeChecked;
+  },
+
   // Setup event listeners
   setupEventListeners() {
     // Wait a bit longer to ensure form is fully rendered
@@ -655,7 +709,13 @@ const REGISTRATION = {
           this.submitForm();
         });
         console.log('✅ Form submit listener attached');
+
+        // Poomsae checkboxes toggle whether Weight/Competition Category are required
+        form.addEventListener('change', (e) => {
+          if (e.target && e.target.name === 'poomsaeCategories') this.updateKyorugiFieldRequirements();
+        });
       }
+      this.updateKyorugiFieldRequirements();
 
       console.log('✅ Event listener setup complete');
     };
@@ -961,9 +1021,10 @@ const REGISTRATION = {
         : (formData.ageCategory || 'Not assigned');
 
       // Show confirmation dialog BEFORE proceeding with submission
+      const weightDisplay = formData.weight ? `${formData.weight} kg` : 'N/A (Poomsae only)';
       const confirmMsg = this.editingPlayerId
-        ? `✏️ Update Player Information?\n\nPlayer Name: ${formData.playerName}\nGender: ${formData.gender}\nWeight: ${formData.weight} kg\nAge Category: ${formData.ageCategory || 'Auto-calculated'}\n\nPlease review the information above before confirming.`
-        : `📝 Confirm Player Registration?\n\nPlayer Name: ${formData.playerName}\nGender: ${formData.gender}\nWeight: ${formData.weight} kg\nAge Category: ${formData.ageCategory || 'Auto-calculated'}\n\nPlease review the information above before confirming.`;
+        ? `✏️ Update Player Information?\n\nPlayer Name: ${formData.playerName}\nGender: ${formData.gender}\nWeight: ${weightDisplay}\nAge Category: ${formData.ageCategory || 'Auto-calculated'}\n\nPlease review the information above before confirming.`
+        : `📝 Confirm Player Registration?\n\nPlayer Name: ${formData.playerName}\nGender: ${formData.gender}\nWeight: ${weightDisplay}\nAge Category: ${formData.ageCategory || 'Auto-calculated'}\n\nPlease review the information above before confirming.`;
 
       const confirmed = await MODAL.showConfirm(confirmMsg);
 
@@ -1190,6 +1251,11 @@ const REGISTRATION = {
     // Phone number
     const phoneInput = document.getElementById('phoneNumber');
     data.phoneNumber = phoneInput ? phoneInput.value : '';
+
+    // Poomsae Registration checkboxes (independent of Kyorugi fields above).
+    // Empty selection = Kyorugi-only player, stored as an empty array.
+    const poomsaeChecked = document.querySelectorAll('#registrationForm input[name="poomsaeCategories"]:checked');
+    data.poomsaeCategories = Array.from(poomsaeChecked).map(cb => cb.value);
 
     console.log('✅ Final collected data:', data);
     return data;

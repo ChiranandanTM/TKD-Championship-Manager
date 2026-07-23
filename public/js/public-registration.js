@@ -3,6 +3,18 @@
 // For standalone registration without authentication
 // ============================================
 
+// Fixed Poomsae registration options. Independent of the admin-configurable
+// formConfig fields — always rendered, always collected, regardless of what
+// dynamic fields the admin has set up. Not a Kyorugi field: never affects
+// competitionCategory/players-expoPlayers routing.
+const POOMSAE_CATEGORY_OPTIONS = [
+  'Official Individual', 'Expo Individual',
+  'Official Pair', 'Expo Pair',
+  'Official Group', 'Expo Group',
+  'Official Mixed Group', 'Expo Mixed Group',
+  'Official Freestyle', 'Expo Freestyle'
+];
+
 const PUBLIC_REGISTRATION = {
   currentImageFile: null,
   currentImageURL: null,
@@ -320,6 +332,8 @@ const PUBLIC_REGISTRATION = {
         }
       });
 
+      formHTML += this.renderPoomsaeSection();
+
       formHTML += `
         <div class="form-group">
           <button type="submit" id="submitBtn" class="submit-btn">Register Player</button>
@@ -523,6 +537,24 @@ const PUBLIC_REGISTRATION = {
     }
   },
 
+  // Render the fixed Poomsae Registration section (not part of the dynamic
+  // formConfig fields). Purely additive — a player with no boxes checked is
+  // treated as Kyorugi-only, matching pre-feature behavior.
+  renderPoomsaeSection() {
+    let html = `<div class="form-group" data-field-id="poomsaeCategories">`;
+    html += `<label>Poomsae Registration <span class="field-info" style="font-size: 0.85em; color: #888;">(optional — leave unchecked if this player is Kyorugi-only)</span></label>`;
+    html += `<div class="checkbox-group">`;
+    POOMSAE_CATEGORY_OPTIONS.forEach(opt => {
+      html += `
+        <label class="checkbox-label">
+          <input type="checkbox" name="poomsaeCategories" value="${opt}"> ${opt}
+        </label>
+      `;
+    });
+    html += `</div></div>`;
+    return html;
+  },
+
   // Setup event listeners
   setupEventListeners() {
     console.log('⏱️ Setting up event listeners for public registration...');
@@ -624,9 +656,27 @@ const PUBLIC_REGISTRATION = {
         this.submitForm();
       });
       console.log('✅ Form submit listener attached');
+
+      // Poomsae checkboxes toggle whether Weight/Competition Category are required
+      form.addEventListener('change', (e) => {
+        if (e.target && e.target.name === 'poomsaeCategories') this.updateKyorugiFieldRequirements();
+      });
     }
+    this.updateKyorugiFieldRequirements();
 
     console.log('✅ Event listener setup complete');
+  },
+
+  // Weight and Competition Category are Kyorugi-specific — a player who has
+  // selected at least one Poomsae category (and only wants Poomsae) should
+  // be able to submit without them. Kyorugi-only/mixed registrations keep
+  // the original required behavior unchanged.
+  updateKyorugiFieldRequirements() {
+    const anyPoomsaeChecked = document.querySelectorAll('#registrationForm input[name="poomsaeCategories"]:checked').length > 0;
+    const weightInput = document.getElementById('weight');
+    const competitionCategoryInput = document.getElementById('competitionCategory');
+    if (weightInput) weightInput.required = !anyPoomsaeChecked;
+    if (competitionCategoryInput) competitionCategoryInput.required = !anyPoomsaeChecked;
   },
 
   // Update weight category
@@ -850,6 +900,11 @@ const PUBLIC_REGISTRATION = {
     const phoneInput = document.getElementById('phoneNumber');
     data.phoneNumber = phoneInput ? phoneInput.value : '';
 
+    // Poomsae Registration checkboxes (independent of Kyorugi fields above).
+    // Empty selection = Kyorugi-only player, stored as an empty array.
+    const poomsaeChecked = document.querySelectorAll('#registrationForm input[name="poomsaeCategories"]:checked');
+    data.poomsaeCategories = Array.from(poomsaeChecked).map(cb => cb.value);
+
     console.log('✅ Form data collected:', data);
     return data;
   },
@@ -946,7 +1001,14 @@ const PUBLIC_REGISTRATION = {
       if (!formData.gender) {
         throw new Error('❌ Gender: Required field is empty');
       }
-      if (!formData.weight || isNaN(parseFloat(formData.weight))) {
+      // Weight is a Kyorugi-specific field — not required for a Poomsae-only
+      // registration, but if a value WAS entered it must still be valid.
+      const hasPoomsae = Array.isArray(formData.poomsaeCategories) && formData.poomsaeCategories.length > 0;
+      const weightProvided = formData.weight !== undefined && formData.weight !== null && String(formData.weight).trim() !== '';
+      if (!hasPoomsae && !weightProvided) {
+        throw new Error('❌ Weight: Please enter a valid weight value');
+      }
+      if (weightProvided && isNaN(parseFloat(formData.weight))) {
         throw new Error('❌ Weight: Please enter a valid weight value');
       }
 
@@ -972,7 +1034,8 @@ const PUBLIC_REGISTRATION = {
       // ═══════════════════════════════════════════════════════════════════════════
 
       // Show confirmation dialog
-      const confirmMsg = `📝 Confirm Player Registration?\n\nPlayer Name: ${formData.playerName}\nTeam/Center: ${verifiedTeamName}\nGender: ${formData.gender}\nWeight: ${formData.weight} kg\nAge Category: ${derivedAgeCategory}\n\nPlease review before confirming.`;
+      const weightDisplay = formData.weight ? `${formData.weight} kg` : 'N/A (Poomsae only)';
+      const confirmMsg = `📝 Confirm Player Registration?\n\nPlayer Name: ${formData.playerName}\nTeam/Center: ${verifiedTeamName}\nGender: ${formData.gender}\nWeight: ${weightDisplay}\nAge Category: ${derivedAgeCategory}\n\nPlease review before confirming.`;
 
       const confirmed = await MODAL.showConfirm(confirmMsg);
       if (!confirmed) {

@@ -965,13 +965,25 @@
 
         <!-- Statistics Section -->
         <div id="statsSection" class="section">
-            <div
-                style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:24px">
-                <div>
-                    <h2 style="margin:0;font-size:1.6rem">Championship Statistics</h2>
-                    <p style="color:#555;margin:4px 0 0;font-size:.88rem">Live overview of the current championship</p>
+            <div style="margin-bottom:20px">
+                <h2 style="margin:0;font-size:1.6rem">Championship Statistics</h2>
+                <p style="color:#555;margin:4px 0 14px;font-size:.88rem">Live overview of the current championship</p>
+
+                <!-- Kyorugi / Poomsae switcher -->
+                <div style="display:inline-flex;gap:6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:5px">
+                    <button id="statsTabKyorugi" onclick="setStatsView('kyorugi')"
+                        style="padding:9px 22px;border:none;border-radius:9px;font-weight:800;font-size:.88rem;cursor:pointer;background:rgba(0,229,255,.18);color:#00E5FF">🥋
+                        Kyorugi</button>
+                    <button id="statsTabPoomsae" onclick="setStatsView('poomsae')"
+                        style="padding:9px 22px;border:none;border-radius:9px;font-weight:800;font-size:.88rem;cursor:pointer;background:transparent;color:#888">🤸
+                        Poomsae</button>
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto">
+            </div>
+
+            <!-- Kyorugi Statistics -->
+            <div id="kyorugiStatsBlock">
+                <div
+                    style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:16px">
                     <button onclick="exportChampionshipStatisticsToExcel()" id="exportStatsBtn"
                         style="padding:10px 20px;background:rgba(0,229,255,.08);border:2px solid rgba(0,229,255,.35);border-radius:10px;color:#00E5FF;font-weight:700;cursor:pointer;font-size:.88rem"
                         onmouseover="this.style.background='rgba(0,229,255,.18)'"
@@ -981,7 +993,6 @@
                         onmouseover="this.style.background='rgba(255,215,0,.16)'"
                         onmouseout="this.style.background='rgba(255,215,0,.08)'">Refresh</button>
                 </div>
-            </div>
 
             <!-- Vibrant stat cards -->
             <div class="st-cards">
@@ -1035,6 +1046,61 @@
                 placeholder="🔍  Search by name, team, category…" oninput="filterStatsTable(this.value)">
             <div class="st-wrap">
                 <div id="recentPlayersList"></div>
+            </div>
+            </div>
+            <!-- /Kyorugi Statistics -->
+
+            <!-- Poomsae Statistics -->
+            <div id="poomsaeStatsSection" class="hidden">
+                <div
+                    style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+                    <div>
+                        <h2 style="margin:0;font-size:1.4rem;color:#FFD700">🥋 Poomsae Statistics</h2>
+                        <p style="color:#555;margin:4px 0 0;font-size:.85rem">Registrations by division — current
+                            championship</p>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <button onclick="exportPoomsaeStatisticsToExcel()" id="exportPoomsaeBtn"
+                            style="padding:10px 20px;background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.35);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;font-size:.88rem"
+                            onmouseover="this.style.background='rgba(255,215,0,.18)'"
+                            onmouseout="this.style.background='rgba(255,215,0,.08)'">📥 Download Poomsae Excel</button>
+                        <button onclick="loadPoomsaeStatistics()"
+                            style="padding:10px 20px;background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.3);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;font-size:.88rem"
+                            onmouseover="this.style.background='rgba(255,215,0,.16)'"
+                            onmouseout="this.style.background='rgba(255,215,0,.08)'">Refresh</button>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px">
+                    <select id="poomsaeTeamFilter" onchange="renderPoomsaeStatistics()"
+                        style="width:auto;min-width:160px;padding:9px 14px;background:#0d1220;border:2px solid rgba(255,215,0,.25);border-radius:8px;color:#eee;font-size:.85rem">
+                        <option value="all">All Teams</option>
+                    </select>
+                    <select id="poomsaeGenderFilter" onchange="renderPoomsaeStatistics()"
+                        style="width:auto;min-width:140px;padding:9px 14px;background:#0d1220;border:2px solid rgba(255,215,0,.25);border-radius:8px;color:#eee;font-size:.85rem">
+                        <option value="all">All Genders</option>
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                    </select>
+                    <select id="poomsaeAgeCategoryFilter" onchange="renderPoomsaeStatistics()"
+                        style="width:auto;min-width:170px;padding:9px 14px;background:#0d1220;border:2px solid rgba(255,215,0,.25);border-radius:8px;color:#eee;font-size:.85rem">
+                        <option value="all">All Age Categories</option>
+                    </select>
+                    <input type="text" id="poomsaeStatsSearch" placeholder="🔍 Search by player name…"
+                        oninput="renderPoomsaeStatistics()"
+                        style="flex:1;width:auto;min-width:180px;padding:9px 14px;background:#0d1220;border:2px solid rgba(255,215,0,.25);border-radius:8px;color:#eee;font-size:.85rem">
+                </div>
+
+                <div id="poomsaeStatsTiles" class="st-cards"
+                    style="grid-template-columns:repeat(auto-fill,minmax(170px,1fr))"></div>
+
+                <div
+                    style="display:flex;gap:24px;flex-wrap:wrap;margin:20px 0 4px;font-weight:800;font-size:.95rem">
+                    <div>Total Official: <span id="poomsaeTotalOfficial" style="color:#00E5FF">0</span></div>
+                    <div>Total Expo: <span id="poomsaeTotalExpo" style="color:#FFD700">0</span></div>
+                    <div>Overall Poomsae Registrations: <span id="poomsaeTotalOverall" style="color:#00FF88">0</span>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1231,8 +1297,7 @@
     <div class="site-credit-footer">
         <span class="credit-line">© Karnataka Taekwondo Association &reg;</span>
         <span class="credit-line credit-address"># 54/1, 13th 'E' Cross, 7th Main, Rajajinagar Industrial Town, A.D. Halli, Bangalore-560 079</span>
-        <span class="credit-line credit-owner">Built and Developed by Chiranandan T M</span>
-        <span class="credit-line credit-supporter">Co-Supporter: Sharan B N</span>
+        <span class="credit-line credit-owner">Built and Developed by Karnataka Taekwondo Association &reg;</span>
     </div>
 
     <!-- Firebase SDK v9 -->
@@ -1370,6 +1435,7 @@
             if (section === 'stats') {
                 document.getElementById('statsSection').classList.remove('hidden');
                 loadStatistics();
+                loadPoomsaeStatistics();
             } else if (section === 'formEditor') {
                 document.getElementById('formEditorSection').classList.remove('hidden');
                 console.log("📝 Form Editor section clicked");
@@ -1736,6 +1802,273 @@
             }
         }
         window.exportChampionshipStatisticsToExcel = exportChampionshipStatisticsToExcel;
+
+        // ── Export Poomsae Registrations to Excel (read-only — no data written) ──
+        // Sibling to exportChampionshipStatisticsToExcel(): same players/+expoPlayers/
+        // dedup source, but filtered to only players with a poomsaeCategories
+        // selection, and split into one row per selected category (never combined
+        // into one cell) so a player entered in 3 divisions produces 3 rows.
+        function splitPoomsaeCategory(category) {
+            if (typeof category !== 'string') return null;
+            if (category.startsWith('Official ')) return { competitionType: 'Official', division: category.slice('Official '.length) };
+            if (category.startsWith('Expo ')) return { competitionType: 'Expo', division: category.slice('Expo '.length) };
+            return null;
+        }
+
+        async function exportPoomsaeStatisticsToExcel() {
+            const btn = document.getElementById('exportPoomsaeBtn');
+            const originalText = btn ? btn.textContent : '';
+
+            try {
+                if (typeof XLSX === 'undefined') {
+                    MODAL.error('Excel library is still loading. Please try again in a moment.');
+                    return;
+                }
+                if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing export...'; }
+
+                const [playersSnapshot, teamsSnapshot, formConfigSnapshot] = await Promise.all([
+                    dbGet(dbRef(database, 'players')),
+                    dbGet(dbRef(database, 'teams')),
+                    dbGet(dbRef(database, 'formConfig'))
+                ]);
+
+                const seenIds = new Set();
+                const players = [];
+                if (playersSnapshot.exists()) {
+                    playersSnapshot.forEach(child => {
+                        players.push({ id: child.key, ...child.val() });
+                        seenIds.add(child.key);
+                    });
+                }
+                try {
+                    const expoPlayersSnapshot = await dbGet(dbRef(database, 'expoPlayers'));
+                    if (expoPlayersSnapshot.exists()) {
+                        expoPlayersSnapshot.forEach(child => {
+                            if (!seenIds.has(child.key)) {
+                                players.push({ id: child.key, ...child.val() });
+                                seenIds.add(child.key);
+                            }
+                        });
+                    }
+                } catch (expoErr) {
+                    console.warn('⚠️ Could not load Expo players for Poomsae export (non-fatal):', expoErr.message);
+                }
+
+                const teamsMap = {};
+                if (teamsSnapshot.exists()) {
+                    teamsSnapshot.forEach(child => {
+                        teamsMap[child.key] = child.val().teamName || 'Unnamed Team';
+                    });
+                }
+
+                const headers = ['Player Name', 'Gender', 'Age Category', 'Weight (kg)', 'Team', 'State', 'Coach', 'Phone', 'Poomsae Division', 'Competition Type'];
+                const rows = [headers];
+
+                players.forEach(player => {
+                    if (!Array.isArray(player.poomsaeCategories) || player.poomsaeCategories.length === 0) return;
+                    const teamName = teamsMap[player.teamId] || player.centerName || player.teamName || 'Unassigned Team';
+
+                    player.poomsaeCategories.forEach(category => {
+                        const parsed = splitPoomsaeCategory(category);
+                        if (!parsed) return;
+
+                        rows.push([
+                            player.playerName || 'N/A',
+                            player.gender || 'N/A',
+                            player.ageCategory || 'N/A',
+                            (player.weight !== undefined && player.weight !== null && player.weight !== '') ? player.weight : 'N/A',
+                            teamName,
+                            player.state || 'N/A',
+                            player.coach || player.coachName || 'N/A',
+                            player.phoneNumber || 'N/A',
+                            parsed.division,
+                            parsed.competitionType
+                        ]);
+                    });
+                });
+
+                if (rows.length === 1) {
+                    MODAL.error('No players registered for Poomsae yet.');
+                    return;
+                }
+
+                const ws = XLSX.utils.aoa_to_sheet(rows);
+
+                // Auto-size columns based on the widest cell content in each column
+                ws['!cols'] = headers.map((_, colIdx) => {
+                    let maxLen = 10;
+                    rows.forEach(row => {
+                        const cellVal = row[colIdx] != null ? String(row[colIdx]) : '';
+                        if (cellVal.length > maxLen) maxLen = cellVal.length;
+                    });
+                    return { wch: Math.min(maxLen + 2, 40) };
+                });
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Poomsae Registrations');
+
+                const champTitle = (formConfigSnapshot.exists() && formConfigSnapshot.val().championship?.title) || 'Championship';
+                const safeTitle = champTitle.replace(/[^a-z0-9]+/gi, '_');
+                const fileName = `${safeTitle}_Poomsae_${new Date().toISOString().slice(0, 10)}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+
+            } catch (error) {
+                console.error('❌ Error exporting poomsae registrations:', error);
+                if (typeof MODAL !== 'undefined') MODAL.error('Failed to export poomsae registrations. Please try again.');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = originalText; }
+            }
+        }
+        window.exportPoomsaeStatisticsToExcel = exportPoomsaeStatisticsToExcel;
+
+        // ── Poomsae Statistics (additive — does not touch loadStatistics()/Kyorugi data) ──
+        const POOMSAE_STATS_DIVISIONS = [
+            'Official Individual', 'Expo Individual',
+            'Official Pair', 'Expo Pair',
+            'Official Group', 'Expo Group',
+            'Official Mixed Group', 'Expo Mixed Group',
+            'Official Freestyle', 'Expo Freestyle'
+        ];
+
+        let _poomsaePlayersCache = [];
+
+        async function loadPoomsaeStatistics() {
+            try {
+                const [playersSnapshot, teamsSnapshot] = await Promise.all([
+                    dbGet(dbRef(database, 'players')),
+                    dbGet(dbRef(database, 'teams'))
+                ]);
+
+                const seenIds = new Set();
+                const players = [];
+                if (playersSnapshot.exists()) {
+                    playersSnapshot.forEach(child => {
+                        players.push({ id: child.key, ...child.val() });
+                        seenIds.add(child.key);
+                    });
+                }
+                try {
+                    const expoPlayersSnapshot = await dbGet(dbRef(database, 'expoPlayers'));
+                    if (expoPlayersSnapshot.exists()) {
+                        expoPlayersSnapshot.forEach(child => {
+                            if (!seenIds.has(child.key)) {
+                                players.push({ id: child.key, ...child.val() });
+                                seenIds.add(child.key);
+                            }
+                        });
+                    }
+                } catch (expoErr) {
+                    console.warn('⚠️ Could not load Expo players for Poomsae statistics (non-fatal):', expoErr.message);
+                }
+
+                const teamsMap = {};
+                if (teamsSnapshot.exists()) {
+                    teamsSnapshot.forEach(child => {
+                        teamsMap[child.key] = child.val().teamName || 'Unnamed Team';
+                    });
+                }
+
+                _poomsaePlayersCache = players
+                    .filter(p => Array.isArray(p.poomsaeCategories) && p.poomsaeCategories.length > 0)
+                    .map(p => ({ ...p, _teamName: teamsMap[p.teamId] || p.centerName || p.teamName || 'Unassigned Team' }));
+
+                populatePoomsaeFilterOptions();
+                renderPoomsaeStatistics();
+            } catch (error) {
+                console.error('❌ Error loading Poomsae statistics:', error);
+            }
+        }
+
+        function populatePoomsaeFilterOptions() {
+            const teamSelect = document.getElementById('poomsaeTeamFilter');
+            const ageSelect = document.getElementById('poomsaeAgeCategoryFilter');
+            if (!teamSelect || !ageSelect) return;
+
+            const currentTeam = teamSelect.value || 'all';
+            const currentAge = ageSelect.value || 'all';
+
+            const teamNames = [...new Set(_poomsaePlayersCache.map(p => p._teamName))].sort((a, b) => a.localeCompare(b));
+            teamSelect.innerHTML = '<option value="all">All Teams</option>' +
+                teamNames.map(t => `<option value="${t}">${t}</option>`).join('');
+            teamSelect.value = teamNames.includes(currentTeam) ? currentTeam : 'all';
+
+            const ageCategories = [...new Set(_poomsaePlayersCache.map(p => p.ageCategory).filter(Boolean))].sort();
+            ageSelect.innerHTML = '<option value="all">All Age Categories</option>' +
+                ageCategories.map(c => `<option value="${c}">${c}</option>`).join('');
+            ageSelect.value = ageCategories.includes(currentAge) ? currentAge : 'all';
+        }
+
+        function renderPoomsaeStatistics() {
+            const tilesEl = document.getElementById('poomsaeStatsTiles');
+            if (!tilesEl) return;
+
+            const teamFilter = document.getElementById('poomsaeTeamFilter')?.value || 'all';
+            const genderFilter = document.getElementById('poomsaeGenderFilter')?.value || 'all';
+            const ageFilter = document.getElementById('poomsaeAgeCategoryFilter')?.value || 'all';
+            const searchQuery = (document.getElementById('poomsaeStatsSearch')?.value || '').trim().toLowerCase();
+
+            const filtered = _poomsaePlayersCache.filter(player => {
+                const teamMatch = teamFilter === 'all' || player._teamName === teamFilter;
+                const genderMatch = genderFilter === 'all' || player.gender === genderFilter;
+                const ageMatch = ageFilter === 'all' || player.ageCategory === ageFilter;
+                const searchMatch = !searchQuery || (player.playerName || '').toLowerCase().includes(searchQuery);
+                return teamMatch && genderMatch && ageMatch && searchMatch;
+            });
+
+            const counts = {};
+            POOMSAE_STATS_DIVISIONS.forEach(division => { counts[division] = 0; });
+            let totalOfficial = 0;
+            let totalExpo = 0;
+            let totalOverall = 0;
+
+            filtered.forEach(player => {
+                player.poomsaeCategories.forEach(category => {
+                    if (!Object.prototype.hasOwnProperty.call(counts, category)) return;
+                    counts[category]++;
+                    totalOverall++;
+                    if (category.startsWith('Official ')) totalOfficial++;
+                    else if (category.startsWith('Expo ')) totalExpo++;
+                });
+            });
+
+            tilesEl.innerHTML = POOMSAE_STATS_DIVISIONS.map(division => `
+                <div class="st-card" style="padding:14px">
+                    <div style="font-size:1.6rem;font-weight:900;color:${division.startsWith('Official') ? '#00E5FF' : '#FFD700'}">${counts[division]}</div>
+                    <div class="st-lbl" style="font-size:.72rem">${division}</div>
+                </div>
+            `).join('');
+
+            const officialEl = document.getElementById('poomsaeTotalOfficial');
+            const expoEl = document.getElementById('poomsaeTotalExpo');
+            const overallEl = document.getElementById('poomsaeTotalOverall');
+            if (officialEl) officialEl.textContent = totalOfficial;
+            if (expoEl) expoEl.textContent = totalExpo;
+            if (overallEl) overallEl.textContent = totalOverall;
+        }
+
+        window.loadPoomsaeStatistics = loadPoomsaeStatistics;
+        window.renderPoomsaeStatistics = renderPoomsaeStatistics;
+
+        // Kyorugi / Poomsae statistics switcher — purely a visibility toggle;
+        // both panels' data is already loaded (loadStatistics()/loadPoomsaeStatistics()
+        // both run when the Statistics section is opened), so switching tabs is instant.
+        function setStatsView(view) {
+            const kyorugiBlock = document.getElementById('kyorugiStatsBlock');
+            const poomsaeBlock = document.getElementById('poomsaeStatsSection');
+            const kyorugiTab = document.getElementById('statsTabKyorugi');
+            const poomsaeTab = document.getElementById('statsTabPoomsae');
+            if (!kyorugiBlock || !poomsaeBlock || !kyorugiTab || !poomsaeTab) return;
+
+            const showPoomsae = view === 'poomsae';
+            kyorugiBlock.classList.toggle('hidden', showPoomsae);
+            poomsaeBlock.classList.toggle('hidden', !showPoomsae);
+
+            kyorugiTab.style.background = showPoomsae ? 'transparent' : 'rgba(0,229,255,.18)';
+            kyorugiTab.style.color = showPoomsae ? '#888' : '#00E5FF';
+            poomsaeTab.style.background = showPoomsae ? 'rgba(255,215,0,.18)' : 'transparent';
+            poomsaeTab.style.color = showPoomsae ? '#FFD700' : '#888';
+        }
+        window.setStatsView = setStatsView;
 
         async function loadAllChampionships() {
             const listEl = document.getElementById('overallChampionshipsList');

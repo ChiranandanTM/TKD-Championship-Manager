@@ -296,7 +296,9 @@
             font-weight: 900;
             line-height: 1.1;
             letter-spacing: -.8px;
-            transition: all .3s ease
+            transition: all .3s ease;
+            word-break: break-word;
+            overflow-wrap: break-word
         }
 
         .td-stat-lbl {
@@ -618,6 +620,58 @@
             border-color: #B388FF
         }
 
+        /* Poomsae section — shown on a player card only when the player has
+           at least one Poomsae category selected; absent otherwise. */
+        .poomsae-card-section {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px dashed rgba(255, 215, 0, .2);
+            text-align: left
+        }
+
+        .poomsae-card-title {
+            font-size: .72rem;
+            font-weight: 800;
+            letter-spacing: .8px;
+            text-transform: uppercase;
+            color: #FFD700;
+            margin-bottom: 4px
+        }
+
+        .poomsae-card-group {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin: 3px 0
+        }
+
+        .poomsae-card-group-label {
+            font-size: .7rem;
+            font-weight: 700;
+            color: #6a7fa8;
+            text-transform: uppercase;
+            letter-spacing: .3px
+        }
+
+        .poomsae-card-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin: 0;
+            padding: 0;
+            list-style: none
+        }
+
+        .poomsae-card-list li {
+            background: rgba(255, 215, 0, .1);
+            color: #ffe082;
+            padding: 2px 9px;
+            border-radius: 8px;
+            font-size: .74rem;
+            font-weight: 700
+        }
+
         /* Filter buttons */
         .medal-filter-row {
             display: flex;
@@ -926,6 +980,8 @@
                         style="border-radius:10px;font-weight:800;padding:9px 16px;font-size:.85rem;">📥 Download Player Information</button>
                     <button class="btn-primary" id="downloadResultsBtn" onclick="downloadResults()"
                         style="border-radius:10px;font-weight:800;padding:9px 16px;font-size:.85rem;background:linear-gradient(135deg, #00E5FF, #0091EA);border:none;color:#00131a;">📊 Download Result</button>
+                    <button class="btn-primary" id="downloadPoomsaeBtn" onclick="downloadPoomsaeExcel()"
+                        style="border-radius:10px;font-weight:800;padding:9px 16px;font-size:.85rem;background:linear-gradient(135deg, #FFD700, #FFA000);border:none;color:#1a1400;">🥋 Download Poomsae Excel</button>
                 </div>
             </div>
 
@@ -992,8 +1048,7 @@
     <div class="site-credit-footer">
         <span class="credit-line">© Karnataka Taekwondo Association &reg;</span>
         <span class="credit-line credit-address"># 54/1, 13th 'E' Cross, 7th Main, Rajajinagar Industrial Town, A.D. Halli, Bangalore-560 079</span>
-        <span class="credit-line credit-owner">Built and Developed by Chiranandan T M</span>
-        <span class="credit-line credit-supporter">Co-Supporter: Sharan B N</span>
+        <span class="credit-line credit-owner">Built and Developed by Karnataka Taekwondo Association &reg;</span>
     </div>
 
     <!-- Firebase SDK v9 -->
@@ -1166,6 +1221,33 @@
             return '<span class="comp-badge comp-official">Official</span>';
         }
 
+        // Poomsae section shown on a player card — only when the player has
+        // at least one Poomsae category selected (backward compatible: older
+        // players have no `poomsaeCategories` field and simply show nothing).
+        function getPoomsaeSectionHtml(poomsaeCategories) {
+            if (!Array.isArray(poomsaeCategories) || poomsaeCategories.length === 0) return '';
+
+            const official = [];
+            const expo = [];
+            poomsaeCategories.forEach(cat => {
+                if (typeof cat !== 'string') return;
+                if (cat.startsWith('Official ')) official.push(cat.slice('Official '.length));
+                else if (cat.startsWith('Expo ')) expo.push(cat.slice('Expo '.length));
+            });
+
+            if (official.length === 0 && expo.length === 0) return '';
+
+            let html = '<div class="poomsae-card-section"><div class="poomsae-card-title">Poomsae</div>';
+            if (official.length) {
+                html += `<div class="poomsae-card-group"><span class="poomsae-card-group-label">Official</span><ul class="poomsae-card-list">${official.map(d => `<li>${d}</li>`).join('')}</ul></div>`;
+            }
+            if (expo.length) {
+                html += `<div class="poomsae-card-group"><span class="poomsae-card-group-label">Expo</span><ul class="poomsae-card-list">${expo.map(d => `<li>${d}</li>`).join('')}</ul></div>`;
+            }
+            html += '</div>';
+            return html;
+        }
+
         function updateMedalFilterButtons() {
             document.querySelectorAll('[data-medal-filter]').forEach(btn => {
                 const isActive = btn.getAttribute('data-medal-filter') === currentMedalFilter;
@@ -1285,6 +1367,7 @@
                     : '';
                 const compBadgeHtml = getCompetitionBadgeHtml(player.competitionCategory);
                 const badgeRowHtml = `<div class="card-badge-row">${compBadgeHtml}${approvedBadgeHtml}${medalBadgeHtml}</div>`;
+                const poomsaeSectionHtml = getPoomsaeSectionHtml(player.poomsaeCategories);
                 const tn = (player.playerName || '').replace(/'/g, "\\'");
 
                 html += `
@@ -1300,12 +1383,13 @@
                         <div class="player-info">
                             <div class="player-info-row"><span class="player-info-label">Gender</span><span class="${player.gender === 'Male' ? 'td-val-gender-m' : 'td-val-gender-f'}">${player.gender}</span></div>
                             <div class="player-info-row"><span class="player-info-label">Age</span><span class="player-info-value">${player.age} yrs</span></div>
-                            <div class="player-info-row"><span class="player-info-label">Weight</span><span class="td-val-weight">${player.weight} kg</span></div>
+                            <div class="player-info-row"><span class="player-info-label">Weight</span><span class="td-val-weight">${player.weight != null && player.weight !== '' ? `${player.weight} kg` : 'N/A'}</span></div>
                             <div class="player-info-row"><span class="player-info-label">Center</span><span class="td-val-center">${player.centerName}</span></div>
                             <div class="player-info-row"><span class="player-info-label">Phone</span><span class="player-info-value">${player.phoneNumber || 'N/A'}</span></div>
                         </div>
 
                         ${badgeRowHtml}
+                        ${poomsaeSectionHtml}
 
                         <div class="td-card-actions">
                             <button class="td-btn-edit" onclick="editPlayer('${player.id}')">✏️ Edit</button>
@@ -1879,6 +1963,45 @@
                 getDivisionResult(player, 'Expo')
             ]);
             downloadWorkbook([headers, ...rows], 'Results', 'Results');
+        };
+
+        // Poomsae export — only this team's players who selected at least one
+        // Poomsae division; one row per selected division (never combined into
+        // one cell), matching the admin-side Poomsae export format.
+        function splitPoomsaeCategory(category) {
+            if (typeof category !== 'string') return null;
+            if (category.startsWith('Official ')) return { competitionType: 'Official', division: category.slice('Official '.length) };
+            if (category.startsWith('Expo ')) return { competitionType: 'Expo', division: category.slice('Expo '.length) };
+            return null;
+        }
+
+        window.downloadPoomsaeExcel = function () {
+            const poomsaePlayers = teamPlayers.filter(p => Array.isArray(p.poomsaeCategories) && p.poomsaeCategories.length > 0);
+            if (!poomsaePlayers.length) {
+                MODAL.showAlert('No players registered for Poomsae yet.');
+                return;
+            }
+            const sorted = sortPlayersByAgeCategory(poomsaePlayers);
+            const headers = ['#', 'Player Name', 'Gender', 'Age Category', 'Weight', 'Poomsae Division', 'Competition Type'];
+            const rows = [];
+            let rowNum = 0;
+            sorted.forEach(player => {
+                player.poomsaeCategories.forEach(category => {
+                    const parsed = splitPoomsaeCategory(category);
+                    if (!parsed) return;
+                    rowNum++;
+                    rows.push([
+                        rowNum,
+                        player.playerName || 'N/A',
+                        player.gender || 'N/A',
+                        player.ageCategory || 'N/A',
+                        player.weight != null && player.weight !== '' ? `${player.weight} kg` : 'N/A',
+                        parsed.division,
+                        parsed.competitionType
+                    ]);
+                });
+            });
+            downloadWorkbook([headers, ...rows], 'Poomsae', 'Poomsae_Registrations');
         };
 
         // Initialize on load
