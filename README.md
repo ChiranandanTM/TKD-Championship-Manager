@@ -38,7 +38,7 @@ This is a complete championship operations platform built for Taekwondo events. 
 - [22. Recent Updates (July 2026)](#22-recent-updates-july-2026)
 - [23. Credits](#23-credits)
 
-> **Latest updates:** Expo Competition System, Live Matches redesign, referee auth fixes, Excel export tooling — Jul 21 2026
+> **Latest updates:** Poomsae Registration system, stale-token auto-retry for DB ops, footer branding update, Expo Competition System, Live Matches redesign, referee auth fixes, Excel export tooling — Jul 23 2026
 
 ## 1. Project Summary
 
@@ -48,6 +48,7 @@ Primary capabilities:
 
 - Multi-role login and authorization (admin, judge, team, referee)
 - Dynamic registration form configured by admin, with per-player Official/Expo/Official & Expo division selection
+- Fixed Poomsae registration section on every registration form — independent of Kyorugi division/weight, optional per-player, multi-select across 10 Official/Expo Poomsae categories
 - Automatic age and weight category derivation
 - Official bracket: single-elimination generation, round progression, bye/walkover handling, bronze-medal semi-final logic
 - Expo bracket: independent single-match competition system (no rounds, no bronze — winner gets Gold, runner-up Silver)
@@ -65,6 +66,7 @@ Primary capabilities:
 | Public Registration | Public users can register players with image upload/capture, form validation, phone number, and Official/Expo/Official & Expo division selection. |
 | Browser History Protection | Public users are prevented from accessing login pages via browser back button navigation. Four-layer protection system ensures security. |
 | Registration | Team registers players with image upload/capture and form validation. Phone number required for all players. |
+| Poomsae Registration | Fixed checkbox section (10 categories: Official/Expo × Individual/Pair/Group/Mixed Group/Freestyle) shown on every registration form, independent of the admin-configurable Kyorugi fields. Optional — a player with no boxes checked stays Kyorugi-only, and Weight/Competition Category become non-required once at least one Poomsae category is checked. |
 | Category Logic | Age category derives from DOB. Weight category derives from gender + age category + weight. |
 | Official Brackets | Create and manage rounds, match outcomes, bye/walkover handling, bronze medal (semi-final losers), and progression. |
 | Expo Brackets | Independent parallel competition system — flat match list (no rounds), single match per player, automatic Gold for an unpaired (odd-count) player. |
@@ -257,8 +259,8 @@ When changing Firebase credentials, update both places.
 - `users` — role lookup keyed by Firebase Auth UID (admin/judge/team/referee); referees have **two** entries: `users/<refId>` and `users/<anonymousUid>` (the latter is what RTDB rules actually check against — see [Section 17](#17-security-notes))
 - `teams`
 - `referees` — referee accounts, including assigned `courtNumber`
-- `players` — Official-division players (also holds "Official & Expo" players)
-- `expoPlayers` — Expo-only players (players registered "Official & Expo" live in both trees, keyed by the same player ID)
+- `players` — Official-division players (also holds "Official & Expo" players). Each player record may carry a `poomsaeCategories` array (e.g. `["Official Pair", "Expo Freestyle"]`) — independent of `competitionCategory`, defaults to an empty array for Kyorugi-only players and for all pre-Poomsae-feature records.
+- `expoPlayers` — Expo-only players (players registered "Official & Expo" live in both trees, keyed by the same player ID). Same `poomsaeCategories` field applies here too.
 - `playerImages`                  — dedicated node for player profile images (base64); keyed by playerId
 - `brackets` — Official single-elimination brackets, keyed by `gender-ageCategory-weightCategory`
 - `expoBrackets` — Expo brackets (flat match list + byes), same category-key convention, fully independent tree
@@ -706,6 +708,7 @@ The browser history protection system adds an additional security layer:
 - Confirm `users/<uid>/role` is correctly set.
 - Verify `firebase-rules.json` is deployed.
 - Confirm you are on the right Firebase project alias.
+- A `permission-denied` after a tab has sat idle for a while should now self-heal: `dbGet`/`dbSet`/`dbUpdate`/`dbRemove` in `public/js/firebase.js` automatically force a fresh ID token and retry once (see [Section 22](#22-recent-updates-july-2026)). If it still fails after that retry, the underlying rule/role issue is real — treat it as one of the cases above rather than a token problem.
 
 ### Team login fails
 
@@ -779,10 +782,14 @@ The browser history protection system adds an additional security layer:
 | --- | --- | --- |
 | Download Player Information | `<Team>_Player_Information.xlsx` | Every field shown on the Player Card, sorted Mini → Sub-Junior → Cadet → Junior → Senior |
 | Download Result | `<Team>_Results.xlsx` | Official Result and Expo Result kept in separate columns (Gold/Silver/Bronze/No Medal/N/A) |
+| Download Poomsae Excel | `<Team>_Poomsae_Registrations.xlsx` | Team's own players with at least one `poomsaeCategories` entry, one row per selected category |
 
 ### Admin Championship Statistics export (from `/admin/dashboard.html`)
 
-The **Export to Excel** button on the Championship Statistics panel produces `<Championship>_Statistics_<date>.xlsx` — one sheet organized **Team → Age Category**, with merged section-header rows and a full player-detail table (name, category, gender, age, weight, weight category, division, status, contact/guardian fields, submission date) repeated under each category group.
+The Championship Statistics panel has a Kyorugi/Poomsae switcher:
+
+- **Kyorugi tab** — the **Export to Excel** button produces `<Championship>_Statistics_<date>.xlsx` — one sheet organized **Team → Age Category**, with merged section-header rows and a full player-detail table (name, category, gender, age, weight, weight category, division, status, contact/guardian fields, submission date) repeated under each category group.
+- **Poomsae tab** — filterable by team/gender/age category with a name search, shows Official/Expo/overall registration tiles, and its own **Download Poomsae Excel** button producing a read-only export (name, gender, age category, weight, team, state, coach, phone, Poomsae division, competition type) — one row per player per selected category, so a player entered in 3 divisions produces 3 rows.
 
 ### Standalone bracket template generator
 
@@ -863,6 +870,25 @@ The script outputs `TKD_Bracket_Template.xlsx` in the current directory (landsca
 - ✅ Comprehensive audit completed, performance optimizations applied
 
 ## 22. Recent Updates (July 2026)
+
+### Poomsae Registration System
+
+- ✅ Fixed Poomsae checkbox section added to both registration forms (`registration.js` for team, `public-registration.js` for public) — 10 categories (Official/Expo × Individual/Pair/Group/Mixed Group/Freestyle), always rendered regardless of the admin-configurable `formConfig` fields
+- ✅ Purely additive to the existing Kyorugi flow: no boxes checked = unchanged pre-feature behavior (Kyorugi-only, `poomsaeCategories: []`); checking any box makes Weight and Competition Category non-required for that submission, so a Poomsae-only player doesn't need a Kyorugi weight entry
+- ✅ Player Card on the Team Dashboard shows a dedicated Poomsae section (Official/Expo groupings) only when the player has at least one category selected — silently absent for older/Kyorugi-only records
+- ✅ Admin Dashboard Championship Statistics panel gained a Kyorugi/Poomsae tab switcher, with its own filterable stat tiles (team/gender/age category/name search) and a **Download Poomsae Excel** export
+- ✅ Team Dashboard gained a **Download Poomsae Excel** button, scoped to the logged-in team's own players
+- ✅ Both Poomsae Excel exports are read-only and split multi-category players into one row per selected category (see [Section 19](#19-bracket-export-tools))
+
+### Stale-Token Auto-Retry for Database Operations
+
+- ✅ `dbGet`/`dbSet`/`dbUpdate`/`dbRemove` (and the Firestore equivalents) in `public/js/firebase.js` now retry once after forcing a fresh ID token when a call fails with `permission-denied`
+- ✅ Root cause: a cached ID token can expire while a tab sits idle/backgrounded, and the existing `visibilitychange`/reconnect refresh handlers race against whatever the resuming page does next — this closes that gap without surfacing an error the user had to work around by re-logging in
+
+### Footer & Branding Update
+
+- ✅ Footer on every page now shows the registered-trademark mark and the association's postal address
+- ✅ Individual builder/co-supporter credit lines removed from the public-facing footer in favor of the association's own attribution line
 
 ### Expo Competition System
 
