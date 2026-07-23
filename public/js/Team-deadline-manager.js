@@ -322,7 +322,7 @@ const TEAM_DEADLINE_MANAGER = {
     // Show confirmation with warning
     const message = `⚠️ WARNING: This will permanently delete:\n\n` +
       `• Team: "${teamName}"\n` +
-      `• All players from this team\n` +
+      `• All players from this team — Official, Expo, and Poomsae\n` +
       `• All bracket entries and match records for these players\n\n` +
       `This action CANNOT be undone.\n\n` +
       `Are you sure you want to delete this team?`;
@@ -338,22 +338,36 @@ const TEAM_DEADLINE_MANAGER = {
     try {
       console.log(`🗑️ Starting deletion process for team: "${teamName}" (ID: ${teamId})`);
 
-      // Step 1: Find and delete all players associated with this team
+      // Step 1: Find and delete all players associated with this team — across
+      // BOTH the Official (`players`) and Expo (`expoPlayers`) trees. Poomsae
+      // registrants have no separate node; they're plain rows in these same
+      // two trees with a `poomsaeCategories` field, so they're covered here too.
+      // "Official & Expo" registrants share the same id across both trees.
       console.log('📋 Finding all players for this team...');
-      const playersRef = dbRef(database, 'players');
-      const playersSnap = await dbGet(playersRef);
+      const playersSnap = await dbGet(dbRef(database, 'players'));
+      const expoPlayersSnap = await dbGet(dbRef(database, 'expoPlayers'));
 
-      const playersToDelete = [];
+      const matchesTeam = (playerData) =>
+        playerData.teamId === teamId || playerData.centerName === teamName || playerData.teamName === teamName;
+
+      const officialPlayerIds = [];
       if (playersSnap.exists()) {
-        const allPlayers = playersSnap.val();
-        Object.entries(allPlayers).forEach(([playerId, playerData]) => {
-          // Players are linked to teams via teamId (primary), or centerName/teamName (legacy fallback)
-          if (playerData.teamId === teamId || playerData.centerName === teamName || playerData.teamName === teamName) {
-            playersToDelete.push(playerId);
-          }
+        Object.entries(playersSnap.val()).forEach(([playerId, playerData]) => {
+          if (matchesTeam(playerData)) officialPlayerIds.push(playerId);
         });
       }
-      console.log(`✅ Found ${playersToDelete.length} players to delete`);
+
+      const expoPlayerIds = [];
+      if (expoPlayersSnap.exists()) {
+        Object.entries(expoPlayersSnap.val()).forEach(([playerId, playerData]) => {
+          if (matchesTeam(playerData)) expoPlayerIds.push(playerId);
+        });
+      }
+
+      // Union of ids — used for anything that references a player generically
+      // (match history, match results, standings, category results).
+      const playersToDelete = Array.from(new Set([...officialPlayerIds, ...expoPlayerIds]));
+      console.log(`✅ Found ${officialPlayerIds.length} official + ${expoPlayerIds.length} expo player record(s) (${playersToDelete.length} unique player(s)) to delete`);
 
       // Step 2: Find and clean up bracket references
       console.log('🏆 Cleaning up bracket references...');
@@ -404,6 +418,44 @@ const TEAM_DEADLINE_MANAGER = {
         });
       }
       console.log(`✅ Prepared cleanup for ${bracketsModified} brackets`);
+
+      // Step 2b: Find and clean up Expo bracket references (isolated tree —
+      // flat matches with embedded player objects, not rounds of plain ids).
+      console.log('🏆 Cleaning up Expo bracket references...');
+      const expoBracketsSnap = await dbGet(dbRef(database, 'expoBrackets'));
+
+      let expoBracketsModified = 0;
+      if (expoBracketsSnap.exists()) {
+        const allExpoBrackets = expoBracketsSnap.val();
+        Object.entries(allExpoBrackets).forEach(([bracketId, bracketData]) => {
+          let modified = false;
+
+          if (Array.isArray(bracketData.matches)) {
+            bracketData.matches.forEach((matchData, idx) => {
+              if (matchData?.player1?.id && playersToDelete.includes(matchData.player1.id)) {
+                bracketsToUpdate[`expoBrackets/${bracketId}/matches/${idx}/player1`] = null;
+                modified = true;
+              }
+              if (matchData?.player2?.id && playersToDelete.includes(matchData.player2.id)) {
+                bracketsToUpdate[`expoBrackets/${bracketId}/matches/${idx}/player2`] = null;
+                modified = true;
+              }
+            });
+          }
+
+          if (Array.isArray(bracketData.byes)) {
+            bracketData.byes.forEach((byePlayer, idx) => {
+              if (byePlayer?.id && playersToDelete.includes(byePlayer.id)) {
+                bracketsToUpdate[`expoBrackets/${bracketId}/byes/${idx}`] = null;
+                modified = true;
+              }
+            });
+          }
+
+          if (modified) expoBracketsModified++;
+        });
+      }
+      console.log(`✅ Prepared cleanup for ${expoBracketsModified} expo brackets`);
 
       // Step 3: Find and clean up match history / standings references
       console.log('📊 Cleaning up match history and standings...');
@@ -507,10 +559,36 @@ const TEAM_DEADLINE_MANAGER = {
       }
       console.log(`✅ Prepared cleanup for ${categoryResultsModified} category results`);
 
-      // Step 4: Delete all players and their images in a batch
+      // Step 3e: Clean up Expo match history
+      console.log('📊 Cleaning up Expo match history...');
+      const expoMatchHistorySnap = await dbGet(dbRef(database, 'expoMatchHistory'));
+
+      let expoMatchHistoryModified = 0;
+      if (expoMatchHistorySnap.exists()) {
+        const allExpoHistory = expoMatchHistorySnap.val();
+        Object.entries(allExpoHistory).forEach(([categoryKey, matches]) => {
+          Object.entries(matches || {}).forEach(([matchId, matchData]) => {
+            if (matchData.player1?.id && playersToDelete.includes(matchData.player1.id)) {
+              bracketsToUpdate[`expoMatchHistory/${categoryKey}/${matchId}/player1`] = null;
+              expoMatchHistoryModified++;
+            }
+            if (matchData.player2?.id && playersToDelete.includes(matchData.player2.id)) {
+              bracketsToUpdate[`expoMatchHistory/${categoryKey}/${matchId}/player2`] = null;
+              expoMatchHistoryModified++;
+            }
+          });
+        });
+      }
+      console.log(`✅ Prepared cleanup for ${expoMatchHistoryModified} expo match history entries`);
+
+      // Step 4: Delete all players (official + expo) and their images in a batch
       console.log('🗑️ Deleting players...');
-      playersToDelete.forEach(playerId => {
+      officialPlayerIds.forEach(playerId => {
         bracketsToUpdate[`players/${playerId}`] = null;
+        bracketsToUpdate[`playerImages/${playerId}`] = null;
+      });
+      expoPlayerIds.forEach(playerId => {
+        bracketsToUpdate[`expoPlayers/${playerId}`] = null;
         bracketsToUpdate[`playerImages/${playerId}`] = null;
       });
 
@@ -528,9 +606,11 @@ const TEAM_DEADLINE_MANAGER = {
       const duration = ((Date.now() - startTime) / 1000).toFixed(1);
       const successMsg = `✅ Team Deleted Successfully!\n\n` +
         `Deleted: ${teamName}\n` +
-        `Players removed: ${playersToDelete.length}\n` +
+        `Players removed: ${playersToDelete.length} (${officialPlayerIds.length} official, ${expoPlayerIds.length} expo)\n` +
         `Brackets cleaned: ${bracketsModified}\n` +
+        `Expo brackets cleaned: ${expoBracketsModified}\n` +
         `Match history cleaned: ${standingsModified}\n` +
+        `Expo match history cleaned: ${expoMatchHistoryModified}\n` +
         `Match results cleaned: ${matchResultsModified}\n` +
         `Overall standings cleaned: ${overallStandingsModified}\n` +
         `Category results cleaned: ${categoryResultsModified}\n` +

@@ -1,11 +1,11 @@
 // ============================================
-// SERVICE WORKER v6 - Fast load, offline support
-// v6: Cache-bust bump — forces fresh fetch of all assets (Expo competition
-// system: stale cached registration.js was saving Expo-only players straight
-// to players/, bypassing the new players/expoPlayers routing entirely)
+// SERVICE WORKER v7 - Fast load, offline support
+// v7: Cache-bust bump — forces fresh fetch of Team-deadline-manager.js (team
+// deletion now cascades into expoPlayers/expoBrackets/expoMatchHistory too;
+// stale precached copies were still only cleaning up the official players tree)
 // ============================================
 
-const CACHE_NAME = 'tkd-championship-v6';
+const CACHE_NAME = 'tkd-championship-v7';
 
 // Static assets to cache on install (app shell)
 // NOTE: Large page-specific scripts (bracket.js, 82KB) are excluded from
