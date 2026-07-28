@@ -39,7 +39,7 @@
         .admin-nav-btn:hover {
             border-color: rgba(255, 215, 0, .6);
             color: var(--border-gold);
-            background: rgba(255, 215, 0, .06);
+            background: #3d3115;
         }
 
         .admin-nav-btn.active {
@@ -103,7 +103,8 @@
         }
 
         .msg-bell-btn:hover {
-            background: rgba(255, 215, 0, 0.25);
+            background: var(--border-gold);
+            color: var(--primary-black);
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(255, 215, 0, 0.3);
         }
@@ -232,8 +233,8 @@
         }
 
         .msg-close-btn:hover {
-            color: var(--accent-red);
-            background: rgba(255, 23, 68, 0.1);
+            color: #fff;
+            background: var(--accent-red);
         }
 
         .msg-compose {
@@ -293,8 +294,9 @@
         }
 
         .msg-type-btn.info.active {
-            background: rgba(0, 229, 255, 0.25);
+            background: var(--accent-cyan);
             border-color: var(--accent-cyan);
+            color: var(--primary-black);
         }
 
         .msg-type-btn.urgent {
@@ -304,8 +306,9 @@
         }
 
         .msg-type-btn.urgent.active {
-            background: rgba(255, 23, 68, 0.25);
+            background: var(--accent-red);
             border-color: var(--accent-red);
+            color: #fff;
         }
 
         .msg-textarea {
@@ -347,8 +350,9 @@
         }
 
         .msg-send-btn:hover {
-            opacity: 0.9;
+            background: linear-gradient(135deg, #FFE700, var(--border-gold));
             transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(255, 215, 0, 0.4);
         }
 
         .msg-send-btn:disabled {
@@ -516,11 +520,12 @@
             padding: 0 16px;
             font-size: 0.85rem;
             cursor: pointer;
-            transition: opacity 0.2s;
+            transition: all 0.2s;
         }
 
         .msg-reply-btn:hover {
-            opacity: 0.85;
+            background: linear-gradient(135deg, #33C3FF, var(--accent-cyan));
+            box-shadow: 0 4px 14px rgba(0, 229, 255, 0.4);
         }
 
         .msg-reply-btn:disabled {
@@ -541,7 +546,8 @@
         }
 
         .msg-open-reply-btn:hover {
-            background: rgba(0, 229, 255, 0.1);
+            background: var(--accent-cyan);
+            color: var(--primary-black);
         }
 
         .quick-reply-btn {
@@ -557,7 +563,8 @@
         }
 
         .quick-reply-btn:hover {
-            background: rgba(0, 229, 255, 0.2);
+            background: var(--accent-cyan);
+            color: var(--primary-black);
         }
 
         .msg-empty {
@@ -581,8 +588,8 @@
         }
 
         .msg-delete-btn:hover {
-            color: var(--accent-red);
-            background: rgba(255, 23, 68, 0.12);
+            color: #fff;
+            background: var(--accent-red);
         }
 
         .msg-item-new-from-ref {

@@ -1712,6 +1712,7 @@ const BRACKET = {
         <div style="display:flex;gap:10px;align-items:center;">
           ${isComplete ? `<button class="btn-success" onclick="BRACKET.exportToExcel()" style="background:var(--success-green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.95rem;">📥 Export Results</button>` : ''}
           <button class="btn-secondary" onclick="BRACKET.downloadFixturePDF()" style="padding:8px 18px;font-size:0.95rem;">📄 Download Fixture PDF</button>
+          <button class="btn-secondary" onclick="BRACKET.downloadPlayerListExcel()" style="padding:8px 18px;font-size:0.95rem;">📋 Download Player List (Excel)</button>
           <button class="btn-secondary" onclick="BRACKET.showMatchHistory()">📋 Previous Matches</button>
           <button class="msg-bell-btn" onclick="if(typeof toggleMsgPanel==='function')toggleMsgPanel()" title="Court Messages" style="padding:8px 14px;font-size:0.95rem;white-space:nowrap;">🔔 Messages</button>
         </div>
@@ -3377,6 +3378,39 @@ const BRACKET = {
     // ── DOWNLOAD ─────────────────────────────────────────────────────────
     const safeLabel = categoryLabel.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
     const fileName = `Results_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  },
+
+  // Simple player roster for every player in the currently open bracket's
+  // category — just Player Name / Center / Team, not the bracket/fixture
+  // layout. Available regardless of bracket status.
+  downloadPlayerListExcel() {
+    if (typeof XLSX === 'undefined') {
+      MODAL.error('Excel library not loaded. Please refresh the page and try again.');
+      return;
+    }
+    const cat = this.categories[this.currentCategory];
+    if (!cat || !cat.players || cat.players.length === 0) {
+      MODAL.warning('No players in this category.');
+      return;
+    }
+    const categoryLabel = `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`;
+
+    const rows = [['Player Name', 'Center / Club', 'Team']];
+    [...cat.players]
+      .sort((a, b) => (a.playerName || '').localeCompare(b.playerName || ''))
+      .forEach(p => {
+        rows.push([p.playerName || '', p.centerName || '', p.teamName || '']);
+      });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [{ wch: 28 }, { wch: 28 }, { wch: 20 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Players');
+
+    const safeLabel = categoryLabel.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
+    const fileName = `Players_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, fileName);
   }
 };

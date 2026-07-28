@@ -980,7 +980,7 @@ button:disabled,
 }
 
 .status-tab:hover {
-  background: rgba(255, 215, 0, 0.2);
+  background: #3d3115;
   border-color: var(--border-gold);
   color: var(--border-gold);
   transform: translateY(-2px);
@@ -2096,7 +2096,8 @@ button:disabled,
 }
 
 .custom-modal-close:hover {
-  background: rgba(255, 215, 0, 0.1);
+  background: var(--border-gold);
+  color: var(--primary-black);
   transform: rotate(90deg);
   box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
 }
