@@ -5,7 +5,7 @@
 // stale precached copies were still only cleaning up the official players tree)
 // ============================================
 
-const CACHE_NAME = 'tkd-championship-v7';
+const CACHE_NAME = 'tkd-championship-v8';
 
 // Static assets to cache on install (app shell)
 // NOTE: Large page-specific scripts (bracket.js, 82KB) are excluded from
@@ -19,7 +19,7 @@ const PRECACHE_URLS = [
   '/admin/weight-categories.html',
   '/admin/championships.html',
   '/admin/standings.html',
-  '/admin/Live-matches.html',
+  '/Live-matches.html',
   '/admin/referees.html',
   '/team/dashboard.html',
   '/referee/dashboard.html',

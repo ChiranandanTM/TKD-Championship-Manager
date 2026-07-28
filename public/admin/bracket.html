@@ -65,13 +65,16 @@
         .match.same-team-match { border-color:rgba(255,165,0,0.4); }
 
         .match-players { display:flex; flex-direction:column; gap:8px; }
-        .player { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; border:1.5px solid transparent; transition:all 0.2s; }
+        /* Name and team stack as two full-width lines (not squeezed side by
+           side) so neither ever needs to shrink or truncate to make room for
+           the other — each gets the player box's whole width to itself. */
+        .player { display:flex; flex-direction:column; align-items:flex-start; gap:3px; padding:10px 40px 10px 12px; border-radius:10px; border:1.5px solid transparent; transition:all 0.2s; position:relative; }
         .player-blue { background:linear-gradient(135deg,rgba(0,51,160,0.25) 0%,rgba(0,30,90,0.2) 100%); border-color:rgba(0,61,165,0.4); }
         .player-red { background:linear-gradient(135deg,rgba(139,0,0,0.25) 0%,rgba(80,0,0,0.2) 100%); border-color:rgba(139,0,0,0.4); }
         .player.winner { border-color:var(--success-green)!important; background:linear-gradient(135deg,rgba(0,230,118,0.15) 0%,rgba(0,200,100,0.08) 100%)!important; box-shadow:0 0 16px rgba(0,230,118,0.2); }
         .player.eliminated { opacity:0.45; text-decoration:line-through; }
-        .player-name { font-size:1rem; font-weight:700; color:var(--text-white); flex:1; }
-        .player-center { font-size:0.78rem; color:var(--text-gray); opacity:0.65; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100px; }
+        .player-name { font-size:1rem; font-weight:700; color:var(--text-white); white-space:nowrap; }
+        .player-center { font-size:0.78rem; color:var(--text-gray); opacity:0.65; white-space:nowrap; }
         .bye { color:#555; font-style:italic; font-weight:400; }
         .vs { text-align:center; font-size:0.75rem; font-weight:900; color:var(--border-gold); letter-spacing:2px; opacity:0.7; padding:2px 0; }
 
@@ -102,9 +105,11 @@
         /* Sequential match number badge */
         .match-number-badge { display:inline-block; font-size:0.72rem; font-weight:800; color:var(--border-gold); background:rgba(255,215,0,0.12); border:1px solid rgba(255,215,0,0.35); border-radius:5px; padding:2px 8px; margin-bottom:8px; letter-spacing:0.5px; }
 
-        /* Player action buttons (edit / delete / fill) */
-        .player { position:relative; }
-        .player-actions { display:flex; gap:4px; margin-left:auto; align-items:center; opacity:0; transition:opacity 0.15s; flex-shrink:0; }
+        /* Player action buttons (edit / delete / fill) — floated in the
+           corner (.player is already position:relative, set above) rather
+           than sharing the row with the name/team text, now that those
+           stack as their own full-width lines instead of a horizontal row. */
+        .player-actions { position:absolute; top:8px; right:8px; display:flex; gap:4px; align-items:center; opacity:0; transition:opacity 0.15s; }
         .player:hover .player-actions { opacity:1; }
         .player-action-btn { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:var(--text-white); border-radius:5px; padding:3px 7px; font-size:0.78rem; cursor:pointer; transition:all 0.15s; line-height:1.4; white-space:nowrap; }
         .player-action-btn:hover { background:rgba(255,215,0,0.12); border-color:var(--border-gold); }

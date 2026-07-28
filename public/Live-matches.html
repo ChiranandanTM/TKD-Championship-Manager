@@ -377,7 +377,10 @@
 <body>
     <div class="page-header">
         <h1 class="page-title">🔴 LIVE MATCHES</h1>
-        <div style="display: flex; gap: 12px;">
+        <!-- Only meaningful for someone already logged in (admin/judge/referee
+             navigating in from within the app) — hidden via JS below for
+             anonymous public visitors, who were never logged in to begin with. -->
+        <div id="staffHeaderActions" style="display: flex; gap: 12px;">
             <button class="btn-secondary" onclick="goBackToDashboard()">← Back to Dashboard</button>
             <button class="btn-danger" onclick="UI.logout()">Logout</button>
         </div>
@@ -414,17 +417,20 @@
     <script type="module" src="/js/ui.js"></script>
     <script type="module">
 
-        // ── AUTH PROTECTION ──────────────────────────────────────────────────
-        function waitForUI(cb) {
-            if (typeof UI !== 'undefined' && typeof AUTH_MANAGER !== 'undefined') {
-                cb();
-            } else {
-                setTimeout(() => waitForUI(cb), 80);
-            }
+        // ── PUBLIC PAGE — no login required ────────────────────────────────
+        // This is a spectator/results page meant to be shared as a plain
+        // link (e.g. https://taekowndo-championship.web.app/Live-matches.html)
+        // — anyone who opens it must see live scores immediately, not get
+        // bounced to a login screen. The underlying data (brackets,
+        // expoBrackets, liveCourts, formConfig) is already publicly readable
+        // per the RTDB rules, so this only affects the UI gate, not data
+        // access. The "Back to Dashboard" / "Logout" header buttons only make
+        // sense for staff who navigated in already logged in, so they're
+        // hidden entirely for anonymous visitors.
+        const staffHeaderActions = document.getElementById('staffHeaderActions');
+        if (staffHeaderActions && !sessionStorage.getItem('userRole')) {
+            staffHeaderActions.style.display = 'none';
         }
-        waitForUI(() => {
-            UI.initPageProtection(['admin', 'judge', 'referee']);
-        });
 
         // ── HELPERS ──────────────────────────────────────────────────────────
         function getRoundName(roundIndex, totalRounds, actualRoundNumber) {
@@ -740,7 +746,7 @@
             if (role === 'referee') {
                 window.location.href = window.location.origin + '/referee/dashboard.html';
             } else {
-                window.location.href = 'dashboard.html';
+                window.location.href = window.location.origin + '/admin/dashboard.html';
             }
         };
 

@@ -684,6 +684,26 @@
             background: radial-gradient(circle, rgba(255, 215, 0, 0.8) 0%, transparent 70%)
         }
 
+        .st-card-4 {
+            background: linear-gradient(135deg, rgba(255, 152, 0, 0.08), rgba(200, 90, 0, 0.02));
+            border: 1.5px solid rgba(255, 152, 0, 0.3);
+            box-shadow: 0 8px 32px rgba(255, 152, 0, 0.05)
+        }
+
+        .st-card-4::before {
+            background: radial-gradient(circle, rgba(255, 152, 0, 0.8) 0%, transparent 70%)
+        }
+
+        .st-card-5 {
+            background: linear-gradient(135deg, rgba(0, 200, 83, 0.08), rgba(0, 120, 50, 0.02));
+            border: 1.5px solid rgba(0, 200, 83, 0.3);
+            box-shadow: 0 8px 32px rgba(0, 200, 83, 0.05)
+        }
+
+        .st-card-5::before {
+            background: radial-gradient(circle, rgba(0, 200, 83, 0.8) 0%, transparent 70%)
+        }
+
         .st-icon {
             margin-bottom: 12px;
             display: block
@@ -710,6 +730,16 @@
         .st-val-3 {
             color: #FFD700;
             text-shadow: 0 0 15px rgba(255, 215, 0, 0.4)
+        }
+
+        .st-val-4 {
+            color: #FF9800;
+            text-shadow: 0 0 15px rgba(255, 152, 0, 0.4)
+        }
+
+        .st-val-5 {
+            color: #00C853;
+            text-shadow: 0 0 15px rgba(0, 200, 83, 0.4)
         }
 
         .st-lbl {
@@ -951,8 +981,6 @@
                 Referees</button>
             <button class="admin-nav-btn" id="navBracket" onclick="window.location.href='bracket.html'">🏆 Tournament
                 Bracket</button>
-            <button class="admin-nav-btn" id="navLive" onclick="window.open('Live-matches.html','_blank')">⚡ Live
-                Matches</button>
             <button class="admin-nav-btn" id="navLeaderboard" onclick="window.open('/leaderboard.html','_blank')">🏆
                 Best Team Leaderboard</button>
             <button class="admin-nav-btn" id="navPreview" onclick="window.open('form-preview.html','_blank')">👁️
@@ -1034,6 +1062,28 @@
                     </span>
                     <div class="st-val st-val-3" id="completedMatches">0</div>
                     <div class="st-lbl">Completed Matches</div>
+                </div>
+                <div class="st-card st-card-4">
+                    <span class="st-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="#FF9800" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                    </span>
+                    <div class="st-val st-val-4" id="categoriesPending">0</div>
+                    <div class="st-lbl">Categories Pending</div>
+                </div>
+                <div class="st-card st-card-5">
+                    <span class="st-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="#00C853" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </span>
+                    <div class="st-val st-val-5" id="categoriesCompleted">0</div>
+                    <div class="st-lbl">Categories Completed</div>
                 </div>
             </div>
 
@@ -1501,11 +1551,51 @@
             if (pill) pill.textContent = `${visible} player${visible !== 1 ? 's' : ''}`;
         };
 
-        async function loadStatistics() {
-            try {
-                const playersRef = dbRef(database, 'players');
-                const playersSnapshot = await dbGet(playersRef);
+        // ── Real-time Championship Statistics ───────────────────────────────
+        // Every number and the players table below stay live via onValue()
+        // listeners on each source path instead of one-shot dbGet() calls — a
+        // new registration, a completed match, or a bracket being built
+        // anywhere in the app reflects here within a fraction of a second,
+        // with no manual refresh needed. Started once and left running for
+        // the page's lifetime rather than torn down/resubscribed on section
+        // switches — that teardown/resubscribe pattern is exactly what caused
+        // silent staleness bugs elsewhere in this app (bracket listeners that
+        // died on tab-hide and never came back), so it's avoided here
+        // entirely by just never stopping.
+        let _statsListenersStarted = false;
+        const _statsCache = {
+            players: null,
+            expoPlayers: null,
+            teams: null,
+            matchHistory: null,
+            expoMatchHistory: null,
+            brackets: null
+        };
+        let _statsRenderTimer = null;
 
+        function startStatisticsListeners() {
+            if (_statsListenersStarted) return;
+            _statsListenersStarted = true;
+
+            const scheduleRender = () => {
+                clearTimeout(_statsRenderTimer);
+                _statsRenderTimer = setTimeout(renderStatisticsFromCache, 200);
+            };
+
+            ['players', 'expoPlayers', 'teams', 'matchHistory', 'expoMatchHistory', 'brackets'].forEach(path => {
+                dbOnValue(dbRef(database, path), (snapshot) => {
+                    _statsCache[path] = snapshot.exists() ? snapshot.val() : null;
+                    scheduleRender();
+                }, (error) => {
+                    // Non-fatal for any single path — e.g. a permissions issue
+                    // on the Expo trees must never break the rest of the panel.
+                    console.warn(`⚠️ Statistics listener error on ${path} (non-fatal):`, error.message);
+                });
+            });
+        }
+
+        function renderStatisticsFromCache() {
+            try {
                 // Expo-only players (Competition Category "Expo") live only in
                 // expoPlayers/, never in players/, so they'd otherwise be missing
                 // from every count and the table below. "Official & Expo" players
@@ -1513,75 +1603,86 @@
                 // double-counting.
                 const seenIds = new Set();
                 const players = [];
-                if (playersSnapshot.exists()) {
-                    playersSnapshot.forEach(child => {
-                        players.push({ id: child.key, ...child.val() });
-                        seenIds.add(child.key);
+                // Kept separate from `players` (which also gains Expo-only
+                // entrants below) because Official bracket categories — and
+                // so the Pending/Completed counts further down — are derived
+                // only from the players/ node, exactly like bracket.js's own
+                // categorizePlayers().
+                const officialPlayers = [];
+                if (_statsCache.players) {
+                    Object.entries(_statsCache.players).forEach(([id, val]) => {
+                        const p = { id, ...val };
+                        players.push(p);
+                        officialPlayers.push(p);
+                        seenIds.add(id);
                     });
                 }
-                try {
-                    const expoPlayersSnapshot = await dbGet(dbRef(database, 'expoPlayers'));
-                    if (expoPlayersSnapshot.exists()) {
-                        expoPlayersSnapshot.forEach(child => {
-                            if (!seenIds.has(child.key)) {
-                                players.push({ id: child.key, ...child.val() });
-                                seenIds.add(child.key);
-                            }
-                        });
-                    }
-                } catch (expoErr) {
-                    console.warn('⚠️ Could not load Expo players (non-fatal):', expoErr.message);
-                }
-
-                document.getElementById('totalPlayers').textContent = players.length;
-
-                const teamsRef = dbRef(database, 'teams');
-                const teamsSnapshot = await dbGet(teamsRef);
-                const teamCount = teamsSnapshot.exists() ? Object.keys(teamsSnapshot.val()).length : 0;
-                document.getElementById('totalTeams').textContent = teamCount;
-
-                const historyRef = dbRef(database, 'matchHistory');
-                const historySnapshot = await dbGet(historyRef);
-                let matchCount = 0;
-                if (historySnapshot.exists()) {
-                    const allHistory = historySnapshot.val();
-                    Object.keys(allHistory).forEach(categoryKey => {
-                        if (allHistory[categoryKey]) {
-                            matchCount += Object.keys(allHistory[categoryKey]).length;
+                if (_statsCache.expoPlayers) {
+                    Object.entries(_statsCache.expoPlayers).forEach(([id, val]) => {
+                        if (!seenIds.has(id)) {
+                            players.push({ id, ...val });
+                            seenIds.add(id);
                         }
                     });
                 }
 
-                // Also count completed Expo matches (isolated expoMatchHistory/ tree),
-                // non-fatally — a permission/rules issue there must never break the
-                // rest of the statistics panel.
-                try {
-                    const expoHistorySnapshot = await dbGet(dbRef(database, 'expoMatchHistory'));
-                    if (expoHistorySnapshot.exists()) {
-                        const allExpoHistory = expoHistorySnapshot.val();
-                        Object.keys(allExpoHistory).forEach(categoryKey => {
-                            if (allExpoHistory[categoryKey]) {
-                                matchCount += Object.keys(allExpoHistory[categoryKey]).length;
-                            }
-                        });
-                    }
-                } catch (expoErr) {
-                    console.warn('⚠️ Could not load Expo match history (non-fatal):', expoErr.message);
-                }
+                document.getElementById('totalPlayers').textContent = players.length;
 
+                const teamCount = _statsCache.teams ? Object.keys(_statsCache.teams).length : 0;
+                document.getElementById('totalTeams').textContent = teamCount;
+
+                let matchCount = 0;
+                if (_statsCache.matchHistory) {
+                    Object.keys(_statsCache.matchHistory).forEach(categoryKey => {
+                        if (_statsCache.matchHistory[categoryKey]) {
+                            matchCount += Object.keys(_statsCache.matchHistory[categoryKey]).length;
+                        }
+                    });
+                }
+                // Completed Expo matches (isolated expoMatchHistory/ tree) count too.
+                if (_statsCache.expoMatchHistory) {
+                    Object.keys(_statsCache.expoMatchHistory).forEach(categoryKey => {
+                        if (_statsCache.expoMatchHistory[categoryKey]) {
+                            matchCount += Object.keys(_statsCache.expoMatchHistory[categoryKey]).length;
+                        }
+                    });
+                }
                 document.getElementById('completedMatches').textContent = matchCount;
+
+                // ── Categories Pending / Completed ──────────────────────────
+                // Category key mirrors bracket.js's categorizePlayers() exactly
+                // (gender-ageCategory-weightCategory over the same players/
+                // node), so a category counts here iff it would actually show
+                // up as a bracket category on the Bracket Management page.
+                // A category is "Completed" once its bracket's status is
+                // 'complete'; anything else (no bracket built yet, or a bracket
+                // that's still live) counts as "Pending".
+                const categoryKeySet = new Set();
+                officialPlayers.forEach(p => {
+                    const ageCategory = p.ageCategory || (p.categories && p.categories[0]);
+                    if (!ageCategory || !p.gender || !p.weightCategory) return;
+                    categoryKeySet.add(`${p.gender}-${ageCategory}-${p.weightCategory}`);
+                });
+
+                const bracketsData = _statsCache.brackets || {};
+                let categoriesCompleted = 0;
+                categoryKeySet.forEach(key => {
+                    if (bracketsData[key] && bracketsData[key].status === 'complete') categoriesCompleted++;
+                });
+                const categoriesPending = categoryKeySet.size - categoriesCompleted;
+
+                document.getElementById('categoriesPending').textContent = categoriesPending;
+                document.getElementById('categoriesCompleted').textContent = categoriesCompleted;
 
                 const pill = document.getElementById('playerCountPill');
 
                 if (players.length > 0) {
-                    console.log('📊 Total players fetched from Firebase (incl. Expo-only):', players.length);
                     players.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
-                    const teamsSnapshotForMap = await dbGet(dbRef(database, 'teams'));
                     const teamsMap = {};
-                    if (teamsSnapshotForMap.exists()) {
-                        teamsSnapshotForMap.forEach(child => {
-                            teamsMap[child.key] = child.val().teamName;
+                    if (_statsCache.teams) {
+                        Object.entries(_statsCache.teams).forEach(([id, val]) => {
+                            teamsMap[id] = val.teamName;
                         });
                     }
 
@@ -1617,14 +1718,28 @@
 
                     html += '</tbody></table>';
                     document.getElementById('recentPlayersList').innerHTML = html;
+
+                    // Re-apply any in-progress search so a live update doesn't
+                    // silently clear it out from under the admin.
+                    const searchBox = document.getElementById('statsPlayerSearch');
+                    if (searchBox && searchBox.value) window.filterStatsTable(searchBox.value);
                 } else {
                     if (pill) pill.textContent = '0 players';
                     document.getElementById('recentPlayersList').innerHTML = '<div class="st-empty"><div class="st-empty-icon">🥋</div><div style="font-size:1rem;font-weight:700;color:#555">No players registered yet</div></div>';
                 }
 
             } catch (error) {
-                console.error('Error loading statistics:', error);
+                console.error('Error rendering statistics:', error);
             }
+        }
+
+        // Entry point for the existing "Refresh" button and showSection('stats')
+        // — the listeners already keep everything current in the background,
+        // so this just makes sure they're running and repaints immediately
+        // from whatever's cached, with no network round-trip needed.
+        function loadStatistics() {
+            startStatisticsListeners();
+            renderStatisticsFromCache();
         }
 
         // ── Export Championship Statistics to Excel (read-only — no data written) ──
