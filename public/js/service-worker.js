@@ -1,11 +1,11 @@
 // ============================================
-// SERVICE WORKER v7 - Fast load, offline support
-// v7: Cache-bust bump — forces fresh fetch of Team-deadline-manager.js (team
-// deletion now cascades into expoPlayers/expoBrackets/expoMatchHistory too;
-// stale precached copies were still only cleaning up the official players tree)
+// SERVICE WORKER v9 - Fast load, offline support
+// v9: Cache-bust bump — forces fresh fetch of bracket.js (quarterfinal bye
+// pairing fix in computeByeSlots(); stale cached copies were still pairing
+// byes from the center outward instead of against the trailing matches)
 // ============================================
 
-const CACHE_NAME = 'tkd-championship-v8';
+const CACHE_NAME = 'tkd-championship-v9';
 
 // Static assets to cache on install (app shell)
 // NOTE: Large page-specific scripts (bracket.js, 82KB) are excluded from

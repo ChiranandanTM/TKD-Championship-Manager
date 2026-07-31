@@ -41,7 +41,7 @@ const LEADERBOARD = {
                 const teamsData = snapshot.val();
                 for (const [id, team] of Object.entries(teamsData)) {
                     if (!this.teams[id]) {
-                        this.teams[id] = { id: id, name: team.teamName, gold: 0, silver: 0, bronze: 0, points: 0 };
+                        this.teams[id] = { id: id, name: team.teamName, gold: 0, silver: 0, bronze1: 0, bronze2: 0, points: 0 };
                     } else {
                         this.teams[id].name = team.teamName;
                     }
@@ -117,7 +117,7 @@ const LEADERBOARD = {
             } else {
                 teamId = 'generic_' + player.teamName.toLowerCase().replace(/\s+/g, '_');
                 if (!this.teams[teamId]) {
-                    this.teams[teamId] = { id: teamId, name: player.teamName, gold: 0, silver: 0, bronze: 0, points: 0 };
+                    this.teams[teamId] = { id: teamId, name: player.teamName, gold: 0, silver: 0, bronze1: 0, bronze2: 0, points: 0 };
                 }
             }
         }
@@ -129,7 +129,8 @@ const LEADERBOARD = {
         Object.values(this.teams).forEach(t => {
             t.gold = 0;
             t.silver = 0;
-            t.bronze = 0;
+            t.bronze1 = 0;
+            t.bronze2 = 0;
             t.points = 0;
         });
 
@@ -208,12 +209,16 @@ const LEADERBOARD = {
             if (totalRounds >= 2) {
                 const semiRound = roundsArr[totalRounds - 2];
                 if (semiRound) {
-                    semiRound.forEach(match => {
+                    semiRound.forEach((match, matchIndex) => {
                         if (match && match.status === 'completed' && match.winner && match.eliminated) {
                             const loser = match.player1 && match.player1.id === match.eliminated ? match.player1 : match.player2;
                             const bronzeTeam = this.getTeam(loser);
                             if (bronzeTeam) {
-                                bronzeTeam.bronze += 1;
+                                if (matchIndex === 0) {
+                                    bronzeTeam.bronze1 += 1;
+                                } else {
+                                    bronzeTeam.bronze2 += 1;
+                                }
                                 bronzeTeam.points += BRONZE_POINTS;
                             }
                         }
@@ -233,7 +238,7 @@ const LEADERBOARD = {
                 // Tiebreaker 2: Silver
                 if (b.silver !== a.silver) return b.silver - a.silver;
                 // Tiebreaker 3: Bronze
-                return b.bronze - a.bronze;
+                return (b.bronze1 + b.bronze2) - (a.bronze1 + a.bronze2);
             });
 
         this.render(rankedTeams);
@@ -246,7 +251,7 @@ const LEADERBOARD = {
         if (rankedTeams.length === 0) {
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="loader" style="padding: 60px;">
+                    <td colspan="7" class="loader" style="padding: 60px;">
                         <div style="font-size: 2rem; margin-bottom: 15px;">🥋</div>
                         No completed matches yet.<br>Results will appear here as the tournament progresses.
                     </td>
@@ -269,7 +274,8 @@ const LEADERBOARD = {
                     <td class="team-name">${team.name}</td>
                     <td class="center" style="font-weight: 700; color: #FFD700">${team.gold}</td>
                     <td class="center" style="font-weight: 700; color: #C0C0C0">${team.silver}</td>
-                    <td class="center" style="font-weight: 700; color: #CD7F32">${team.bronze}</td>
+                    <td class="center" style="font-weight: 700; color: #CD7F32">${team.bronze1}</td>
+                    <td class="center" style="font-weight: 700; color: #CD7F32">${team.bronze2}</td>
                     <td class="center">
                         <span class="points-box">${team.points}</span>
                     </td>

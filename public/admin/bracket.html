@@ -625,6 +625,14 @@
                 halfCursor += 2;
                 if (bi !== undefined && bi !== 0) r1ByeRow[bi] = halfCursor++;
             });
+            // computeByeSlots() only pairs up to min(byeCount, matchCount) byes
+            // with a real match — any byes beyond that (more byes than Round-1
+            // matches) never get an r1ByeRow entry above, which left r1RowY()
+            // computing NaN and made jsPDF reject doc.text() outright. Stack
+            // those leftover byes as extra rows below the interleaved ones.
+            r1ByeList.forEach((_, bi) => {
+                if (r1ByeRow[bi] === undefined) r1ByeRow[bi] = halfCursor++;
+            });
             const r1TotalHalfRows = Math.max(halfCursor, 1);
 
             // Reserve enough row-height for the tallest column: Round 1 in

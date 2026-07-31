@@ -629,8 +629,13 @@ const BRACKET = {
   // BYE PROGRESSION: which match-winner each bye player faces next
   //
   // Priority 1: the FIRST bye faces the winner of the FIRST match.
-  // Priority 2: the SECOND bye faces the winner of the LAST match.
-  // Priority 3: any further byes fill inward from the CENTER outward.
+  // Priority 2+: every further bye stacks against the trailing matches,
+  // working backward from the LAST match — i.e. the last bye faces the
+  // last match's winner, the second-to-last bye faces the second-to-last
+  // match's winner, and so on. This leaves every match in between (2nd
+  // through the start of that trailing block) to pair with its immediate
+  // neighbor as normal — e.g. 5 matches + 3 byes gives: bye1+M1, M2+M3,
+  // bye2+M4, bye3+M5.
   //
   // This depends only on the completed round's own match count and bye
   // count — never on runtime results — so it is identical whether it is
@@ -642,33 +647,17 @@ const BRACKET = {
 
   // Returns an array of 0-based match indices (into the completed round's
   // own match list), one per bye, in priority order: [firstMatchIdx,
-  // lastMatchIdx, centerIdx, nextOutFromCenter, ...]. Length is
+  // ...trailing indices working backward from the last match]. Length is
   // min(byeCount, matchCount) — a round can never have more byes usefully
   // paired against real winners than it has matches.
   computeByeSlots(matchCount, byeCount) {
     if (byeCount <= 0 || matchCount <= 0) return [];
     const k = Math.min(byeCount, matchCount);
-    const targets = [];
-    const used = new Set();
-    const claim = (idx) => {
-      if (targets.length >= k || used.has(idx)) return;
-      used.add(idx);
-      targets.push(idx);
-    };
-
-    claim(0);            // Priority 1: winner of the first match
-    claim(matchCount - 1); // Priority 2: winner of the last match
-
-    // Priority 3: remaining byes, symmetric from the center outward.
-    const mid = Math.floor((matchCount - 1) / 2);
-    const centerOut = [mid];
-    for (let offset = 1; centerOut.length < matchCount; offset++) {
-      if (mid + offset <= matchCount - 1) centerOut.push(mid + offset);
-      if (centerOut.length < matchCount && mid - offset >= 0) centerOut.push(mid - offset);
-    }
-    for (const idx of centerOut) {
-      if (targets.length >= k) break;
-      claim(idx);
+    const targets = [0]; // Priority 1: winner of the first match
+    // Priority 2+: winners of the trailing k-1 matches, nearest-last first
+    // so the very last match always gets a bye ahead of its neighbors.
+    for (let i = 1; i < k; i++) {
+      targets.push(matchCount - k + i);
     }
     return targets;
   },
@@ -2827,7 +2816,14 @@ const BRACKET = {
         const cnt = expectedCnts[ri] !== undefined ? expectedCnts[ri] : Math.ceil(prev.length / 2);
         const cur = [];
         for (let mi = 0; mi < cnt; mi++) {
-          const a = prev[mi * 2], b = prev[mi * 2 + 1];
+          // expectedCnts[ri] counts every advancing player (including byes
+          // this function otherwise skips drawing), so it can exceed what
+          // real Round-1 matches alone produced junctions for — mi*2 then
+          // runs past prev's end, leaving a undefined and, further down,
+          // NaN geometry that made jsPDF's doc.text() throw outright.
+          // Fall back to prev's last junction, same as spT/spB below.
+          const a = prev[mi * 2] !== undefined ? prev[mi * 2] : prev[prev.length - 1];
+          const b = prev[mi * 2 + 1];
           cur.push(b !== undefined ? (a + b) / 2 : a);
         }
         jY.push(cur);
@@ -2844,7 +2840,10 @@ const BRACKET = {
         for (let mi = 0; mi < cnt; mi++) {
           const fA = mi * 2, fB = mi * 2 + 1;
           tops.push(pT[fA] !== undefined ? pT[fA] : pT[pT.length - 1]);
-          bots.push(pB[fB] !== undefined ? pB[fB] : pB[fA]);
+          // Same bye-inflated-cnt overrun as above: fA can also run past
+          // pB's end, so fall back all the way to pB's last entry rather
+          // than an equally-undefined pB[fA].
+          bots.push(pB[fB] !== undefined ? pB[fB] : (pB[fA] !== undefined ? pB[fA] : pB[pB.length - 1]));
         }
         spT.push(tops); spB.push(bots);
       }
