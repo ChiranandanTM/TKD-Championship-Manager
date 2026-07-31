@@ -33,6 +33,9 @@ const BRACKET = {
   _teamNameCache: null,  // { teamId → teamName } lookup built once per session
   editingSlot: null,     // { matchId, slot } when inline edit form is open
   _liveCourtNumber: null, // court this session registered live presence under, if any
+  editMode: false,        // true while the Bracket Editor is open for currentCategory
+  _editDraft: null,       // { activePlayers, byePool, hadStartedMatches } — edit-mode working copy
+  _editPwModalDiv: null,  // DOM node for the edit-mode password prompt, if open
 
   // Category images mapping
   categoryImages: {
@@ -112,9 +115,11 @@ const BRACKET = {
         });
       });
     }
-    // Patch bye players
+    // Patch bye players (each round may hold multiple byes — see getByeList)
     if (bracket.byePlayers) {
-      Object.values(bracket.byePlayers).forEach(p => patch(p));
+      Object.keys(bracket.byePlayers).forEach(roundKey => {
+        this.getByeList(bracket, roundKey).forEach(p => patch(p));
+      });
     }
     return changed;
   },
@@ -565,6 +570,157 @@ const BRACKET = {
   },
 
   // ═════════════════════════════════════════════════════════════════════════
+  // BYE LIST HELPERS
+  // byePlayers[roundIndex] has historically always been a single compressed
+  // player object (or absent). The Bracket Editor allows an admin to assign
+  // MULTIPLE byes to Round 1 (e.g. 5 byes for 11 players — standard
+  // tournament seeding), so these helpers normalize on read (transparently
+  // treating a legacy single object as a 1-item list) and only ever WRITE a
+  // real array when there's more than one bye — a length-1 result collapses
+  // back to a plain object. This means every existing auto-generated /
+  // single-bye code path keeps writing and reading the exact same shape as
+  // before; the array shape only appears once an admin actually assigns 2+
+  // byes to a round via the editor.
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // Always returns an array (possibly empty) of bye players for a round,
+  // regardless of whether the stored value is absent, a single legacy
+  // object, a real array, or a Firebase-serialized numeric-keyed object.
+  getByeList(bracket, roundIndex) {
+    const val = (bracket && bracket.byePlayers || {})[String(roundIndex)];
+    if (!val) return [];
+    if (Array.isArray(val)) return val;
+    if (val.id) return [val]; // legacy/auto-generated single player object
+    // Firebase converts JS arrays to numeric-keyed objects on save/load
+    return Object.keys(val).sort((a, b) => Number(a) - Number(b)).map(k => val[k]);
+  },
+
+  // Writes a round's bye list back, collapsing to the legacy single-object
+  // shape when there's exactly one (or deleting the key when there are
+  // none) so non-edited brackets never see the array shape.
+  setByeList(bracket, roundIndex, arr) {
+    if (!bracket.byePlayers) bracket.byePlayers = {};
+    if (!arr || arr.length === 0) {
+      delete bracket.byePlayers[String(roundIndex)];
+      return;
+    }
+    bracket.byePlayers[String(roundIndex)] = arr.length === 1 ? arr[0] : arr;
+  },
+
+  // Generalized version of createBracket()'s inline expected-round-count
+  // formula, seeded with an explicit Round-1 bye count instead of assuming
+  // n % 2. Used only by the Bracket Editor's save path — createBracket()
+  // keeps its own inline computation (the round1ByeCount = n % 2 case of
+  // this same formula) untouched.
+  computeExpectedRoundMatchCounts(n, round1ByeCount) {
+    const counts = [];
+    const matches = Math.floor((n - round1ByeCount) / 2);
+    counts.push(matches);
+    let advancing = matches + round1ByeCount;
+    while (advancing > 1) {
+      const m = Math.floor(advancing / 2);
+      counts.push(m);
+      advancing = Math.ceil(advancing / 2);
+    }
+    return counts;
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // BYE PROGRESSION: which match-winner each bye player faces next
+  //
+  // Priority 1: the FIRST bye faces the winner of the FIRST match.
+  // Priority 2: the SECOND bye faces the winner of the LAST match.
+  // Priority 3: any further byes fill inward from the CENTER outward.
+  //
+  // This depends only on the completed round's own match count and bye
+  // count — never on runtime results — so it is identical whether it is
+  // computed live (buildNextRound, after the round is actually played) or
+  // previewed in the Fixture PDF before a single match has been played.
+  // Both call through computeByeSlots()/planNextRoundPairing() so the two
+  // can never disagree.
+  // ═════════════════════════════════════════════════════════════════════════
+
+  // Returns an array of 0-based match indices (into the completed round's
+  // own match list), one per bye, in priority order: [firstMatchIdx,
+  // lastMatchIdx, centerIdx, nextOutFromCenter, ...]. Length is
+  // min(byeCount, matchCount) — a round can never have more byes usefully
+  // paired against real winners than it has matches.
+  computeByeSlots(matchCount, byeCount) {
+    if (byeCount <= 0 || matchCount <= 0) return [];
+    const k = Math.min(byeCount, matchCount);
+    const targets = [];
+    const used = new Set();
+    const claim = (idx) => {
+      if (targets.length >= k || used.has(idx)) return;
+      used.add(idx);
+      targets.push(idx);
+    };
+
+    claim(0);            // Priority 1: winner of the first match
+    claim(matchCount - 1); // Priority 2: winner of the last match
+
+    // Priority 3: remaining byes, symmetric from the center outward.
+    const mid = Math.floor((matchCount - 1) / 2);
+    const centerOut = [mid];
+    for (let offset = 1; centerOut.length < matchCount; offset++) {
+      if (mid + offset <= matchCount - 1) centerOut.push(mid + offset);
+      if (centerOut.length < matchCount && mid - offset >= 0) centerOut.push(mid - offset);
+    }
+    for (const idx of centerOut) {
+      if (targets.length >= k) break;
+      claim(idx);
+    }
+    return targets;
+  },
+
+  // The single canonical "how does the next round get built" plan, shared
+  // by buildNextRound() (live) and the Fixture PDF (preview). Given the
+  // number of match-winners and bye players advancing from a completed (or
+  // hypothetical, for a preview) round, returns the ordered list of next-
+  // round match "slots", each naming its two sources as either
+  // { type:'match', index } (that match's winner) or { type:'bye', index }
+  // (that bye player, 0-based into the round's own bye list, in the
+  // priority order computeByeSlots() returns). Any single leftover source
+  // that couldn't be paired (only possible when matchCount+byeCount is
+  // odd) is returned separately as `leftover` — callers decide who that
+  // is ahead of time (e.g. buildNextRound's existing byeHistory-fairness
+  // pick) and should pass an already-even pool; `leftover` exists purely
+  // as a defensive fallback, not the primary way to size a new bye.
+  planNextRoundPairing(matchCount, byeCount) {
+    const byeTargets = this.computeByeSlots(matchCount, byeCount);
+    const byeAt = new Map();
+    byeTargets.forEach((matchIdx, byeIdx) => byeAt.set(matchIdx, byeIdx));
+
+    const slots = [];
+    let pending = null;
+    for (let i = 0; i < matchCount; i++) {
+      const matchSource = { type: 'match', index: i };
+      if (byeAt.has(i)) {
+        slots.push({ a: matchSource, b: { type: 'bye', index: byeAt.get(i) } });
+      } else if (pending === null) {
+        pending = matchSource;
+      } else {
+        slots.push({ a: pending, b: matchSource });
+        pending = null;
+      }
+    }
+    // Any bye beyond what computeByeSlots could pair to a real match winner
+    // (only possible if there are more byes than matches — an all-bye
+    // round, which the Bracket Editor's save validation already prevents)
+    // still needs a home: pair leftover byes with each other in order.
+    for (let bi = byeTargets.length; bi < byeCount; bi++) {
+      const byeSource = { type: 'bye', index: bi };
+      if (pending === null) {
+        pending = byeSource;
+      } else {
+        slots.push({ a: pending, b: byeSource });
+        pending = null;
+      }
+    }
+    return { slots, leftover: pending };
+  },
+
+  // ═════════════════════════════════════════════════════════════════════════
   // TEAM-AWARE BRACKET GENERATION: Conflict Detection & Resolution
   // ═════════════════════════════════════════════════════════════════════════
 
@@ -971,15 +1127,15 @@ const BRACKET = {
       });
     });
 
-    // Check bye players
-    const byePlayers = bracket.byePlayers || {};
-    Object.entries(byePlayers).forEach(([round, player]) => {
-      if (player) {
+    // Check bye players (a round may hold multiple when manually edited)
+    Object.keys(bracket.byePlayers || {}).forEach(round => {
+      this.getByeList(bracket, round).forEach(player => {
+        if (!player) return;
         if (foundPlayerIds.has(player.id)) {
           errors.push(`❌ Bye player ${player.playerName} already appears in a match`);
         }
         foundPlayerIds.add(player.id);
-      }
+      });
     });
 
     // Verify all category players are in bracket
@@ -1134,13 +1290,15 @@ const BRACKET = {
       (m.player1 && m.player1.id === m.winner) ? m.player1 : m.player2
     );
 
-    // Retrieve the bye player who was waiting in this round (may be null)
-    const byePlayers = this.currentBracket.byePlayers || {};
-    const roundByePlayer = byePlayers[String(roundIndex)] || null;
+    // Retrieve the bye player(s) who were waiting in this round (may be
+    // several — the Bracket Editor allows front-loading multiple Round-1
+    // byes, e.g. to fill a non-power-of-2 bracket like real tournaments do)
+    const roundByePlayers = this.getByeList(this.currentBracket, roundIndex);
 
-    // All players advancing: match-winners first, then the bye holder
-    const advancing = [...winners];
-    if (roundByePlayer) advancing.push(roundByePlayer);
+    // All players advancing: match-winners first, then the bye holder(s),
+    // in that fixed order — this must exactly match the order any bracket
+    // preview (PDF) assumes for pairing the next round.
+    const advancing = [...winners, ...roundByePlayers];
 
     if (advancing.length <= 1) {
       // Only one player remains — tournament is complete
@@ -1153,65 +1311,64 @@ const BRACKET = {
     const nextRoundNum = nextRoundIndex + 1;  // 1-based label for matchId
 
     // ── ASSIGN BYE FOR NEXT ROUND (only if advancing count is odd) ───────
+    // This decides who, if anyone, sits out the round we're about to build
+    // entirely (advancing straight through to the round after). It's a
+    // fairness decision (fewest byes so far, never the same player twice in
+    // a row unless unavoidable) — orthogonal to the deterministic
+    // first/last/center-out placement below, which only concerns byes that
+    // ARE playing this round (against a specific match winner).
     let nextByePlayer = null;
     if (advancing.length % 2 === 1) {
       const byeHistory = this.currentBracket.byeHistory || {};
-      const prevByeId = roundByePlayer ? roundByePlayer.id : null;
+      const prevByeIds = new Set(roundByePlayers.map(p => p.id));
 
-      // Sort by: fewest byes first; break ties by pushing the previous-round
-      // bye holder to the back (prevents consecutive byes).
+      // Sort by: fewest byes first; break ties by pushing any player who
+      // just had a bye in the previous round to the back (prevents
+      // consecutive byes for the same player).
       const sorted = [...advancing].sort((a, b) => {
         const diff = (byeHistory[a.id] || 0) - (byeHistory[b.id] || 0);
         if (diff !== 0) return diff;
-        return (a.id === prevByeId ? 1 : 0) - (b.id === prevByeId ? 1 : 0);
+        return (prevByeIds.has(a.id) ? 1 : 0) - (prevByeIds.has(b.id) ? 1 : 0);
       });
       nextByePlayer = sorted[0];
     }
 
     // ── BUILD NEXT ROUND MATCHES ──────────────────────────────────────────
-    const matchPlayers = advancing.filter(p => !nextByePlayer || p.id !== nextByePlayer.id);
-    const nextRound = [];
+    // Whoever isn't sitting out this round (nextByePlayer, if any) gets
+    // paired via the deterministic bye-progression plan: the first bye
+    // faces the winner of Round 1's first match, the second bye faces the
+    // last match's winner, and any further byes fill in from the center
+    // outward — the exact same plan the Fixture PDF previews before this
+    // round is even played (BRACKET.planNextRoundPairing), so the two can
+    // never disagree.
+    const pairWinners = winners.filter(p => !nextByePlayer || p.id !== nextByePlayer.id);
+    const pairByes = roundByePlayers.filter(p => !nextByePlayer || p.id !== nextByePlayer.id);
 
-    for (let i = 0; i < matchPlayers.length; i += 2) {
-      nextRound.push({
-        matchId: `R${nextRoundNum}_M${Math.floor(i / 2) + 1}`,
-        round: nextRoundNum,
-        player1: matchPlayers[i],
-        player2: matchPlayers[i + 1],
-        winner: null,
-        eliminated: null,
-        status: 'pending',
-        startTime: null,
-        endTime: null
-      });
-    }
+    const { slots } = this.planNextRoundPairing(pairWinners.length, pairByes.length);
+    const resolvePlayer = (source) => (source.type === 'match' ? pairWinners[source.index] : pairByes[source.index]);
 
-    // ── APPLY TEAM-AWARE CONFLICT RESOLUTION ──────────────────────────────
-    // Resolve any same-team matches by swapping players intelligently
-    const resolution = this.resolveTeamConflicts(nextRound);
-    if (resolution.resolved && resolution.swaps.length > 0) {
-      console.log(`✅ Round ${nextRoundNum}: ${resolution.swaps.length} player swap(s) performed to avoid same-team matches`);
-    } else if (!resolution.resolved && resolution.conflicts.length > 0) {
-      console.warn(`⚠️ Round ${nextRoundNum}: ${resolution.conflicts.length} unavoidable same-team conflict(s)`);
-      resolution.conflicts.forEach(c => {
-        console.warn(`  - ${c.player1.playerName} vs ${c.player2.playerName} (both from ${c.player1.teamName})`);
-      });
-    }
+    const nextRound = slots.map((slot, i) => ({
+      matchId: `R${nextRoundNum}_M${i + 1}`,
+      round: nextRoundNum,
+      player1: resolvePlayer(slot.a),
+      player2: resolvePlayer(slot.b),
+      winner: null,
+      eliminated: null,
+      status: 'pending',
+      startTime: null,
+      endTime: null
+    }));
 
-    // Update nextRound with resolved matches
-    for (let i = 0; i < resolution.newMatches.length; i++) {
-      nextRound[i] = {
-        ...nextRound[i],
-        player1: resolution.newMatches[i].player1,
-        player2: resolution.newMatches[i].player2
-      };
-    }
-
+    // Winner advancement must follow the fixed bracket tree — once the
+    // pairing above is decided, later rounds are never reseeded or
+    // reshuffled. (Team-conflict-aware smart seeding only applies to the
+    // very first round's initial player pairing during bracket generation,
+    // above in generateBracket() — never to advancing an existing round's
+    // already-decided winners into the next one.)
     this.currentBracket.rounds.push(nextRound);
 
     if (nextByePlayer) {
-      if (!this.currentBracket.byePlayers) this.currentBracket.byePlayers = {};
-      this.currentBracket.byePlayers[String(nextRoundIndex)] = nextByePlayer;
+      this.setByeList(this.currentBracket, nextRoundIndex, [nextByePlayer]);
       if (!this.currentBracket.byeHistory) this.currentBracket.byeHistory = {};
       this.currentBracket.byeHistory[nextByePlayer.id] =
         (this.currentBracket.byeHistory[nextByePlayer.id] || 0) + 1;
@@ -1247,6 +1404,13 @@ const BRACKET = {
       // Never reshuffle matches that have already started or completed —
       // doing so would corrupt winner/eliminated data.
       if (round.length === 0 || round.some(m => m.status && m.status !== 'pending')) continue;
+
+      // Team-conflict reshuffling only applies to Round 1's initial pairing
+      // (bracket generation). Every later round is produced by deterministic
+      // winner advancement (buildNextRound) and must never be reshuffled —
+      // doing so would break the fixed bracket-tree adjacency (winner of
+      // match i must always face winner of match i+1).
+      if (roundIdx > 0) continue;
 
       // Detect conflicts in this round
       const conflicts = this.detectTeamConflicts(round);
@@ -1441,8 +1605,18 @@ const BRACKET = {
         // Only re-render if bracket actually changed
         if (JSON.stringify(this.currentBracket) !== JSON.stringify(rawBracket)) {
           this.currentBracket = rawBracket;
-          console.log('🔄 Bracket updated from Firebase - re-rendering');
-          this.renderBracket();
+          // While the Bracket Editor is open, do NOT re-render over the
+          // admin's in-progress drag session — a concurrent change from
+          // another court/device would otherwise wipe out unsaved edits.
+          // The editor's own draft is independent of currentBracket until
+          // Save, so it stays intact; the fresh data is picked up next time
+          // renderBracket() runs (edit mode exit, or the next real update).
+          if (this.editMode) {
+            console.log('🔄 Bracket updated from Firebase (edit mode active — render deferred)');
+          } else {
+            console.log('🔄 Bracket updated from Firebase - re-rendering');
+            this.renderBracket();
+          }
         }
       }
     });
@@ -1557,6 +1731,11 @@ const BRACKET = {
         byePlayers: bracket.byePlayers || {},
         byeHistory: bracket.byeHistory || {},
         expectedRoundMatchCounts: bracket.expectedRoundMatchCounts || [],
+        ...(bracket.manuallyEdited ? {
+          manuallyEdited: true,
+          lastEditedAt: bracket.lastEditedAt,
+          editedBy: bracket.editedBy
+        } : {}),
         rounds: bracket.rounds.map(round =>
           round.map(match => {
             const leanMatch = {
@@ -1632,6 +1811,14 @@ const BRACKET = {
         byePlayers: bracket.byePlayers || {},
         byeHistory: bracket.byeHistory || {},
         expectedRoundMatchCounts: bracket.expectedRoundMatchCounts || [],
+        // Metadata marking a Bracket-Editor save — every other module reads
+        // brackets/{categoryKey} exactly the same either way, but this lets
+        // the UI show "manually edited" and preserves an audit trail.
+        ...(bracket.manuallyEdited ? {
+          manuallyEdited: true,
+          lastEditedAt: bracket.lastEditedAt,
+          editedBy: bracket.editedBy
+        } : {}),
         rounds: bracket.rounds.map(round =>
           round.map(match => {
             const leanMatch = {
@@ -1704,14 +1891,20 @@ const BRACKET = {
     if (!container) return;
 
     const isComplete = this.isCategoryComplete();
+    const category = this.categories[this.currentCategory];
+    // Editing needs at least 2 players (a single-player category is a pure
+    // walkover with no Round 1 to arrange) and is admin/judge only.
+    const canEdit = this._canEditBracket() && category.players.length > 1;
 
     let html = `
       <div class="bracket-header">
         <button class="btn-back" onclick="BRACKET.closeCategory()">← Back to Categories</button>
-        <h2>${this.categories[this.currentCategory].gender} ${this.categories[this.currentCategory].ageCategory} - ${this.categories[this.currentCategory].weightCategory}</h2>
+        <h2>${this.categories[this.currentCategory].gender} ${this.categories[this.currentCategory].ageCategory} - ${this.categories[this.currentCategory].weightCategory}${this.currentBracket.manuallyEdited ? ' <span class="manually-edited-badge" title="Round 1 was manually arranged via the Bracket Editor">✏️ Manually Edited</span>' : ''}</h2>
         <div style="display:flex;gap:10px;align-items:center;">
+          ${canEdit ? `<button class="btn-secondary edit-bracket-btn" onclick="BRACKET.promptEditPassword('${this.currentCategory}')" style="padding:8px 18px;font-size:0.95rem;border:1.5px dashed var(--border-gold);color:var(--border-gold);">✏️ Edit Bracket</button>` : ''}
           ${isComplete ? `<button class="btn-success" onclick="BRACKET.exportToExcel()" style="background:var(--success-green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.95rem;">📥 Export Results</button>` : ''}
           <button class="btn-secondary" onclick="BRACKET.downloadFixturePDF()" style="padding:8px 18px;font-size:0.95rem;">📄 Download Fixture PDF</button>
+          <button class="btn-secondary" onclick="BRACKET.downloadFixtureWord()" style="padding:8px 18px;font-size:0.95rem;">📝 Download Fixture (Word)</button>
           <button class="btn-secondary" onclick="BRACKET.downloadPlayerListExcel()" style="padding:8px 18px;font-size:0.95rem;">📋 Download Player List (Excel)</button>
           <button class="btn-secondary" onclick="BRACKET.showMatchHistory()">📋 Previous Matches</button>
           <button class="msg-bell-btn" onclick="if(typeof toggleMsgPanel==='function')toggleMsgPanel()" title="Court Messages" style="padding:8px 14px;font-size:0.95rem;white-space:nowrap;">🔔 Messages</button>
@@ -1751,12 +1944,14 @@ const BRACKET = {
         html += this.renderMatch(match, roundIndex, matchNumMap[match.matchId], matchIndexInRound);
       });
 
-      // Render the bye-player card for this round (if any)
-      const byePlayers = this.currentBracket.byePlayers || {};
-      const roundBye = byePlayers[String(roundIndex)];
-      if (roundBye) {
+      // Render a bye-player card for each bye in this round (if any —
+      // Round 1 may have several when manually edited)
+      const roundByes = this.getByeList(this.currentBracket, roundIndex);
+      if (roundByes.length > 0) {
         const roundComplete = round.every(m => m.status === 'completed');
-        html += this.renderByeCard(roundBye, roundComplete, roundIndex);
+        roundByes.forEach(byePlayer => {
+          html += this.renderByeCard(byePlayer, roundComplete, roundIndex);
+        });
       }
 
       html += `
@@ -2127,9 +2322,8 @@ const BRACKET = {
     const round = this.currentBracket.rounds[roundIndex];
     if (!round) return false;
     
-    const byePlayers = this.currentBracket.byePlayers || {};
-    const hasByePlayer = !!byePlayers[String(roundIndex)];
-    
+    const hasByePlayer = this.getByeList(this.currentBracket, roundIndex).length > 0;
+
     // Find unpaired matches (exactly 1 player)
     const unpairedMatches = round.filter(m => m.status === 'pending' && ((m.player1 && !m.player2) || (!m.player1 && m.player2)));
     
@@ -2469,6 +2663,12 @@ const BRACKET = {
   },
 
   // Download fixture bracket as PDF — landscape A3, professional navy style
+  // NOTE: superseded on the View Bracket page by admin/bracket.html's
+  // downloadOfficialFightDiagramPDF(), which overrides this button's
+  // onclick after every render. Kept functional (and safe against the
+  // multi-bye Round 1 shape the Bracket Editor can now produce) as a
+  // fallback / public API, but only renders the first Round-1 bye — its
+  // single-bye junction geometry was never built to lay out several.
   downloadFixturePDF() {
     if (typeof window.jspdf === 'undefined' && typeof jsPDF === 'undefined') {
       MODAL.error('PDF library not loaded. Please refresh and try again.');
@@ -2498,8 +2698,10 @@ const BRACKET = {
       const W = PW - ML - MR;
 
       const r1Matches = rounds[0] || [];
-      const byePlayers = this.currentBracket.byePlayers || {};
-      const r1ByePlayer = byePlayers['0'] || null;
+      // This function's junction geometry was built for at most one Round-1
+      // bye; take just the first so a multi-bye edited bracket still renders
+      // safely instead of showing an array where a player object is expected.
+      const r1ByePlayer = this.getByeList(this.currentBracket, 0)[0] || null;
 
       // Colors [R,G,B]
       const NAVY  = [23, 48, 94];
@@ -2886,10 +3088,10 @@ const BRACKET = {
 
     if (!playerId || isNaN(roundIndex)) return;
 
-    const byePlayers = this.currentBracket.byePlayers || {};
-    const byePlayer = byePlayers[String(roundIndex)];
+    const roundByeList = this.getByeList(this.currentBracket, roundIndex);
+    const byePlayer = roundByeList.find(p => String(p.id) === playerId);
 
-    if (!byePlayer || String(byePlayer.id) !== playerId) {
+    if (!byePlayer) {
       MODAL.warning('BYE player not found. Please try again.');
       return;
     }
@@ -2906,10 +3108,455 @@ const BRACKET = {
     }
 
     match[slot] = byePlayer;
-    delete this.currentBracket.byePlayers[String(roundIndex)];
+    this.setByeList(this.currentBracket, roundIndex, roundByeList.filter(p => String(p.id) !== playerId));
 
     await this.saveBracket(this.currentCategory, this.currentBracket);
     this.renderBracket();
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BRACKET EDITOR — password-gated Round 1 drag-and-drop editing
+  //
+  // Editing works on a lightweight in-memory draft (this._editDraft), never
+  // touching this.currentBracket until Save. Cancel just discards the
+  // draft. Save rebuilds Round 1 from the draft and writes it through the
+  // existing saveBracket() path unchanged, so every other module (Live
+  // Matches, referee dashboard, medal calculation, PDF/Excel export) keeps
+  // reading brackets/{categoryKey} exactly as before — it has no idea the
+  // Round 1 it's looking at was hand-arranged instead of auto-generated.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Admin/Judge only — referees can view brackets on this same page but
+  // never get an Edit Bracket button (mirrors the role split already used
+  // for the messaging panel on this page).
+  _canEditBracket() {
+    const role = sessionStorage.getItem('userRole');
+    return role === 'admin' || role === 'judge';
+  },
+
+  // Entry point: password-gate before flipping into edit mode. Reuses the
+  // admin's own real Firebase Auth password via reauthentication — no new
+  // secret to store or manage, and a wrong password leaves the bracket
+  // exactly as read-only as before.
+  promptEditPassword(categoryKey) {
+    if (typeof auth === 'undefined' || !auth.currentUser || !auth.currentUser.email) {
+      MODAL.error('You must be signed in as an admin or judge to edit the bracket.');
+      return;
+    }
+    const modalHTML = `
+      <div class="custom-modal-overlay" onclick="if(event.target===this) BRACKET._closeEditPasswordModal()">
+        <div class="custom-modal-content modal-warning">
+          <div class="custom-modal-header">
+            <h2>🔒 Confirm Password</h2>
+            <button class="custom-modal-close" onclick="BRACKET._closeEditPasswordModal()">✕</button>
+          </div>
+          <div class="custom-modal-body">
+            <p>Enter your admin/judge password to enable Bracket Edit Mode for this category.</p>
+            <div style="position:relative;margin-top:10px;">
+              <input type="password" id="editPwInput" autocomplete="current-password"
+                     style="width:100%;box-sizing:border-box;padding:10px 40px 10px 12px;border-radius:8px;border:1.5px solid var(--accent-cyan);background:rgba(0,0,0,0.45);color:var(--text-white);font-size:0.95rem;" />
+              <button type="button" onclick="BRACKET._toggleEditPw(this)"
+                      style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-gray);cursor:pointer;padding:4px;display:flex;">${this._eyeOpenSvg()}</button>
+            </div>
+            <div id="editPwError" style="color:var(--accent-red);font-size:0.85rem;margin-top:8px;display:none;"></div>
+          </div>
+          <div class="custom-modal-footer">
+            <button class="btn-secondary" onclick="BRACKET._closeEditPasswordModal()">Cancel</button>
+            <button class="btn-primary" onclick="BRACKET._submitEditPassword('${categoryKey}')">Unlock Editing</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const div = document.createElement('div');
+    div.innerHTML = modalHTML;
+    document.body.appendChild(div);
+    this._editPwModalDiv = div;
+    setTimeout(() => {
+      const input = document.getElementById('editPwInput');
+      if (!input) return;
+      input.focus();
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this._submitEditPassword(categoryKey);
+      });
+    }, 50);
+  },
+
+  _eyeOpenSvg() {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+  },
+  _eyeClosedSvg() {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+  },
+  _toggleEditPw(btn) {
+    const input = document.getElementById('editPwInput');
+    if (!input) return;
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    btn.innerHTML = isHidden ? this._eyeClosedSvg() : this._eyeOpenSvg();
+  },
+
+  _closeEditPasswordModal() {
+    if (this._editPwModalDiv) {
+      this._editPwModalDiv.remove();
+      this._editPwModalDiv = null;
+    }
+  },
+
+  async _submitEditPassword(categoryKey) {
+    const input = document.getElementById('editPwInput');
+    const errorDiv = document.getElementById('editPwError');
+    const password = input ? input.value : '';
+    if (!password) {
+      if (errorDiv) { errorDiv.textContent = 'Please enter your password.'; errorDiv.style.display = 'block'; }
+      return;
+    }
+    try {
+      const credential = EmailAuthProvider.credential(auth.currentUser.email, password);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      this._closeEditPasswordModal();
+      this.enterEditMode(categoryKey);
+    } catch (err) {
+      console.warn('Edit-mode password check failed:', err.code || err.message);
+      if (errorDiv) {
+        errorDiv.textContent = 'Incorrect password. Bracket remains read-only.';
+        errorDiv.style.display = 'block';
+      }
+      if (input) { input.value = ''; input.focus(); }
+    }
+  },
+
+  // Build the editable draft from the currently saved bracket's Round 1 and
+  // switch into edit-mode rendering.
+  enterEditMode(categoryKey) {
+    const bracket = this.currentBracket;
+    const category = this.categories[categoryKey];
+    if (!bracket || !category) return;
+
+    const round1 = (bracket.rounds && bracket.rounds[0]) || [];
+    const activePlayers = [];
+    round1.forEach(m => {
+      if (m.player1) activePlayers.push(m.player1);
+      if (m.player2) activePlayers.push(m.player2);
+    });
+    const byePool = this.getByeList(bracket, 0).map(p => ({ ...p }));
+
+    // Reconcile against the CURRENT roster: keep this bracket's existing
+    // arrangement as the starting point, but if players were added/removed
+    // since it was last saved, drop anyone no longer registered and add any
+    // newly-registered player into the bye pool (least disruptive spot —
+    // the admin can freely drag them into a match).
+    const seenIds = new Set();
+    const rosterIds = new Set(category.players.map(p => p.id));
+    const filteredActive = [];
+    activePlayers.forEach(p => {
+      if (p && rosterIds.has(p.id) && !seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        filteredActive.push(p);
+      }
+    });
+    const filteredBye = [];
+    byePool.forEach(p => {
+      if (p && rosterIds.has(p.id) && !seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        filteredBye.push(p);
+      }
+    });
+    category.players.forEach(p => {
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        filteredBye.push(this.compressPlayer(p));
+      }
+    });
+
+    this._editDraft = {
+      activePlayers: filteredActive,
+      byePool: filteredBye,
+      hadStartedMatches: round1.some(m => m.status && m.status !== 'pending')
+    };
+    this.editMode = true;
+    this.renderEditBracket();
+  },
+
+  // Full-screen edit-mode render — only Round 1 + the bye pool are shown;
+  // everything is driven from this._editDraft, not this.currentBracket.
+  renderEditBracket() {
+    const container = document.getElementById('bracketContainer');
+    if (!container || !this._editDraft) return;
+    const draft = this._editDraft;
+    const cat = this.categories[this.currentCategory];
+    const totalPlayers = draft.activePlayers.length + draft.byePool.length;
+    const matchCount = Math.ceil(draft.activePlayers.length / 2);
+
+    let html = `
+      <div class="bracket-header edit-mode-header">
+        <button class="btn-back" onclick="BRACKET.cancelEditBracket()">← Cancel</button>
+        <h2>🔧 EDIT MODE — ${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}</h2>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <span class="edit-mode-counts">${draft.activePlayers.length} in matches · ${draft.byePool.length} bye${draft.byePool.length === 1 ? '' : 's'} · ${totalPlayers} total</span>
+          <button class="btn-secondary" onclick="BRACKET.cancelEditBracket()">Cancel</button>
+          <button class="btn-primary edit-save-btn" onclick="BRACKET.saveEditBracket()">💾 Save Bracket</button>
+        </div>
+      </div>
+      <div class="edit-mode-banner">🔧 EDIT MODE — drag a player onto another slot to swap or replace them, or drag them into the BYE pool. Nothing is saved until you click Save.</div>
+      <div class="bracket-rounds">
+        <div class="round edit-round">
+          <h3 class="round-title">Round 1 (editable)</h3>
+          <div class="matches">
+    `;
+
+    for (let i = 0; i < matchCount; i++) {
+      html += this.renderEditMatchCard(draft, i);
+    }
+
+    html += `
+          </div>
+        </div>
+      </div>
+      ${this.renderEditByePool(draft)}
+    `;
+
+    container.innerHTML = html;
+    document.getElementById('categoriesList').style.display = 'none';
+    container.style.display = 'block';
+  },
+
+  renderEditMatchCard(draft, matchIndex) {
+    const i1 = matchIndex * 2;
+    const i2 = matchIndex * 2 + 1;
+    const p1 = draft.activePlayers[i1] || null;
+    const p2 = draft.activePlayers[i2] || null;
+    const sameTeam = p1 && p2 && this.areSameTeam(p1, p2);
+
+    const slot = (player, idx, side) => {
+      if (player) {
+        return `
+          <div class="player player-${side} edit-slot"
+               draggable="true"
+               ondragstart="BRACKET.editDragStart(event,'active',${idx})"
+               ondragover="BRACKET.editDragOver(event)"
+               ondragleave="BRACKET.editDragLeave(event)"
+               ondrop="BRACKET.editDrop(event,'active',${idx})">
+            <span class="player-name">${player.playerName}</span>
+            <span class="player-center">${player.centerName || ''}</span>
+          </div>
+        `;
+      }
+      return `
+        <div class="player edit-slot drop-target"
+             ondragover="BRACKET.editDragOver(event)"
+             ondragleave="BRACKET.editDragLeave(event)"
+             ondrop="BRACKET.editDrop(event,'active',${idx})">
+          <span class="player-center" style="opacity:.6;">Empty — drop a player here</span>
+        </div>
+      `;
+    };
+
+    return `
+      <div class="match pending edit-match${sameTeam ? ' same-team-match' : ''}">
+        <span class="match-number-badge">Match ${matchIndex + 1}</span>
+        <div class="match-players">
+          ${slot(p1, i1, 'blue')}
+          <div class="vs">VS</div>
+          ${slot(p2, i2, 'red')}
+        </div>
+        ${sameTeam ? `<div class="edit-warning">⚠️ Same team — allowed, but flagged</div>` : ''}
+      </div>
+    `;
+  },
+
+  renderEditByePool(draft) {
+    const chips = draft.byePool.map((p, idx) => `
+      <div class="bye-chip"
+           draggable="true"
+           ondragstart="BRACKET.editDragStart(event,'bye',${idx})"
+           ondragover="BRACKET.editDragOver(event)"
+           ondragleave="BRACKET.editDragLeave(event)"
+           ondrop="BRACKET.editDrop(event,'bye',${idx})">
+        <span class="player-name">${p.playerName}</span>
+        <span class="player-center">${p.centerName || ''}</span>
+      </div>
+    `).join('');
+
+    return `
+      <div class="edit-bye-pool"
+           ondragover="BRACKET.editDragOver(event)"
+           ondragleave="BRACKET.editDragLeave(event)"
+           ondrop="BRACKET.editDrop(event,'bye',null)">
+        <h3 class="round-title">🎫 BYE Pool — ${draft.byePool.length} player${draft.byePool.length === 1 ? '' : 's'} (drag here to give a Round 1 bye)</h3>
+        <div class="bye-pool-chips">
+          ${chips || '<div class="bye-pool-empty">Drag a player here to assign a bye</div>'}
+        </div>
+      </div>
+    `;
+  },
+
+  editDragStart(event, zone, index) {
+    event.dataTransfer.setData('editZone', zone);
+    event.dataTransfer.setData('editIndex', String(index));
+    event.dataTransfer.effectAllowed = 'move';
+  },
+
+  editDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.add('drag-over');
+  },
+
+  editDragLeave(event) {
+    event.currentTarget.classList.remove('drag-over');
+  },
+
+  // Swap-or-move: dropping onto an OCCUPIED slot swaps the two players in
+  // place (covers "swap two players" and "replace one player with
+  // another"); dropping onto an empty trailing match slot or the bye
+  // pool's open background moves the player there instead. Because every
+  // chip always has exactly one array "home" and moves/swaps never create
+  // or delete an entry, duplicate/missing players are structurally
+  // impossible from dragging alone.
+  editDrop(event, targetZone, targetIndex) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.remove('drag-over');
+
+    const draft = this._editDraft;
+    if (!draft) return;
+
+    const srcZone = event.dataTransfer.getData('editZone');
+    const srcIndexRaw = event.dataTransfer.getData('editIndex');
+    if (!srcZone || srcIndexRaw === '') return;
+    const srcIndex = parseInt(srcIndexRaw, 10);
+
+    const srcArr = srcZone === 'bye' ? draft.byePool : draft.activePlayers;
+    const dstArr = targetZone === 'bye' ? draft.byePool : draft.activePlayers;
+    if (isNaN(srcIndex) || srcIndex < 0 || srcIndex >= srcArr.length) return;
+    if (srcZone === targetZone && srcIndex === targetIndex) return;
+
+    const movedPlayer = srcArr[srcIndex];
+
+    if (targetIndex === null || targetIndex === undefined || targetIndex >= dstArr.length) {
+      // Empty trailing slot or open pool background — move, no swap.
+      srcArr.splice(srcIndex, 1);
+      dstArr.push(movedPlayer);
+    } else if (srcZone === targetZone) {
+      const targetPlayer = srcArr[targetIndex];
+      srcArr[srcIndex] = targetPlayer;
+      srcArr[targetIndex] = movedPlayer;
+    } else {
+      const targetPlayer = dstArr[targetIndex];
+      dstArr[targetIndex] = movedPlayer;
+      srcArr[srcIndex] = targetPlayer;
+    }
+
+    this.renderEditBracket();
+  },
+
+  async cancelEditBracket() {
+    const draft = this._editDraft;
+    if (draft) {
+      const originalRound1 = (this.currentBracket.rounds && this.currentBracket.rounds[0]) || [];
+      const originalActiveIds = [];
+      originalRound1.forEach(m => {
+        if (m.player1) originalActiveIds.push(m.player1.id);
+        if (m.player2) originalActiveIds.push(m.player2.id);
+      });
+      const originalByeIds = this.getByeList(this.currentBracket, 0).map(p => p.id).sort();
+      const draftActiveIds = draft.activePlayers.map(p => p.id);
+      const draftByeIds = draft.byePool.map(p => p.id).sort();
+
+      const changed = JSON.stringify(originalActiveIds) !== JSON.stringify(draftActiveIds) ||
+        JSON.stringify(originalByeIds) !== JSON.stringify(draftByeIds);
+
+      if (changed) {
+        const confirmed = await MODAL.showConfirm('Discard unsaved bracket changes?');
+        if (!confirmed) return;
+      }
+    }
+
+    this.editMode = false;
+    this._editDraft = null;
+    this.renderBracket();
+  },
+
+  async saveEditBracket() {
+    const draft = this._editDraft;
+    if (!draft) return;
+
+    const category = this.categories[this.currentCategory];
+    const totalPlayers = draft.activePlayers.length + draft.byePool.length;
+
+    // ── VALIDATION ────────────────────────────────────────────────────
+    const allIds = [...draft.activePlayers.map(p => p.id), ...draft.byePool.map(p => p.id)];
+    const idSet = new Set(allIds);
+    if (idSet.size !== allIds.length) {
+      MODAL.warning('A player appears more than once in the bracket. Please fix before saving.');
+      return;
+    }
+    const missing = category.players.filter(p => !idSet.has(p.id));
+    if (missing.length > 0) {
+      MODAL.warning(`${missing.length} player(s) are missing from the bracket: ${missing.map(p => p.playerName).join(', ')}.`);
+      return;
+    }
+    if (totalPlayers !== category.players.length) {
+      MODAL.warning('The bracket player count does not match the category roster.');
+      return;
+    }
+    if (draft.activePlayers.length % 2 !== 0) {
+      MODAL.warning('An odd number of players are left in matches — move one more player to the BYE pool (or move one back out) before saving.');
+      return;
+    }
+    if (totalPlayers > 1 && draft.byePool.length >= totalPlayers) {
+      MODAL.warning('Every player cannot receive a bye — Round 1 needs at least one real match.');
+      return;
+    }
+
+    // ── WARN IF THIS DISCARDS RECORDED PROGRESS ─────────────────────────
+    if (draft.hadStartedMatches) {
+      const confirmed = await MODAL.showConfirm(
+        'Round 1 already has match results recorded (and any later rounds already built from them). Saving this edit will discard that progress and rebuild Round 1 from scratch. Continue?'
+      );
+      if (!confirmed) return;
+    }
+
+    // ── REBUILD ROUND 1 FROM THE DRAFT ──────────────────────────────────
+    const bracket = this.currentBracket;
+    const byeCount = draft.byePool.length;
+    const newRound1 = [];
+    for (let i = 0; i < draft.activePlayers.length; i += 2) {
+      newRound1.push({
+        matchId: `R1_M${Math.floor(i / 2) + 1}`,
+        round: 1,
+        player1: draft.activePlayers[i],
+        player2: draft.activePlayers[i + 1],
+        winner: null,
+        eliminated: null,
+        status: 'pending',
+        startTime: null,
+        endTime: null
+      });
+    }
+
+    bracket.rounds = [newRound1];
+    this.setByeList(bracket, 0, draft.byePool);
+    // A manual edit redefines Round 1 from scratch, so the bye-fairness
+    // history (used by buildNextRound for ROUNDS 2+) is reseeded to match
+    // — exactly what createBracket() does for an auto-generated Round 1.
+    bracket.byeHistory = {};
+    draft.byePool.forEach(p => { bracket.byeHistory[p.id] = 1; });
+    bracket.expectedRoundMatchCounts = this.computeExpectedRoundMatchCounts(totalPlayers, byeCount);
+    bracket.playerCount = totalPlayers;
+    bracket.currentRound = 0;
+    bracket.status = 'live';
+    bracket.manuallyEdited = true;
+    bracket.lastEditedAt = new Date().toISOString();
+    bracket.editedBy = (typeof auth !== 'undefined' && auth.currentUser && auth.currentUser.email) || 'unknown';
+
+    this.currentBracket = bracket;
+    this.editMode = false;
+    this._editDraft = null;
+
+    await this.saveBracket(this.currentCategory, this.currentBracket);
+    this.renderBracket();
+    MODAL.success('Bracket saved! This edited layout is now the official Round 1.');
   },
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -2936,11 +3583,12 @@ const BRACKET = {
         : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
 
       const rounds = toArr(this.currentBracket.rounds).map(r => toArr(r));
-      const byePlayers = this.currentBracket.byePlayers || {};
       const expectedCnts = toArr(this.currentBracket.expectedRoundMatchCounts || []);
       const totalRounds = Math.max(rounds.length, expectedCnts.length);
       const r1Matches = rounds[0] || [];
-      const r1ByePlayer = byePlayers['0'] || null;
+      // This sheet's layout was built for at most one Round-1 bye row; take
+      // just the first so a multi-bye edited bracket still exports safely.
+      const r1ByePlayer = this.getByeList(this.currentBracket, 0)[0] || null;
 
       // ── Layout constants ─────────────────────────────────────────────
       // 4 rows per R1 match: P1 row, spacer row, P2 row, gap/junction row
@@ -3379,6 +4027,123 @@ const BRACKET = {
     const safeLabel = categoryLabel.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
     const fileName = `Results_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, fileName);
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // FIXTURE WORD DOCUMENT DOWNLOAD
+  // A round-by-round match table (not a visual bracket tree — Word doesn't
+  // render line-art connectors usefully) that opens directly in Microsoft
+  // Word / Google Docs / LibreOffice as a normal editable document: real
+  // tables, real text, freely reorder/rename/annotate. Uses the standard
+  // "HTML flavored as Word" trick (an .html document saved with a .doc
+  // extension plus the MSO-specific <?xml?> header Word recognizes) — no
+  // extra library/CDN dependency, unlike the PDF/Excel exports.
+  // ═══════════════════════════════════════════════════════════════════════
+  downloadFixtureWord() {
+    if (!this.currentBracket || !this.currentBracket.rounds) {
+      MODAL.warning('No bracket loaded.');
+      return;
+    }
+    try {
+      const cat = this.categories[this.currentCategory];
+      const categoryLabel = `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`;
+      const champTitle = document.title.replace(' - Bracket Management', '').trim() || 'Tournament';
+      const totalRounds = this.getExpectedTotalRounds(this.currentBracket);
+
+      const esc = (s) => String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const playerLabel = (p) => p ? `${esc(p.playerName)}${p.centerName ? ' (' + esc(p.centerName) + ')' : ''}` : '—';
+
+      let matchNum = 1;
+      let roundsHtml = '';
+      this.currentBracket.rounds.forEach((round, roundIndex) => {
+        const actualRoundNumber = round[0]?.round || (roundIndex + 1);
+        const roundName = this.getRoundName(roundIndex, totalRounds, actualRoundNumber);
+
+        let rows = '';
+        round.forEach(match => {
+          const winnerName = match.winner
+            ? (match.player1 && match.player1.id === match.winner ? match.player1.playerName
+              : (match.player2 && match.player2.id === match.winner ? match.player2.playerName : ''))
+            : '';
+          rows += `<tr>
+            <td style="text-align:center;">${matchNum++}</td>
+            <td>${playerLabel(match.player1)}</td>
+            <td style="text-align:center;">vs</td>
+            <td>${playerLabel(match.player2)}</td>
+            <td>${esc(winnerName)}</td>
+          </tr>`;
+        });
+        // Byes for this round — the Bracket Editor allows several on Round 1
+        // (front-loaded, like real tournament seeding); BRACKET.getByeList()
+        // normalizes both the legacy single-object and array shapes.
+        this.getByeList(this.currentBracket, roundIndex).forEach(bye => {
+          rows += `<tr>
+            <td style="text-align:center;">${matchNum++}</td>
+            <td colspan="3" style="text-align:center;font-style:italic;color:#886600;">${playerLabel(bye)} — BYE (advances automatically)</td>
+            <td>${esc(bye.playerName)}</td>
+          </tr>`;
+        });
+
+        roundsHtml += `
+          <h2>${esc(roundName)}</h2>
+          <table>
+            <thead><tr><th>Match&nbsp;#</th><th>Player&nbsp;1</th><th></th><th>Player&nbsp;2</th><th>Winner</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      });
+
+      // Results appendix — whatever's decided so far (works mid-tournament
+      // too; buildRankings() only returns entries for rounds already played).
+      const rankings = this.buildRankings();
+      const medalRows = ['Gold', 'Silver', '1st Bronze', '2nd Bronze'].map((label, i) => {
+        const entry = rankings[i];
+        const name = entry ? playerLabel(entry.player) : '';
+        return `<tr><td>${label}</td><td>${name}</td></tr>`;
+      }).join('');
+
+      const htmlDoc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>Fixture - ${esc(categoryLabel)}</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
+<style>
+  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color:#1a1a1a; }
+  h1 { font-size: 18pt; color:#17305E; margin-bottom:2pt; }
+  h2 { font-size: 13pt; color:#17305E; margin-top:20pt; border-bottom:1pt solid #C9A84C; padding-bottom:3pt; }
+  .subtitle { font-size:10pt; color:#555555; margin-bottom:16pt; }
+  table { border-collapse: collapse; width:100%; margin-bottom:8pt; }
+  th, td { border:1pt solid #999999; padding:5pt 8pt; font-size:10pt; vertical-align:middle; }
+  th { background:#17305E; color:#ffffff; }
+</style>
+</head>
+<body>
+  <h1>${esc(champTitle)}</h1>
+  <div class="subtitle">${esc(categoryLabel)} &mdash; Tournament Fixture (editable)</div>
+  ${roundsHtml}
+  <h2>Results</h2>
+  <table>
+    <thead><tr><th>Medal</th><th>Player</th></tr></thead>
+    <tbody>${medalRows}</tbody>
+  </table>
+</body>
+</html>`;
+
+      const blob = new Blob(['﻿', htmlDoc], { type: 'application/msword' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeKey = this.currentCategory.replace(/[^a-zA-Z0-9]/g, '_');
+      a.href = url;
+      a.download = `Fixture_${safeKey}_${new Date().toISOString().slice(0, 10)}.doc`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (err) {
+      console.error('Word export error:', err);
+      MODAL.error('Error generating Word document: ' + err.message);
+    }
   },
 
   // Simple player roster for every player in the currently open bracket's

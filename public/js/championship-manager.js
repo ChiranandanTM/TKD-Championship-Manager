@@ -6,6 +6,10 @@
 // Full player data is already stored in data.players, so no info is lost.
 function _slimBrackets(brackets) {
   const slim = p => (p && p.id) ? { id: p.id } : p;
+  // byePlayers[roundIndex] is normally a single player object, but the
+  // Bracket Editor (bracket.js) can store several as an array when an
+  // admin front-loads multiple Round-1 byes — slim each entry either way.
+  const slimBye = v => Array.isArray(v) ? v.map(slim) : slim(v);
   const result = {};
   for (const [catKey, bracket] of Object.entries(brackets)) {
     result[catKey] = {
@@ -20,7 +24,7 @@ function _slimBrackets(brackets) {
         }))
       ),
       byePlayers: Object.fromEntries(
-        Object.entries(bracket.byePlayers || {}).map(([k, p]) => [k, slim(p)])
+        Object.entries(bracket.byePlayers || {}).map(([k, v]) => [k, slimBye(v)])
       )
     };
   }
@@ -53,6 +57,10 @@ function _rebuildPlayers(brackets, matchHistory, playersMap) {
     if (Object.keys(p).length === 1) return playersMap[p.id] ? { ...playersMap[p.id] } : p;
     return p; // already a full object (old archive format)
   };
+  // byePlayers[roundIndex] is normally a single player object, but the
+  // Bracket Editor (bracket.js) can store several as an array when an
+  // admin front-loads multiple Round-1 byes — rebuild each entry either way.
+  const rebuildBye = v => Array.isArray(v) ? v.map(rebuild) : rebuild(v);
 
   const rebuiltBrackets = {};
   for (const [catKey, bracket] of Object.entries(brackets)) {
@@ -68,7 +76,7 @@ function _rebuildPlayers(brackets, matchHistory, playersMap) {
         }))
       ),
       byePlayers: Object.fromEntries(
-        Object.entries(bracket.byePlayers || {}).map(([k, p]) => [k, rebuild(p)])
+        Object.entries(bracket.byePlayers || {}).map(([k, v]) => [k, rebuildBye(v)])
       )
     };
   }

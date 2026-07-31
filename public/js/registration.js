@@ -488,7 +488,12 @@ const REGISTRATION = {
           break;
 
         case 'date':
-          fieldHTML += `<input type="date" id="${field.id}" name="${field.id}" ${requiredAttr}>`;
+          fieldHTML += `
+            <div class="dob-field-wrapper">
+              <input type="date" id="${field.id}" name="${field.id}" class="dob-date-input" readonly max="${new Date().toISOString().split('T')[0]}" min="1900-01-01" ${requiredAttr}>
+              <button type="button" class="dob-calendar-trigger" data-target="${field.id}" aria-label="Open calendar">📅</button>
+            </div>
+          `;
           break;
 
         case 'tel':
@@ -670,6 +675,7 @@ const REGISTRATION = {
       if (dobInput) {
         dobInput.addEventListener('change', handleDobChange);
         console.log('✅ DOB listener attached');
+        if (window.DOB_PICKER) window.DOB_PICKER.attach(dobInput);
       } else {
         console.error('❌ DOB input element not found in DOM! Cannot attach listener.');
       }

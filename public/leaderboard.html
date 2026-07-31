@@ -204,6 +204,40 @@
             100% { transform: rotate(360deg); }
         }
         
+        .filter-bar {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .filter-bar label {
+            color: #888;
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .filter-bar select {
+            background: rgba(20, 25, 50, 0.9);
+            color: #fff;
+            border: 2px solid rgba(0, 229, 255, 0.4);
+            border-radius: 10px;
+            padding: 10px 16px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            min-height: 44px;
+        }
+
+        .filter-bar select:hover,
+        .filter-bar select:focus {
+            border-color: #00E5FF;
+            outline: none;
+        }
+
         .points-legend {
             display: flex;
             justify-content: center;
@@ -242,6 +276,13 @@
     </div>
 
     <div class="container">
+        <div class="filter-bar">
+            <label for="categoryFilter">View</label>
+            <select id="categoryFilter">
+                <option value="all">Overall Team Points</option>
+            </select>
+        </div>
+
         <div class="leaderboard-wrapper">
             <table class="leaderboard-table" id="leaderboardTable">
                 <thead>
@@ -266,10 +307,11 @@
         </div>
         
         <div class="points-legend">
-            <div class="legend-item">🥇 Gold = <strong>7 pts</strong></div>
-            <div class="legend-item">🥈 Silver = <strong>3 pts</strong></div>
-            <div class="legend-item">🥉 Bronze = <strong>1 pt</strong></div>
+            <div class="legend-item">🥇 Gold = <strong>120 pts</strong></div>
+            <div class="legend-item">🥈 Silver = <strong>50 pts</strong></div>
+            <div class="legend-item">🥉 Bronze (1st &amp; 2nd) = <strong>20 pts each</strong></div>
             <div class="legend-item"><em>Sorted by Total Points</em></div>
+            <div class="legend-item"><em>Mini category medals do not count toward points</em></div>
         </div>
     </div>
 

@@ -126,6 +126,28 @@
         .drop-target { border-style:dashed!important; border-color:rgba(0,229,255,0.45)!important; background:rgba(0,229,255,0.05)!important; min-height:44px; }
         .drop-target.drag-over { border-color:var(--border-gold)!important; background:rgba(255,215,0,0.08)!important; }
 
+        /* ── BRACKET EDITOR ─────────────────────────────────────────────── */
+        .manually-edited-badge { display:inline-block; font-size:0.65rem; font-weight:800; text-transform:uppercase; letter-spacing:0.5px; color:var(--border-gold); background:rgba(255,215,0,0.12); border:1px solid rgba(255,215,0,0.4); border-radius:20px; padding:3px 10px; vertical-align:middle; margin-left:8px; }
+        .edit-bracket-btn:hover { background:rgba(255,215,0,0.1)!important; }
+        .edit-mode-header { border-color:var(--border-gold)!important; box-shadow:0 0 24px rgba(255,215,0,0.15); }
+        .edit-mode-banner { background:linear-gradient(135deg,rgba(255,215,0,0.12) 0%,rgba(255,165,0,0.08) 100%); border:1.5px dashed var(--border-gold); color:var(--border-gold); font-weight:700; font-size:0.9rem; padding:12px 18px; border-radius:10px; margin-bottom:24px; text-align:center; }
+        .edit-mode-counts { font-size:0.85rem; color:var(--accent-cyan); font-weight:700; white-space:nowrap; }
+        .edit-save-btn { background:linear-gradient(135deg,#00CC55 0%,#00994D 100%)!important; color:#fff!important; border:none!important; font-weight:800!important; }
+        .edit-round { flex:0 0 auto; min-width:340px; }
+        .edit-match { cursor:default; }
+        .edit-slot { cursor:grab; }
+        .edit-slot:active { cursor:grabbing; }
+        .edit-slot.drag-over, .bye-chip.drag-over { border-color:var(--border-gold)!important; background:rgba(255,215,0,0.12)!important; }
+        .edit-warning { margin-top:10px; font-size:0.78rem; color:#ffa500; font-weight:700; text-align:center; }
+        .edit-bye-pool { margin-top:28px; padding:20px; background:linear-gradient(145deg,rgba(30,20,5,0.6) 0%,rgba(40,30,10,0.6) 100%); border:2px dashed rgba(255,165,0,0.4); border-radius:16px; }
+        .edit-bye-pool.drag-over { border-color:var(--border-gold); background:rgba(255,215,0,0.06); }
+        .bye-pool-chips { display:flex; flex-wrap:wrap; gap:12px; min-height:56px; }
+        .bye-chip { display:flex; flex-direction:column; gap:2px; padding:10px 16px; background:rgba(255,165,0,0.1); border:1.5px solid rgba(255,165,0,0.4); border-radius:10px; cursor:grab; min-width:140px; transition:all 0.2s; }
+        .bye-chip:active { cursor:grabbing; }
+        .bye-chip .player-name { font-size:0.9rem; font-weight:700; color:var(--text-white); }
+        .bye-chip .player-center { font-size:0.75rem; color:var(--text-gray); opacity:0.7; }
+        .bye-pool-empty { color:var(--text-gray); opacity:0.6; font-size:0.85rem; font-style:italic; padding:10px; }
+
         /* Skeleton loader for category cards */
         @keyframes bktPulse{0%,100%{opacity:.45}50%{opacity:.2}}
         @keyframes bktShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
@@ -504,7 +526,6 @@
             const bracket = BRACKET.currentBracket;
             const toArr = o => Array.isArray(o) ? o : Object.keys(o).sort((a, b) => Number(a) - Number(b)).map(k => o[k]);
             const rounds = toArr(bracket.rounds || []).map(r => toArr(r));
-            const byePlayers = bracket.byePlayers || {};
 
             // Championship title/date — read-only lookup, same public data every
             // other page on this app already reads from formConfig.
@@ -571,29 +592,125 @@
                 ? bracket.expectedRoundMatchCounts
                 : rounds.map(r => r.length);
             const numRounds = Math.max(expectedCounts.length, rounds.length, 1);
-            const r1Count = Math.max(rounds[0] ? rounds[0].length : (expectedCounts[0] || 1), 1);
-            const slotH = Math.max(40, Math.min(95, availableH / r1Count));
+
+            // ── ROUND 1 LAYOUT: interleave byes adjacent to their target match ──
+            // Classic tournament "seeding chart" convention (the standard way
+            // every printed bracket sheet handles byes): a bye does NOT get a
+            // separate, disconnected list — it occupies its own single-line
+            // row placed directly beside the specific match it's paired with,
+            // so the connector into Round 2 is short and unambiguous instead
+            // of reaching far down the page. Uses the exact same
+            // BRACKET.computeByeSlots() priority buildNextRound() uses live
+            // (first bye → first match, second → last match, further ones
+            // center-outward) — only WHERE it's drawn changes here, not WHO
+            // plays whom.
+            const r1Matches = rounds[0] || Array.from({ length: expectedCounts[0] || 1 }, () => ({ player1: null, player2: null, winner: null }));
+            const r1ByeList = BRACKET.getByeList(bracket, 0);
+            const r1ByeTargets = BRACKET.computeByeSlots(r1Matches.length, r1ByeList.length);
+            const r1ByeAtMatch = new Map();
+            r1ByeTargets.forEach((mIdx, bi) => r1ByeAtMatch.set(mIdx, bi));
+
+            // Half-row index (each row = one name line; a match spans 2
+            // consecutive rows, a bye spans 1) for every player slot and bye.
+            const r1MatchRow = [];
+            const r1ByeRow = [];
+            let halfCursor = 0;
+            r1Matches.forEach((_, i) => {
+                const bi = r1ByeAtMatch.get(i);
+                // The highest-priority bye (paired with the FIRST match) sits
+                // ABOVE its match, mirroring the top of a real seeding chart;
+                // every other bye sits BELOW its match.
+                if (bi === 0) r1ByeRow[bi] = halfCursor++;
+                r1MatchRow[i] = halfCursor;
+                halfCursor += 2;
+                if (bi !== undefined && bi !== 0) r1ByeRow[bi] = halfCursor++;
+            });
+            const r1TotalHalfRows = Math.max(halfCursor, 1);
+
+            // Reserve enough row-height for the tallest column: Round 1 in
+            // half-row units (matches + interleaved byes), every later round
+            // in whole-row units (real matches + any bye rows still stacked
+            // below them there, since only Round 1 is knowable before the
+            // tournament starts) — this is what earlier sizing got wrong,
+            // letting bye rows overflow into the medal table.
+            let maxColumnUnits = r1TotalHalfRows / 2;
+            for (let r = 1; r < numRounds; r++) {
+                const mCount = rounds[r] ? rounds[r].length : (expectedCounts[r] || 1);
+                const bCount = rounds[r] ? BRACKET.getByeList(bracket, r).length : 0;
+                maxColumnUnits = Math.max(maxColumnUnits, mCount + bCount);
+            }
+            const slotH = Math.max(40, Math.min(95, availableH / maxColumnUnits));
+            const halfUnitH = slotH / 2;
+            const r1RowY = (h) => bracketTop + h * halfUnitH + halfUnitH / 2;
+
             const champColW = 110;
             const colW = Math.max(90, Math.min(160, (pageW - marginX - rightMargin - champColW) / numRounds));
             const lineLen = Math.min(95, colW * 0.62);
 
-            // Vertical center of round r (0-indexed), match j — round 0 centers are
-            // fixed slots; every later round's match centers on the midpoint of the
-            // two matches feeding it. Falls back to even spacing if a round's size
-            // doesn't cleanly halve the previous one (e.g. an odd bye pattern).
-            const centers = [];
-            centers[0] = rounds[0] ? rounds[0].map((_, j) => bracketTop + j * slotH + slotH / 2) : [bracketTop + slotH / 2];
+            // Vertical center of round r (0-indexed), match j. Round 0 centers
+            // come from the interleaved half-row layout above. Every later
+            // round's match centers are derived from the SAME deterministic
+            // bye-pairing plan bracket.js uses live (BRACKET.planNextRoundPairing)
+            // — the winner of the source round's first match feeds whichever
+            // slot the plan says, a bye (if any) feeds whichever slot the plan
+            // pairs it with, etc. — so a not-yet-played preview can never show
+            // a different pairing than what buildNextRound() will actually
+            // produce once the round is played. byeCenters[r] (r >= 1) holds
+            // one row per known bye in round r, stacked below that round's
+            // matches (Round 1's byes use r1ByeRow/r1RowY instead, above).
+            // A bye claiming a "middle" match (Priority 3, center-outward)
+            // forces that match's own immediate neighbours to pair with each
+            // other by skipping past it — e.g. with 5 matches and 3 byes,
+            // Match 2 and Match 4 end up paired together because Match 3 was
+            // claimed by a bye. Match 2+4's simple parent-midpoint can then
+            // land almost exactly on top of Match 3+bye's midpoint, even
+            // though neither their Round-1 rows nor their tree branches
+            // overlap — only the raw arithmetic coincides. This pass keeps
+            // every box's midpoint-derived position (so connector lines
+            // still point at the true parent midpoint) but nudges any box
+            // that would otherwise sit closer than minGap to its neighbour
+            // ABOVE it — Round 1 rows are never touched, and a box is only
+            // ever pushed down, never reordered relative to its siblings.
+            const resolveRoundCollisions = (centersArr, minGap) => {
+                const order = centersArr.map((y, idx) => ({ y, idx })).sort((a, b) => a.y - b.y);
+                for (let i = 1; i < order.length; i++) {
+                    const minY = order[i - 1].y + minGap;
+                    if (order[i].y < minY) order[i].y = minY;
+                }
+                const resolved = new Array(centersArr.length);
+                order.forEach(({ y, idx }) => { resolved[idx] = y; });
+                return resolved;
+            };
+            const minBoxGap = slotH * 0.55;
+
+            const matchCenters = [];
+            const byeCenters = [];
+            matchCenters[0] = r1Matches.map((_, i) => (r1RowY(r1MatchRow[i]) + r1RowY(r1MatchRow[i] + 1)) / 2);
+            byeCenters[0] = r1ByeList.map((_, bi) => r1RowY(r1ByeRow[bi]));
+
             for (let r = 1; r < numRounds; r++) {
-                const prev = centers[r - 1] || [];
-                const count = rounds[r] ? rounds[r].length : (expectedCounts[r] || Math.max(1, Math.ceil(prev.length / 2)));
+                const prevMatchCount = rounds[r - 1] ? rounds[r - 1].length : (expectedCounts[r - 1] || 0);
+                // Byes are only KNOWABLE once the source round is real (built);
+                // a still-future round has nothing to preview yet, so its bye
+                // count is treated as 0 here — planNextRoundPairing degrades
+                // gracefully to plain sequential match-pairing in that case,
+                // identical to the previous (pre-bye-aware) preview behaviour.
+                const prevByeCount = rounds[r - 1] ? BRACKET.getByeList(bracket, r - 1).length : 0;
+                const plan = BRACKET.planNextRoundPairing(prevMatchCount, prevByeCount);
+                const resolveY = (slot) => (slot.type === 'match' ? matchCenters[r - 1][slot.index] : byeCenters[r - 1][slot.index]);
+                const count = rounds[r] ? rounds[r].length : (expectedCounts[r] || Math.max(1, plan.slots.length));
+
                 const c = [];
                 for (let j = 0; j < count; j++) {
-                    const a = prev[j * 2], b = prev[j * 2 + 1];
-                    if (a !== undefined && b !== undefined) c.push((a + b) / 2);
-                    else if (a !== undefined) c.push(a);
-                    else c.push(bracketTop + j * slotH + slotH / 2);
+                    const slot = plan.slots[j];
+                    if (!slot) { c.push(bracketTop + j * slotH + slotH / 2); continue; }
+                    const yA = resolveY(slot.a), yB = resolveY(slot.b);
+                    c.push(yB !== undefined ? (yA + yB) / 2 : yA);
                 }
-                centers[r] = c;
+                matchCenters[r] = resolveRoundCollisions(c, minBoxGap);
+
+                const rCount = rounds[r] ? rounds[r].length : count;
+                byeCenters[r] = rounds[r] ? BRACKET.getByeList(bracket, r).map((_, bi) => bracketTop + (rCount + 0.5 + bi) * slotH + r * 4) : [];
             }
 
             let matchCounter = 1;
@@ -611,45 +728,138 @@
                 }
             };
 
+            // ── PASS 1: draw every round's own boxes (no cross-round lines yet) ──
             for (let r = 0; r < numRounds; r++) {
                 const x = marginX + r * colW;
+                const xEnd = x + lineLen;
+
+                if (r === 0) {
+                    // Round 1 uses the interleaved half-row layout computed
+                    // above: each match's two players sit on their own rows,
+                    // and each bye sits inline on its own row directly beside
+                    // the specific match it's paired with (see r1MatchRow /
+                    // r1ByeRow) — matching a standard printed seeding chart
+                    // instead of a separate disconnected bye list.
+                    r1Matches.forEach((match, i) => {
+                        const yTop = r1RowY(r1MatchRow[i]);
+                        const yBot = r1RowY(r1MatchRow[i] + 1);
+                        drawSlot(x, yTop, match.player1, (i * 2 + 1));
+                        drawSlot(x, yBot, match.player2, (i * 2 + 2));
+                        doc.line(xEnd, yTop, xEnd, yBot);
+                        doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+                        doc.text(String(matchCounter++), xEnd + 4, matchCenters[0][i]);
+                    });
+                    r1ByeList.forEach((bye, bi) => {
+                        const byeY = r1RowY(r1ByeRow[bi]);
+                        drawSlot(x, byeY, bye, '');
+                        doc.setFont('helvetica', 'italic'); doc.setFontSize(7);
+                        doc.text('BYE — advances automatically', x + 3, byeY + 17);
+                    });
+                    continue;
+                }
+
                 // Use real match data where the round has already been built;
                 // otherwise synthesize blank TBD placeholders sized to the
                 // expected match count so the full tree still draws correctly.
                 const expectedCount = expectedCounts[r] || (rounds[r] ? rounds[r].length : 1);
                 const roundMatches = rounds[r] || Array.from({ length: expectedCount }, () => ({ player1: null, player2: null, winner: null }));
-                const roundCenters = centers[r] || [];
+                const roundCenters = matchCenters[r] || [];
 
                 roundMatches.forEach((match, j) => {
                     const yTop = roundCenters[j] - slotH * 0.22;
                     const yBot = roundCenters[j] + slotH * 0.22;
-                    drawSlot(x, yTop, match.player1, r === 0 ? (j * 2 + 1) : '');
-                    drawSlot(x, yBot, match.player2, r === 0 ? (j * 2 + 2) : '');
+                    drawSlot(x, yTop, match.player1, '');
+                    drawSlot(x, yBot, match.player2, '');
 
-                    // Connector: vertical bracket + stub reaching toward next round
-                    const xEnd = x + lineLen;
-                    const stubEnd = x + colW;
+                    // Internal bracket merging this match's own two players
+                    // into one winner exit point (roundCenters[j]) — the
+                    // cross-round connector line to the NEXT round is drawn
+                    // separately in Pass 2 below, once we know exactly where
+                    // it needs to land (which may be far away, e.g. a bye).
                     doc.line(xEnd, yTop, xEnd, yBot);
-                    doc.line(xEnd, roundCenters[j], stubEnd, roundCenters[j]);
 
                     doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
                     doc.text(String(matchCounter++), xEnd + 4, roundCenters[j]);
                 });
 
-                // Byes: rendered as an extra labeled slot below this round's real
-                // matches — bracket.js tracks at most one bye per round, advancing
-                // straight to the next round without a match.
-                const bye = byePlayers[String(r)];
-                if (bye) {
-                    const byeY = bracketTop + (roundMatches.length + 0.5) * slotH + r * 4;
+                // Byes: rendered at their own row, stacked below this round's
+                // real matches — only Round 1's byes (handled above) are
+                // knowable before the tournament starts, so later rounds keep
+                // the simpler stacked layout for any bye that emerges once
+                // that round is actually played.
+                const byes = BRACKET.getByeList(bracket, r);
+                const byeRowCenters = byeCenters[r] || [];
+                byes.forEach((bye, byeIdx) => {
+                    const byeY = byeRowCenters[byeIdx];
                     drawSlot(x, byeY, bye, '');
-                    doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
-                    doc.text('BYE (advances automatically)', x + lineLen + 8, byeY);
-                }
+                    doc.setFont('helvetica', 'italic'); doc.setFontSize(7);
+                    doc.text('BYE — advances automatically', x + 3, byeY + 17);
+                });
+            }
+
+            // ── PASS 2: connector lines between rounds ───────────────────────
+            // Drawn as an explicit elbow (out → across → in) reaching each
+            // source's TRUE next-round target position, rather than a single
+            // flat line assumed to coincidentally land in the right place.
+            // A flat line only looks right when source and target are close
+            // in Y (adjacent matches feeding their shared next match); a bye
+            // stacked several rows below the real matches can be far from
+            // the match it's paired with, so it needs a real line that
+            // actually travels there. Uses the exact same
+            // BRACKET.planNextRoundPairing() plan used to compute
+            // matchCenters, so every line drawn here matches a real pairing.
+            for (let r = 0; r < numRounds - 1; r++) {
+                const prevMatchCount = rounds[r] ? rounds[r].length : (expectedCounts[r] || 0);
+                const prevByeCount = rounds[r] ? BRACKET.getByeList(bracket, r).length : 0;
+                const plan = BRACKET.planNextRoundPairing(prevMatchCount, prevByeCount);
+                const targetCenters = matchCenters[r + 1] || [];
+
+                const xSourceEnd = marginX + r * colW + lineLen;
+                const xTargetStart = marginX + (r + 1) * colW;
+                const matchElbowX = xSourceEnd + (xTargetStart - xSourceEnd) * 0.5;
+
+                const resolveY = (source) => source.type === 'match'
+                    ? (matchCenters[r] || [])[source.index]
+                    : (byeCenters[r] || [])[source.index];
+
+                // Give each BYE-sourced connector its own lane (a distinct
+                // elbow X, fanned out across the gap) instead of sharing one
+                // vertical corridor with every other connector in this
+                // transition. Byes are stacked below the real matches and
+                // can need to travel several rows to reach their target —
+                // bunching every one of those long lines onto the same X
+                // made them overlap into an unreadable tangle.
+                const byeElbowX = (byeIdx) => {
+                    if (prevByeCount <= 1) return matchElbowX;
+                    const frac = 0.28 + (byeIdx / (prevByeCount - 1)) * 0.44; // spread 0.28..0.72
+                    return xSourceEnd + (xTargetStart - xSourceEnd) * frac;
+                };
+
+                plan.slots.forEach((slot, j) => {
+                    const targetY = targetCenters[j];
+                    if (targetY === undefined) return;
+                    [slot.a, slot.b].forEach((source) => {
+                        const sourceY = resolveY(source);
+                        if (sourceY === undefined) return;
+                        const isBye = source.type === 'bye';
+                        const thisElbowX = isBye ? byeElbowX(source.index) : matchElbowX;
+                        if (isBye) { doc.setLineDashPattern([2, 1.5], 0); doc.setLineWidth(0.6); }
+                        if (Math.abs(sourceY - targetY) < 0.75) {
+                            // Already aligned — a single straight line is
+                            // cleaner than a barely-visible elbow.
+                            doc.line(xSourceEnd, sourceY, xTargetStart, targetY);
+                        } else {
+                            doc.line(xSourceEnd, sourceY, thisElbowX, sourceY);
+                            doc.line(thisElbowX, sourceY, thisElbowX, targetY);
+                            doc.line(thisElbowX, targetY, xTargetStart, targetY);
+                        }
+                        if (isBye) { doc.setLineDashPattern([], 0); doc.setLineWidth(1); }
+                    });
+                });
             }
 
             // ── Champion ────────────────────────────────────────────────────
-            const lastRoundCenters = centers[numRounds - 1] || [bracketTop + slotH / 2];
+            const lastRoundCenters = matchCenters[numRounds - 1] || [bracketTop + slotH / 2];
             const champY = lastRoundCenters[0];
             const champX = marginX + numRounds * colW;
             doc.setLineWidth(1);

@@ -3067,3 +3067,214 @@ body {
   font-size: 1rem !important;
   padding: 13px 22px !important;
 }
+
+/* ============================================
+   DOB CALENDAR PICKER
+   ============================================ */
+
+.dob-field-wrapper {
+  position: relative;
+}
+
+.dob-field-wrapper .dob-date-input {
+  cursor: pointer;
+  padding-right: 54px !important;
+}
+
+.dob-field-wrapper .dob-date-input:not([readonly]) {
+  cursor: text;
+}
+
+/* Hide the native browser calendar icon/mini-picker on typing-friendly
+   (desktop/laptop) devices so the only calendar UI is our custom one,
+   opened via the 📅 button — avoids two different pickers competing. */
+.dob-field-wrapper .dob-date-input:not([readonly])::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+.dob-calendar-trigger {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.dob-calendar-trigger:hover {
+  background: rgba(0, 229, 255, 0.15);
+}
+
+.dob-calendar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(5, 5, 15, 0.85);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+  padding: 16px;
+}
+
+.dob-calendar-overlay.open {
+  display: flex;
+}
+
+.dob-calendar-card {
+  background: linear-gradient(135deg, var(--secondary-black) 0%, var(--card-black) 100%);
+  border: 2px solid var(--border-gold);
+  border-radius: var(--border-radius);
+  box-shadow: 0 0 20px rgba(255, 215, 0, 0.15);
+  width: 100%;
+  max-width: 340px;
+  max-height: 90vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.dob-calendar-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.dob-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 229, 255, 0.15);
+  border: 2px solid var(--accent-cyan);
+  color: var(--text-white);
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  flex-shrink: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.dob-cal-nav:hover {
+  background: rgba(0, 229, 255, 0.3);
+}
+
+.dob-calendar-header select {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid var(--accent-cyan);
+  border-radius: 8px;
+  color: var(--text-white);
+  font-size: 0.9rem;
+  height: 34px;
+  box-sizing: border-box;
+}
+
+.dob-calendar-weekdays,
+.dob-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.dob-calendar-weekdays {
+  text-align: center;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  font-size: 0.75rem;
+  margin-bottom: 4px;
+}
+
+.dob-calendar-weekdays span {
+  min-width: 0;
+}
+
+.dob-cal-day {
+  box-sizing: border-box;
+  min-width: 0;
+  width: 100%;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 2px solid transparent;
+  color: var(--text-white);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1;
+  white-space: nowrap;
+  padding: 0;
+  cursor: pointer;
+}
+
+.dob-cal-day:hover:not(:disabled) {
+  border-color: var(--accent-cyan);
+}
+
+.dob-cal-day.today {
+  border-color: var(--border-gold);
+}
+
+.dob-cal-day.selected {
+  background: var(--accent-cyan);
+  color: var(--primary-black);
+  font-weight: 700;
+}
+
+.dob-cal-day.disabled {
+  color: var(--text-gray);
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.dob-calendar-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.dob-calendar-footer button {
+  min-height: 40px;
+  padding: 10px 20px;
+  font-size: 0.9rem;
+}
+
+@media (min-width: 481px) {
+  .dob-cal-day {
+    height: 42px;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .dob-calendar-card {
+    max-width: 100%;
+    padding: 12px;
+  }
+
+  .dob-cal-day {
+    height: 34px;
+    font-size: 0.8rem;
+  }
+
+  .dob-calendar-header select {
+    font-size: 0.8rem;
+  }
+}

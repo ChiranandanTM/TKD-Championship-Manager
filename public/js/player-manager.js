@@ -3,6 +3,18 @@
 // Handle player deletion with cascading cleanup
 // ============================================
 
+// byePlayers[roundIndex] is normally a single compressed player object, but
+// the Bracket Editor (bracket.js) can store several as an array when an
+// admin front-loads multiple Round-1 byes. Mirrors bracket.js's
+// BRACKET.getByeList() so cleanup below only removes the ONE deleted
+// player from a round's bye list instead of wiping the whole round's byes.
+function _byeListFromValue(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (val.id) return [val];
+  return Object.keys(val).sort((a, b) => Number(a) - Number(b)).map(k => val[k]);
+}
+
 const PLAYER_MANAGER = {
 
   // Delete a player and all associated data
@@ -95,10 +107,15 @@ const PLAYER_MANAGER = {
                 });
               }
               if (bracketData.byePlayers && typeof bracketData.byePlayers === 'object') {
-                Object.entries(bracketData.byePlayers).forEach(([roundKey, byePlayer]) => {
-                  if (byePlayer?.id === playerId) {
-                    cleanupUpdates[`brackets/${bracketId}/byePlayers/${roundKey}`] = null;
-                  }
+                Object.entries(bracketData.byePlayers).forEach(([roundKey, byeVal]) => {
+                  const byeList = _byeListFromValue(byeVal);
+                  if (!byeList.some(p => p?.id === playerId)) return;
+                  const remaining = byeList.filter(p => p?.id !== playerId);
+                  // Write back only the surviving byes for this round (or
+                  // null the whole key if none remain) instead of wiping
+                  // out other players who also have a bye in that round.
+                  cleanupUpdates[`brackets/${bracketId}/byePlayers/${roundKey}`] =
+                    remaining.length === 0 ? null : (remaining.length === 1 ? remaining[0] : remaining);
                 });
               }
             });
@@ -141,6 +158,7 @@ const PLAYER_MANAGER = {
 
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         if (typeof MODAL !== 'undefined') {
+          MODAL.closeAlert();
           MODAL.success(`✅ Player "${playerName}" deleted and bracket data cleaned.\nTime: ${duration}s`);
         }
 
@@ -181,11 +199,15 @@ const PLAYER_MANAGER = {
             });
           }
           if (bracketData.byePlayers && typeof bracketData.byePlayers === 'object') {
-            Object.entries(bracketData.byePlayers).forEach(([roundKey, byePlayer]) => {
-              if (byePlayer?.id === playerId) {
-                updates[`brackets/${bracketId}/byePlayers/${roundKey}`] = null;
-                bracketsModified++;
-              }
+            Object.entries(bracketData.byePlayers).forEach(([roundKey, byeVal]) => {
+              const byeList = _byeListFromValue(byeVal);
+              if (!byeList.some(p => p?.id === playerId)) return;
+              const remaining = byeList.filter(p => p?.id !== playerId);
+              // Write back only the surviving byes for this round instead
+              // of wiping out other players who also have a bye there.
+              updates[`brackets/${bracketId}/byePlayers/${roundKey}`] =
+                remaining.length === 0 ? null : (remaining.length === 1 ? remaining[0] : remaining);
+              bracketsModified++;
             });
           }
         });
@@ -346,6 +368,7 @@ const PLAYER_MANAGER = {
       console.log(`✅ Deletion completed in ${duration}s`);
 
       if (typeof MODAL !== 'undefined') {
+        MODAL.closeAlert();
         MODAL.success(successMsg);
       }
 
@@ -359,6 +382,7 @@ const PLAYER_MANAGER = {
     } catch (error) {
       console.error('❌ Error deleting player:', error);
       if (typeof MODAL !== 'undefined') {
+        MODAL.closeAlert();
         MODAL.error('Error deleting player: ' + error.message);
       }
     }

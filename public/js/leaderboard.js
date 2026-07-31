@@ -1,11 +1,39 @@
 import '/js/firebase.js';
 
+// Team leaderboard scoring. Both semi-final losers ("1st Bronze" and "2nd
+// Bronze") are worth the same amount.
+const GOLD_POINTS = 120;
+const SILVER_POINTS = 50;
+const BRONZE_POINTS = 20;
+
+// Age categories the leaderboard cares about. 'Mini' medals are still stored
+// and shown on player-facing pages — they just never contribute leaderboard
+// points, in "Overall" or any category filter.
+const GENDERS = ['Male', 'Female'];
+const AGE_CATEGORIES = ['Sub-Junior', 'Mini', 'Cadet', 'Junior', 'Senior'];
+const EXCLUDED_AGE_CATEGORIES = ['Mini'];
+
+const CATEGORY_FILTERS = [
+    { value: 'all', label: 'Overall Team Points' },
+    { value: 'Male-Sub-Junior', label: 'Sub-Junior Boys Team Points' },
+    { value: 'Female-Sub-Junior', label: 'Sub-Junior Girls Team Points' },
+    { value: 'Male-Cadet', label: 'Cadet Boys Team Points' },
+    { value: 'Female-Cadet', label: 'Cadet Girls Team Points' },
+    { value: 'Male-Junior', label: 'Junior Boys Team Points' },
+    { value: 'Female-Junior', label: 'Junior Girls Team Points' },
+    { value: 'Male-Senior', label: 'Senior Men Team Points' },
+    { value: 'Female-Senior', label: 'Senior Women Team Points' }
+];
+
 const LEADERBOARD = {
     teams: {},
     brackets: {},
+    currentFilter: 'all',
 
     init() {
         console.log("🏆 Initializing Leaderboard...");
+
+        this.populateFilterOptions();
 
         const teamsRef = window.dbRef(window.database, 'teams');
         window.dbOnValue(teamsRef, (snapshot) => {
@@ -31,6 +59,49 @@ const LEADERBOARD = {
             }
             this.calculateRankings();
         });
+    },
+
+    populateFilterOptions() {
+        const select = document.getElementById('categoryFilter');
+        if (!select) return;
+
+        select.innerHTML = CATEGORY_FILTERS.map(f => `<option value="${f.value}">${f.label}</option>`).join('');
+        select.value = this.currentFilter;
+        select.addEventListener('change', (e) => {
+            this.currentFilter = e.target.value;
+            this.calculateRankings();
+        });
+    },
+
+    // A bracket's Firebase key is built as `${gender}-${ageCategory}-${weightCategory}`
+    // (see bracket.js). Parse it back out so brackets can be matched against
+    // the excluded-category list and the category filter.
+    parseCategoryKey(categoryKey) {
+        const gender = GENDERS.find(g => categoryKey.startsWith(g + '-'));
+        if (!gender) return null;
+
+        const rest = categoryKey.slice(gender.length + 1);
+        const ageCategory = AGE_CATEGORIES.find(a => rest === a || rest.startsWith(a + '-'));
+        if (!ageCategory) return null;
+
+        return { gender, ageCategory };
+    },
+
+    // Whether a bracket's medals should count toward leaderboard points under
+    // the currently selected filter.
+    isCategoryScored(categoryKey) {
+        const parsed = this.parseCategoryKey(categoryKey);
+
+        // Unrecognized key format (legacy data): don't silently drop it from
+        // the overall leaderboard, but it can never match a specific filter.
+        if (!parsed) {
+            return this.currentFilter === 'all';
+        }
+
+        if (EXCLUDED_AGE_CATEGORIES.includes(parsed.ageCategory)) return false;
+
+        if (this.currentFilter === 'all') return true;
+        return `${parsed.gender}-${parsed.ageCategory}` === this.currentFilter;
     },
 
     getTeam(player) {
@@ -69,6 +140,12 @@ const LEADERBOARD = {
                 continue;
             }
 
+            // Excluded age category (Mini) or doesn't match the active
+            // category filter — medals still exist elsewhere, just not here.
+            if (!this.isCategoryScored(categoryKey)) {
+                continue;
+            }
+
             // Detect single-player walkover: rounds may be missing, empty [],
             // [[]] (one round with zero matches), or Firebase object equivalents.
             // Also detect via bracket.status + byePlayers as a fallback.
@@ -96,7 +173,7 @@ const LEADERBOARD = {
                     const champTeam = this.getTeam(byePlayer);
                     if (champTeam) {
                         champTeam.gold += 1;
-                        champTeam.points += 7;
+                        champTeam.points += GOLD_POINTS;
                         console.log(`🏆 Walkover gold awarded to ${champTeam.name} in ${categoryKey}`);
                     }
                 }
@@ -116,18 +193,18 @@ const LEADERBOARD = {
                     const champTeam = this.getTeam(champion);
                     if (champTeam) {
                         champTeam.gold += 1;
-                        champTeam.points += 7;
+                        champTeam.points += GOLD_POINTS;
                     }
 
                     const runnerUpTeam = this.getTeam(runnerUp);
                     if (runnerUpTeam) {
                         runnerUpTeam.silver += 1;
-                        runnerUpTeam.points += 3;
+                        runnerUpTeam.points += SILVER_POINTS;
                     }
                 }
             }
 
-            // Semi-Final Matches (Bronze)
+            // Semi-Final Matches (1st Bronze & 2nd Bronze — both worth the same)
             if (totalRounds >= 2) {
                 const semiRound = roundsArr[totalRounds - 2];
                 if (semiRound) {
@@ -137,7 +214,7 @@ const LEADERBOARD = {
                             const bronzeTeam = this.getTeam(loser);
                             if (bronzeTeam) {
                                 bronzeTeam.bronze += 1;
-                                bronzeTeam.points += 1;
+                                bronzeTeam.points += BRONZE_POINTS;
                             }
                         }
                     });

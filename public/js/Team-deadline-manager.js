@@ -619,6 +619,7 @@ const TEAM_DEADLINE_MANAGER = {
       console.log(`✅ Deletion completed in ${duration}s`);
 
       if (typeof MODAL !== 'undefined') {
+        MODAL.closeAlert();
         MODAL.success(successMsg);
       }
 
@@ -628,6 +629,7 @@ const TEAM_DEADLINE_MANAGER = {
     } catch (error) {
       console.error('❌ Error deleting team:', error);
       if (typeof MODAL !== 'undefined') {
+        MODAL.closeAlert();
         MODAL.error('Error deleting team: ' + error.message);
       }
     }
