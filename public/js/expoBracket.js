@@ -903,7 +903,6 @@ const EXPO_BRACKET = {
           ln(armCX + JUNC_SZ / 2, midY, goldX, midY, 0.3, GREEN);
         } else {
           ln(armCX + JUNC_SZ / 2, midY, goldX + goldBoxW, midY, 0.3, LINE);
-          txt('GOLD', goldX + goldBoxW / 2, midY, 8, true, NAVY, 'center');
         }
       } else {
         // BYE — single player, automatic Gold (no opponent to pair with)

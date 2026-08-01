@@ -553,40 +553,31 @@
                 }
             } catch (_) { /* header still renders fine without a date */ }
 
-            const doc = new JsPDFCtor({ orientation: 'portrait', unit: 'pt', format: 'letter' });
-            const pageW = doc.internal.pageSize.getWidth();
             const marginX = 40;
             const rightMargin = 40;
+            // Height is always the standard letter height — only WIDTH grows
+            // to fit long names (per requirements, the page never shrinks
+            // text or compresses the bracket; it only widens). Computing
+            // this and the header block's y-offsets as plain arithmetic
+            // (no doc.text() calls yet) lets bracketTop/availableH — needed
+            // below to lay out match rows — be known before the real `doc`
+            // is created, since the real doc can't be created until AFTER
+            // we've measured every name/team label and know how wide the
+            // page actually needs to be (see "PAGE WIDTH" section below).
+            let PAGE_H = 792;
 
-            // ── Header ──────────────────────────────────────────────────────
+            // ── Header block heights (drawn later, once `doc` exists) ──────
             let y = 44;
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
-            doc.text(champTitle, pageW / 2, y, { align: 'center' }); y += 15;
-            if (champDate) {
-                doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-                doc.text(champDate, pageW / 2, y, { align: 'center' }); y += 14;
-            }
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
-            doc.text('TAEKWONDO', pageW / 2, y, { align: 'center' }); y += 20;
-            doc.setFontSize(20);
-            doc.text('Bracket Sheet', pageW / 2, y, { align: 'center' }); y += 28;
-
-            // ── Division / Category ────────────────────────────────────────
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
-            doc.text('DIVISION:', marginX, y);
-            doc.line(marginX + 62, y + 2, marginX + 260, y + 2);
-            doc.text((category.weightCategory || '').toUpperCase(), marginX + 68, y);
-            y += 24;
-
-            doc.text('CATEGORY:', marginX, y);
-            doc.line(marginX + 62, y + 2, marginX + 300, y + 2);
-            doc.text(`${category.ageCategory || ''} ${category.gender || ''}`.trim().toUpperCase(), marginX + 68, y);
-            y += 26;
+            y += 15; // title
+            if (champDate) y += 14; // date line
+            y += 20; // "TAEKWONDO"
+            y += 28; // "Bracket Sheet"
+            y += 24; // DIVISION row
+            y += 26; // CATEGORY row
 
             const bracketTop = y;
             const bottomReserve = 110; // room for the medal table at the foot of the page
-            const pageH = doc.internal.pageSize.getHeight();
-            const availableH = pageH - bracketTop - bottomReserve;
+            let availableH = PAGE_H - bracketTop - bottomReserve;
 
             // ── Geometry ────────────────────────────────────────────────────
             // bracket.js only builds each round's real match data once the round
@@ -657,13 +648,27 @@
                 const bCount = rounds[r] ? BRACKET.getByeList(bracket, r).length : 0;
                 maxColumnUnits = Math.max(maxColumnUnits, mCount + bCount);
             }
-            const slotH = Math.max(40, Math.min(95, availableH / maxColumnUnits));
+            // Each row carries a bold name line, a smaller team/center line,
+            // and (for bye rows) an italic "BYE" label stacked below that —
+            // roughly 30pt of text from top to bottom at the larger, more
+            // readable font sizes now used (see NAME_FONT_SIZE/CENTER_FONT_SIZE
+            // below). MIN_SLOT_H is the smallest a row can be — spanning
+            // halfUnitH = MIN_SLOT_H/2 for Round 1's stacked single-player
+            // rows — while still leaving a clear gap before the next row's
+            // text starts. Compressing rows further (the old 40pt floor) is
+            // what let adjacent names/teams/BYE labels overlap in dense
+            // brackets. Rather than compress, grow the page height to fit —
+            // the same "grow, never compress" rule already used for page
+            // width above.
+            const MIN_SLOT_H = 80, MAX_SLOT_H = 95;
+            const neededH = maxColumnUnits * MIN_SLOT_H;
+            if (neededH > availableH) {
+                PAGE_H += (neededH - availableH);
+                availableH = neededH;
+            }
+            const slotH = Math.max(MIN_SLOT_H, Math.min(MAX_SLOT_H, availableH / maxColumnUnits));
             const halfUnitH = slotH / 2;
             const r1RowY = (h) => bracketTop + h * halfUnitH + halfUnitH / 2;
-
-            const champColW = 110;
-            const colW = Math.max(90, Math.min(160, (pageW - marginX - rightMargin - champColW) / numRounds));
-            const lineLen = Math.min(95, colW * 0.62);
 
             // Vertical center of round r (0-indexed), match j. Round 0 centers
             // come from the interleaved half-row layout above. Every later
@@ -731,45 +736,111 @@
                 byeCenters[r] = rounds[r] ? BRACKET.getByeList(bracket, r).map((_, bi) => bracketTop + (rCount + 0.5 + bi) * slotH + r * 4) : [];
             }
 
+            // ── PAGE WIDTH: size each round's line to its longest name ────────
+            // Player/team labels used to be shrunk down (as small as 3.5pt) to
+            // fit a fixed-width line, which is what made long Indian names and
+            // academy names unreadable. Instead: measure every name/team label
+            // that will actually appear in each round at a fixed, readable font
+            // size, and size that round's line (and therefore its column) to
+            // the longest one — never the other way around. A standalone
+            // measuring doc is used because the real `doc` can't be created
+            // until we know how wide the page needs to be, which depends on
+            // these measurements.
+            const NAME_FONT_SIZE = 10.5;
+            const CENTER_FONT_SIZE = 8.5;
+            const MIN_LINE_LEN = 75;   // floor for empty/TBD rounds, matches old default look
+            const LINE_PAD = 14;       // clearance between longest text and the line's end
+            const CONNECTOR_GAP = 42;  // fixed gap reserved for the match-number label + connector elbow — kept constant so round-to-round spacing stays consistent regardless of name length
+
+            const measureDoc = new JsPDFCtor({ unit: 'pt' });
+            const measureWidth = (text, style, size) => {
+                if (!text) return 0;
+                measureDoc.setFont('helvetica', style);
+                measureDoc.setFontSize(size);
+                return measureDoc.getTextWidth(text);
+            };
+            const widestLabelIn = (players) => players.reduce((maxW, p) => {
+                if (!p) return maxW;
+                const nameW = measureWidth(p.playerName || '', 'bold', NAME_FONT_SIZE);
+                const centerW = measureWidth(p.centerName || p.teamName || '', 'normal', CENTER_FONT_SIZE);
+                return Math.max(maxW, nameW, centerW);
+            }, 0);
+
+            const roundLineLen = [];
+            for (let r = 0; r < numRounds; r++) {
+                let players;
+                if (r === 0) {
+                    players = r1Matches.flatMap(m => [m.player1, m.player2]).concat(r1ByeList);
+                } else {
+                    players = (rounds[r] || []).flatMap(m => [m.player1, m.player2]).concat(BRACKET.getByeList(bracket, r));
+                }
+                roundLineLen.push(Math.max(MIN_LINE_LEN, widestLabelIn(players) + LINE_PAD));
+            }
+
+            // The champion box shows one of the final round's own contestants,
+            // so sizing it off that same round's measured line length keeps it
+            // visually consistent and guarantees the winner's name fits too.
+            const champColW = Math.max(110, roundLineLen[numRounds - 1] + 20);
+
+            const colW = roundLineLen.map(len => len + CONNECTOR_GAP);
+            const roundXs = [marginX];
+            for (let r = 0; r < numRounds; r++) roundXs.push(roundXs[r] + colW[r]);
+
+            // Grow the page to fit; never shrink below the standard letter
+            // width, and never compress the bracket to force a narrower page.
+            const neededW = roundXs[numRounds] + champColW + rightMargin;
+            const pageW = Math.max(612, neededW);
+
+            const doc = new JsPDFCtor({
+                orientation: 'portrait', unit: 'pt',
+                format: (pageW <= 612 && PAGE_H <= 792) ? 'letter' : [pageW, PAGE_H],
+            });
+
+            // ── Header ──────────────────────────────────────────────────────
+            let hy = 44;
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+            doc.text(champTitle, pageW / 2, hy, { align: 'center' }); hy += 15;
+            if (champDate) {
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+                doc.text(champDate, pageW / 2, hy, { align: 'center' }); hy += 14;
+            }
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+            doc.text('TAEKWONDO', pageW / 2, hy, { align: 'center' }); hy += 20;
+            doc.setFontSize(20);
+            doc.text('Bracket Sheet', pageW / 2, hy, { align: 'center' }); hy += 28;
+
+            // ── Division / Category ────────────────────────────────────────
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+            doc.text('DIVISION:', marginX, hy);
+            doc.line(marginX + 62, hy + 2, marginX + 260, hy + 2);
+            doc.text((category.weightCategory || '').toUpperCase(), marginX + 68, hy);
+            hy += 24;
+
+            doc.text('CATEGORY:', marginX, hy);
+            doc.line(marginX + 62, hy + 2, marginX + 300, hy + 2);
+            doc.text(`${category.ageCategory || ''} ${category.gender || ''}`.trim().toUpperCase(), marginX + 68, hy);
+
             let matchCounter = 1;
             doc.setLineWidth(1);
 
-            // Shrinks a label's font size to fit maxWidth so long player/center
-            // names never overrun the fixed-width slot line and collide with the
-            // next round's column (was a straight doc.text() at a fixed size
-            // with no width check, so long names visually overlapped). Never
-            // truncates — the full name is always shown, just at a smaller size.
-            const fitTextToWidth = (text, maxWidth, fontStyle, baseSize) => {
-                let size = baseSize;
-                doc.setFont('helvetica', fontStyle);
-                doc.setFontSize(size);
-                while (size > 3.5 && doc.getTextWidth(text) > maxWidth) {
-                    size -= 0.25;
-                    doc.setFontSize(size);
-                }
-                return { text, size };
-            };
-
-            const drawSlot = (x, yc, player, label) => {
+            const drawSlot = (x, yc, player, label, lineLen) => {
                 doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
                 doc.text(label ? `${label}` : '', x - 16, yc + 3);
                 doc.line(x, yc, x + lineLen, yc);
                 if (player) {
-                    const maxTextW = lineLen - 5;
-                    const nameFit = fitTextToWidth(player.playerName || '', maxTextW, 'bold', 9);
-                    doc.setFont('helvetica', 'bold'); doc.setFontSize(nameFit.size);
-                    doc.text(nameFit.text, x + 3, yc - 3);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(NAME_FONT_SIZE);
+                    doc.text(player.playerName || '', x + 3, yc - 4);
 
                     const centerText = player.centerName || player.teamName || '';
-                    const centerFit = fitTextToWidth(centerText, maxTextW, 'normal', 7);
-                    doc.setFont('helvetica', 'normal'); doc.setFontSize(centerFit.size);
-                    doc.text(centerFit.text, x + 3, yc + 10);
+                    doc.setFont('helvetica', 'normal'); doc.setFontSize(CENTER_FONT_SIZE);
+                    doc.text(centerText, x + 3, yc + 11);
                 }
             };
 
             // ── PASS 1: draw every round's own boxes (no cross-round lines yet) ──
             for (let r = 0; r < numRounds; r++) {
-                const x = marginX + r * colW;
+                const x = roundXs[r];
+                const lineLen = roundLineLen[r];
                 const xEnd = x + lineLen;
 
                 if (r === 0) {
@@ -782,15 +853,15 @@
                     r1Matches.forEach((match, i) => {
                         const yTop = r1RowY(r1MatchRow[i]);
                         const yBot = r1RowY(r1MatchRow[i] + 1);
-                        drawSlot(x, yTop, match.player1, (i * 2 + 1));
-                        drawSlot(x, yBot, match.player2, (i * 2 + 2));
+                        drawSlot(x, yTop, match.player1, (i * 2 + 1), lineLen);
+                        drawSlot(x, yBot, match.player2, (i * 2 + 2), lineLen);
                         doc.line(xEnd, yTop, xEnd, yBot);
                         doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
                         doc.text(String(matchCounter++), xEnd + 4, matchCenters[0][i]);
                     });
                     r1ByeList.forEach((bye, bi) => {
                         const byeY = r1RowY(r1ByeRow[bi]);
-                        drawSlot(x, byeY, bye, '');
+                        drawSlot(x, byeY, bye, '', lineLen);
                         doc.setFont('helvetica', 'italic'); doc.setFontSize(7);
                         doc.text('BYE', x + 3, byeY + 17);
                     });
@@ -807,8 +878,8 @@
                 roundMatches.forEach((match, j) => {
                     const yTop = roundCenters[j] - slotH * 0.22;
                     const yBot = roundCenters[j] + slotH * 0.22;
-                    drawSlot(x, yTop, match.player1, '');
-                    drawSlot(x, yBot, match.player2, '');
+                    drawSlot(x, yTop, match.player1, '', lineLen);
+                    drawSlot(x, yBot, match.player2, '', lineLen);
 
                     // Internal bracket merging this match's own two players
                     // into one winner exit point (roundCenters[j]) — the
@@ -830,7 +901,7 @@
                 const byeRowCenters = byeCenters[r] || [];
                 byes.forEach((bye, byeIdx) => {
                     const byeY = byeRowCenters[byeIdx];
-                    drawSlot(x, byeY, bye, '');
+                    drawSlot(x, byeY, bye, '', lineLen);
                     doc.setFont('helvetica', 'italic'); doc.setFontSize(7);
                     doc.text('BYE', x + 3, byeY + 17);
                 });
@@ -853,8 +924,8 @@
                 const plan = BRACKET.planNextRoundPairing(prevMatchCount, prevByeCount);
                 const targetCenters = matchCenters[r + 1] || [];
 
-                const xSourceEnd = marginX + r * colW + lineLen;
-                const xTargetStart = marginX + (r + 1) * colW;
+                const xSourceEnd = roundXs[r] + roundLineLen[r];
+                const xTargetStart = roundXs[r + 1];
                 const matchElbowX = xSourceEnd + (xTargetStart - xSourceEnd) * 0.5;
 
                 const resolveY = (source) => source.type === 'match'
@@ -900,7 +971,7 @@
             // ── Champion ────────────────────────────────────────────────────
             const lastRoundCenters = matchCenters[numRounds - 1] || [bracketTop + slotH / 2];
             const champY = lastRoundCenters[0];
-            const champX = marginX + numRounds * colW;
+            const champX = roundXs[numRounds];
             doc.setLineWidth(1);
             doc.line(champX, champY, champX + champColW - 10, champY);
             doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
@@ -908,7 +979,7 @@
 
             // ── Medal table ─────────────────────────────────────────────────
             const tableW = 320, rowH = 20, colSplit = 90;
-            const tableX = marginX, tableY = pageH - bottomReserve + 20;
+            const tableX = marginX, tableY = PAGE_H - bottomReserve + 20;
             const labels = ['GOLD:', 'SILVER:', 'BRONZE:', 'BRONZE:'];
             doc.setLineWidth(0.75);
             labels.forEach((label, i) => {
