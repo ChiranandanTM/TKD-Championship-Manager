@@ -682,6 +682,7 @@ const CHAMPIONSHIP_MANAGER = {
         location:    updatedData.location    !== undefined ? updatedData.location    : existing.location,
         description: updatedData.description !== undefined ? updatedData.description : existing.description,
         date:        updatedData.date        !== undefined ? updatedData.date        : existing.date,
+        dateTo:      updatedData.dateTo      !== undefined ? updatedData.dateTo      : existing.dateTo,
         organizer:   updatedData.organizer   !== undefined ? updatedData.organizer   : existing.organizer,
         status:      updatedData.status      !== undefined ? updatedData.status      : existing.status,
         updatedAt:   Date.now(),
@@ -691,6 +692,7 @@ const CHAMPIONSHIP_MANAGER = {
           venue:     updatedData.location    !== undefined ? updatedData.location    : (existing.championship?.venue     || existing.location),
           address:   updatedData.description !== undefined ? updatedData.description : (existing.championship?.address   || existing.description),
           date:      updatedData.date        !== undefined ? updatedData.date        : (existing.championship?.date      || existing.date),
+          dateTo:    updatedData.dateTo      !== undefined ? updatedData.dateTo      : (existing.championship?.dateTo    || existing.dateTo),
           organizer: updatedData.organizer   !== undefined ? updatedData.organizer   : (existing.championship?.organizer || existing.organizer)
         }
       };
@@ -712,6 +714,7 @@ const CHAMPIONSHIP_MANAGER = {
             venue:     merged.championship.venue,
             address:   merged.championship.address,
             date:      merged.championship.date,
+            dateTo:    merged.championship.dateTo,
             organizer: merged.championship.organizer,
             champId:   champId
           };

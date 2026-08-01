@@ -1295,15 +1295,27 @@
                         onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
                         onblur="this.style.borderColor='rgba(255,215,0,.2)'">
                 </div>
-                <!-- Date -->
+                <!-- Date range -->
                 <div>
                     <label
                         style="display:block;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#888;margin-bottom:6px">📅
-                        Championship Date</label>
-                    <input id="editChampDate" type="date"
-                        style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s;color-scheme:dark"
-                        onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
-                        onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        Championship Dates</label>
+                    <div style="display:flex;gap:12px;flex-wrap:wrap">
+                        <div style="flex:1;min-width:150px">
+                            <label style="display:block;font-size:.7rem;font-weight:600;color:#666;margin-bottom:5px">From</label>
+                            <input id="editChampDate" type="date"
+                                style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s;color-scheme:dark"
+                                onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
+                                onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        </div>
+                        <div style="flex:1;min-width:150px">
+                            <label style="display:block;font-size:.7rem;font-weight:600;color:#666;margin-bottom:5px">To <span style="text-transform:none;font-weight:400">(optional)</span></label>
+                            <input id="editChampDateTo" type="date"
+                                style="width:100%;box-sizing:border-box;padding:12px 14px;background:rgba(0,0,0,.5);border:2px solid rgba(255,215,0,.2);border-radius:10px;color:#fff;font-size:.92rem;outline:none;transition:border-color .2s;color-scheme:dark"
+                                onfocus="this.style.borderColor='rgba(255,215,0,.6)'"
+                                onblur="this.style.borderColor='rgba(255,215,0,.2)'">
+                        </div>
+                    </div>
                 </div>
                 <!-- Organizer -->
                 <div>
@@ -1446,7 +1458,10 @@
                     const venue = champ.venue || '';
                     const address = champ.address || '';
                     const organizer = champ.organizer || '';
-                    const date = champ.date ? new Date(champ.date).toLocaleDateString('en-IN') : '';
+                    let date = champ.date ? new Date(champ.date).toLocaleDateString('en-IN') : '';
+                    if (date && champ.dateTo) {
+                        date += ' – ' + new Date(champ.dateTo).toLocaleDateString('en-IN');
+                    }
 
                     const tickerContent = `🏆 ${title}  •  📍 Venue: ${venue}  •  📍 Location: ${address}  •  📅 Date: ${date}  •  👤 Organizer: ${organizer}  •  🏆 ${title}  •  📍 Venue: ${venue}  •  📍 Location: ${address}  •  📅 Date: ${date}  •  👤 Organizer: ${organizer}  •  `;
 
@@ -2203,12 +2218,21 @@
                 const formSnap = await dbGet(dbRef(database, 'formConfig'));
                 if (formSnap.exists()) {
                     const config = formSnap.val();
-                    const [pSnap, tSnap, hSnap] = await Promise.all([
+                    const [pSnap, expoPSnap, tSnap, hSnap] = await Promise.all([
                         dbGet(dbRef(database, 'players')),
+                        dbGet(dbRef(database, 'expoPlayers')),
                         dbGet(dbRef(database, 'teams')),
                         dbGet(dbRef(database, 'matchHistory'))
                     ]);
-                    const pc = pSnap.exists() ? Object.keys(pSnap.val()).length : 0;
+                    // Union of players/ (Official + Poomsae, which lives in this
+                    // same tree as a poomsaeCategories field, not a separate node)
+                    // and expoPlayers/ (Expo-only entrants), de-duplicated by id —
+                    // "Official & Expo" registrants share the same id across both
+                    // trees, matching the Total Players stat tile's counting.
+                    const playerIds = new Set();
+                    if (pSnap.exists()) Object.keys(pSnap.val()).forEach(id => playerIds.add(id));
+                    if (expoPSnap.exists()) Object.keys(expoPSnap.val()).forEach(id => playerIds.add(id));
+                    const pc = playerIds.size;
                     const tc = tSnap.exists() ? Object.keys(tSnap.val()).length : 0;
                     let mc = 0;
                     if (hSnap.exists()) Object.values(hSnap.val()).forEach(v => { if (v) mc += Object.keys(v).length; });
@@ -2425,6 +2449,7 @@
                 document.getElementById('editChampLocation').value = c.venue || '';
                 document.getElementById('editChampDescription').value = c.address || '';
                 document.getElementById('editChampDate').value = c.date || '';
+                document.getElementById('editChampDateTo').value = c.dateTo || '';
                 document.getElementById('editChampOrganizer').value = c.organizer || '';
                 document.getElementById('editChampStatus').value = 'active';
 
@@ -2458,6 +2483,7 @@
                 document.getElementById('editChampLocation').value = c.venue || '';
                 document.getElementById('editChampDescription').value = c.address || '';
                 document.getElementById('editChampDate').value = c.date || '';
+                document.getElementById('editChampDateTo').value = c.dateTo || '';
                 document.getElementById('editChampOrganizer').value = c.organizer || '';
                 document.getElementById('editChampStatus').value = 'completed';
 
@@ -2490,6 +2516,7 @@
                 document.getElementById('editChampLocation').value = c.location || '';
                 document.getElementById('editChampDescription').value = c.description || '';
                 document.getElementById('editChampDate').value = c.date || '';
+                document.getElementById('editChampDateTo').value = c.dateTo || '';
                 document.getElementById('editChampOrganizer').value = c.organizer || '';
                 document.getElementById('editChampStatus').value = c.status || 'draft';
 
@@ -2535,8 +2562,18 @@
                 const location = document.getElementById('editChampLocation').value.trim();
                 const description = document.getElementById('editChampDescription').value.trim();
                 const date = document.getElementById('editChampDate').value.trim();
+                const dateTo = document.getElementById('editChampDateTo').value.trim();
                 const organizer = document.getElementById('editChampOrganizer').value.trim();
                 const status = document.getElementById('editChampStatus').value;
+
+                if (dateTo && date && dateTo < date) {
+                    const errEl = document.getElementById('editChampError');
+                    errEl.textContent = '❌ "To" date cannot be before the "From" date.';
+                    errEl.style.display = 'block';
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = '💾 Save Changes';
+                    return;
+                }
 
                 if (mode === 'active') {
                     // ── Update formConfig.championship directly ─────────────
@@ -2549,6 +2586,7 @@
                         venue: location,
                         address: description,
                         date: date,
+                        dateTo: dateTo,
                         organizer: organizer
                     };
                     await dbSet(configRef, config);
@@ -2558,7 +2596,7 @@
                     if (existingChampId && existingChampId !== '__active__') {
                         try {
                             await CHAMPIONSHIP_MANAGER.updateChampionshipDetails(existingChampId, {
-                                name: name, location, description, date, organizer, status
+                                name: name, location, description, date, dateTo, organizer, status
                             });
                         } catch (_) { /* best-effort */ }
                     }
@@ -2576,7 +2614,7 @@
                         const data = archiveSnap.val();
                         data.championship = {
                             ...(data.championship || {}),
-                            title: name, venue: location, address: description, date, organizer
+                            title: name, venue: location, address: description, date, dateTo, organizer
                         };
                         await dbSet(archiveRef, data);
                     }
@@ -2584,7 +2622,7 @@
                 } else {
                     // ── mode === 'champ' → /championships node ─────────────
                     await CHAMPIONSHIP_MANAGER.updateChampionshipDetails(champId, {
-                        name, location, description, date, organizer, status
+                        name, location, description, date, dateTo, organizer, status
                     });
                 }
 

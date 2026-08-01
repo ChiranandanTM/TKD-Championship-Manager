@@ -263,6 +263,20 @@
     <script type="module" src="/js/category-logic.js"></script>
 
     <script type="module">
+        // Fixed Poomsae registration options — not part of the dynamic
+        // formConfig fields, so they're never in config.fields. The real
+        // registration form (public-registration.js / registration.js)
+        // always renders this section after the dynamic fields regardless
+        // of admin form config; the preview must show the same thing so it
+        // actually reflects what teams see.
+        const POOMSAE_CATEGORY_OPTIONS = [
+            'Official Individual', 'Expo Individual',
+            'Official Pair', 'Expo Pair',
+            'Official Group', 'Expo Group',
+            'Official Mixed Group', 'Expo Mixed Group',
+            'Official Freestyle', 'Expo Freestyle'
+        ];
+
         const FORM_PREVIEW = {
             async init() {
                 try {
@@ -321,6 +335,7 @@
                     let address = config.championship?.address || 'Location TBD';
                     let organizer = config.championship?.organizer || 'Karnataka Taekwondo Association';
                     let date = config.championship?.date || '2026-03-15';
+                    let dateTo = config.championship?.dateTo || '';
                     
                     // Clean up string values
                     venue = (venue && venue !== 'TBD' && venue.trim()) || 'Venue TBD';
@@ -345,7 +360,7 @@
                     document.getElementById('previewSubtitle').textContent = `2026 ${organizer}`;
                     document.getElementById('detailVenue').textContent = venue;
                     document.getElementById('detailAddress').textContent = address;
-                    document.getElementById('detailDate').textContent = this.formatDate(date);
+                    document.getElementById('detailDate').textContent = this.formatDate(date, dateTo);
                     document.getElementById('detailOrganizer').textContent = organizer;
 
                     // Validate fields - must be array
@@ -373,6 +388,7 @@
                     sortedFields.forEach(field => {
                         html += this.renderField(field);
                     });
+                    html += this.renderPoomsaeSection();
 
                     document.getElementById('previewFormFields').innerHTML = html;
                 } catch (error) {
@@ -458,10 +474,38 @@
                 return fieldHtml;
             },
 
-            formatDate(dateStr) {
+            renderPoomsaeSection() {
+                let html = `
+                    <div class="form-field">
+                        <label class="field-label">
+                            Poomsae Registration
+                            <span style="font-size:0.85em;font-weight:400;font-style:italic;color:var(--text-gray);margin-left:6px;">(optional — leave unchecked if this player is Kyorugi-only)</span>
+                        </label>
+                        <div class="checkbox-group">
+                `;
+                POOMSAE_CATEGORY_OPTIONS.forEach(opt => {
+                    html += `
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="poomsae_${opt}" disabled>
+                            <label for="poomsae_${opt}">${opt}</label>
+                        </div>
+                    `;
+                });
+                html += `</div></div>`;
+                return html;
+            },
+
+            formatDate(dateStr, dateToStr) {
                 if (!dateStr) return 'N/A';
                 const date = new Date(dateStr + 'T00:00:00');
-                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                let formatted = date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                if (dateToStr) {
+                    const dateTo = new Date(dateToStr + 'T00:00:00');
+                    if (!isNaN(dateTo.getTime()) && dateTo.getTime() !== date.getTime()) {
+                        formatted += ' – ' + dateTo.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+                    }
+                }
+                return formatted;
             }
         };
 

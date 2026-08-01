@@ -190,7 +190,7 @@ const REGISTRATION = {
         address = temp;
       }
 
-      // Safely parse date
+      // Safely parse date (shows a range when an end date is set)
       let dateString = 'Date TBD';
       try {
         if (championship?.date && championship.date !== 'TBD') {
@@ -198,6 +198,12 @@ const REGISTRATION = {
           // Check if date is valid
           if (!isNaN(dateObj.getTime())) {
             dateString = `Date: ${dateObj.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}`;
+            if (championship.dateTo) {
+              const endObj = new Date(championship.dateTo);
+              if (!isNaN(endObj.getTime()) && endObj.getTime() !== dateObj.getTime()) {
+                dateString += ` – ${endObj.toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}`;
+              }
+            }
           } else {
             console.warn("⚠️ Invalid date value:", championship.date);
           }

@@ -73,8 +73,8 @@
         .player-red { background:linear-gradient(135deg,rgba(139,0,0,0.25) 0%,rgba(80,0,0,0.2) 100%); border-color:rgba(139,0,0,0.4); }
         .player.winner { border-color:var(--success-green)!important; background:linear-gradient(135deg,rgba(0,230,118,0.15) 0%,rgba(0,200,100,0.08) 100%)!important; box-shadow:0 0 16px rgba(0,230,118,0.2); }
         .player.eliminated { opacity:0.45; text-decoration:line-through; }
-        .player-name { font-size:1rem; font-weight:700; color:var(--text-white); white-space:nowrap; }
-        .player-center { font-size:0.78rem; color:var(--text-gray); opacity:0.65; white-space:nowrap; }
+        .player-name { font-size:1rem; font-weight:700; color:var(--text-white); white-space:normal; word-break:break-word; overflow-wrap:break-word; }
+        .player-center { font-size:0.78rem; color:var(--text-gray); opacity:0.65; white-space:normal; word-break:break-word; overflow-wrap:break-word; }
         .bye { color:#555; font-style:italic; font-weight:400; }
         .vs { text-align:center; font-size:0.75rem; font-weight:900; color:var(--border-gold); letter-spacing:2px; opacity:0.7; padding:2px 0; }
 
@@ -139,6 +139,8 @@
         .edit-slot:active { cursor:grabbing; }
         .edit-slot.drag-over, .bye-chip.drag-over { border-color:var(--border-gold)!important; background:rgba(255,215,0,0.12)!important; }
         .edit-warning { margin-top:10px; font-size:0.78rem; color:#ffa500; font-weight:700; text-align:center; }
+        .edit-add-match-btn { width:100%; padding:12px; border-radius:10px; border:2px dashed rgba(255,215,0,0.4)!important; background:rgba(255,215,0,0.06)!important; color:var(--border-gold)!important; font-weight:700; }
+        .edit-add-match-btn:hover { border-color:var(--border-gold)!important; background:rgba(255,215,0,0.14)!important; }
         .edit-bye-pool { margin-top:28px; padding:20px; background:linear-gradient(145deg,rgba(30,20,5,0.6) 0%,rgba(40,30,10,0.6) 100%); border:2px dashed rgba(255,165,0,0.4); border-radius:16px; }
         .edit-bye-pool.drag-over { border-color:var(--border-gold); background:rgba(255,215,0,0.06); }
         .bye-pool-chips { display:flex; flex-wrap:wrap; gap:12px; min-height:56px; }
@@ -538,7 +540,15 @@
                     if (c.title) champTitle = c.title.toUpperCase();
                     if (c.date) {
                         const d = new Date(c.date);
-                        if (!isNaN(d.getTime())) champDate = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase();
+                        if (!isNaN(d.getTime())) {
+                            champDate = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase();
+                            if (c.dateTo) {
+                                const dEnd = new Date(c.dateTo);
+                                if (!isNaN(dEnd.getTime()) && dEnd.getTime() !== d.getTime()) {
+                                    champDate += ' – ' + dEnd.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }).toUpperCase();
+                                }
+                            }
+                        }
                     }
                 }
             } catch (_) { /* header still renders fine without a date */ }
@@ -724,15 +734,36 @@
             let matchCounter = 1;
             doc.setLineWidth(1);
 
+            // Shrinks a label's font size to fit maxWidth so long player/center
+            // names never overrun the fixed-width slot line and collide with the
+            // next round's column (was a straight doc.text() at a fixed size
+            // with no width check, so long names visually overlapped). Never
+            // truncates — the full name is always shown, just at a smaller size.
+            const fitTextToWidth = (text, maxWidth, fontStyle, baseSize) => {
+                let size = baseSize;
+                doc.setFont('helvetica', fontStyle);
+                doc.setFontSize(size);
+                while (size > 3.5 && doc.getTextWidth(text) > maxWidth) {
+                    size -= 0.25;
+                    doc.setFontSize(size);
+                }
+                return { text, size };
+            };
+
             const drawSlot = (x, yc, player, label) => {
                 doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
                 doc.text(label ? `${label}` : '', x - 16, yc + 3);
                 doc.line(x, yc, x + lineLen, yc);
                 if (player) {
-                    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-                    doc.text(player.playerName || '', x + 3, yc - 3);
-                    doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
-                    doc.text(player.centerName || player.teamName || '', x + 3, yc + 10);
+                    const maxTextW = lineLen - 5;
+                    const nameFit = fitTextToWidth(player.playerName || '', maxTextW, 'bold', 9);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(nameFit.size);
+                    doc.text(nameFit.text, x + 3, yc - 3);
+
+                    const centerText = player.centerName || player.teamName || '';
+                    const centerFit = fitTextToWidth(centerText, maxTextW, 'normal', 7);
+                    doc.setFont('helvetica', 'normal'); doc.setFontSize(centerFit.size);
+                    doc.text(centerFit.text, x + 3, yc + 10);
                 }
             };
 
@@ -761,7 +792,7 @@
                         const byeY = r1RowY(r1ByeRow[bi]);
                         drawSlot(x, byeY, bye, '');
                         doc.setFont('helvetica', 'italic'); doc.setFontSize(7);
-                        doc.text('BYE — advances automatically', x + 3, byeY + 17);
+                        doc.text('BYE', x + 3, byeY + 17);
                     });
                     continue;
                 }
@@ -801,7 +832,7 @@
                     const byeY = byeRowCenters[byeIdx];
                     drawSlot(x, byeY, bye, '');
                     doc.setFont('helvetica', 'italic'); doc.setFontSize(7);
-                    doc.text('BYE — advances automatically', x + 3, byeY + 17);
+                    doc.text('BYE', x + 3, byeY + 17);
                 });
             }
 

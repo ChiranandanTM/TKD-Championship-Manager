@@ -3270,7 +3270,12 @@ const BRACKET = {
     this._editDraft = {
       activePlayers: filteredActive,
       byePool: filteredBye,
-      hadStartedMatches: round1.some(m => m.status && m.status !== 'pending')
+      hadStartedMatches: round1.some(m => m.status && m.status !== 'pending'),
+      // Extra fully-empty match slots the admin has added via "+ Add Match"
+      // (beyond what activePlayers.length implies) so a BYE-pool player can
+      // be dragged back into a real Round 1 match even when every existing
+      // match slot is already full.
+      extraEmptyMatches: 0
     };
     this.editMode = true;
     this.renderEditBracket();
@@ -3284,7 +3289,7 @@ const BRACKET = {
     const draft = this._editDraft;
     const cat = this.categories[this.currentCategory];
     const totalPlayers = draft.activePlayers.length + draft.byePool.length;
-    const matchCount = Math.ceil(draft.activePlayers.length / 2);
+    const matchCount = Math.ceil(draft.activePlayers.length / 2) + (draft.extraEmptyMatches || 0);
 
     let html = `
       <div class="bracket-header edit-mode-header">
@@ -3308,6 +3313,7 @@ const BRACKET = {
     }
 
     html += `
+            <button type="button" class="btn-secondary edit-add-match-btn" onclick="BRACKET.addEmptyEditMatch()">➕ Add Match</button>
           </div>
         </div>
       </div>
@@ -3387,6 +3393,17 @@ const BRACKET = {
         </div>
       </div>
     `;
+  },
+
+  // Adds one extra fully-empty match slot after the last Round 1 match so a
+  // BYE-pool player can be dragged back into a real match even when every
+  // existing match slot is already occupied. Purely a draft/UI addition —
+  // it isn't persisted unless a player actually gets dropped into it.
+  addEmptyEditMatch() {
+    const draft = this._editDraft;
+    if (!draft) return;
+    draft.extraEmptyMatches = (draft.extraEmptyMatches || 0) + 1;
+    this.renderEditBracket();
   },
 
   editDragStart(event, zone, index) {

@@ -75,26 +75,22 @@ const TEAM_DEADLINE_MANAGER = {
             <td style="padding: 14px 16px; color: var(--text-gray); font-size: 0.9rem;">${createdAt}</td>
             <td style="padding: 14px 16px;">${statusHtml}</td>
             <td style="padding: 10px 16px;">
-              <div style="display: inline-flex; align-items: center; background: rgba(10, 15, 30, 0.8); border: 1.5px solid rgba(0, 229, 255, 0.4); border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), inset 0 2px 5px rgba(0,0,0,0.5); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);"
-                   onmouseover="this.style.borderColor='#00E5FF'; this.style.boxShadow='0 0 20px rgba(0, 229, 255, 0.3), inset 0 2px 5px rgba(0,0,0,0.5)'; this.style.transform='translateY(-2px)';"
-                   onmouseout="this.style.borderColor='rgba(0, 229, 255, 0.4)'; this.style.boxShadow='0 4px 15px rgba(0, 0, 0, 0.3), inset 0 2px 5px rgba(0,0,0,0.5)'; this.style.transform='translateY(0)';">
-                
-                <div style="padding: 0 12px; background: rgba(0, 229, 255, 0.1); border-right: 1px solid rgba(0, 229, 255, 0.2); display: flex; align-items: center; justify-content: center; height: 100%; min-height: 40px;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 4px rgba(0,229,255,0.6));">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                </div>
-                
-                <input type="datetime-local" id="deadline-${team.id}" value="${deadline}"
-                  style="background: transparent; border: none; color: #fff; padding: 10px 12px; font-size: 0.9rem; width: 180px; outline: none; font-family: 'Inter', sans-serif; cursor: pointer;">
-                  
-                <button onclick="TEAM_DEADLINE_MANAGER.saveTeamDeadline('${team.id}')"
-                  style="background: linear-gradient(135deg, #00E5FF, #0088FF); color: #000; border: none; padding: 10px 20px; font-weight: 900; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; border-left: 1px solid rgba(0,0,0,0.3); height: 100%; min-height: 40px;"
-                  onmouseover="this.style.filter='brightness(1.2)';" onmouseout="this.style.filter='brightness(1)';">
-                  Set
-                </button>
-              </div>
+              <button type="button" class="deadline-chip-btn"
+                data-team-id="${team.id}"
+                data-team-name="${(team.teamName || '').replace(/"/g, '&quot;')}"
+                data-deadline="${deadline}"
+                onclick="TEAM_DEADLINE_MANAGER.openDeadlineModal(this)"
+                style="display:inline-flex; align-items:center; gap:9px; padding:9px 16px; background:rgba(0,229,255,0.08);
+                       border:1.5px solid rgba(0,229,255,0.35); border-radius:10px; color:#fff; font-size:0.85rem;
+                       font-weight:600; cursor:pointer; transition:all 0.25s cubic-bezier(0.4,0,0.2,1); white-space:nowrap;"
+                onmouseover="this.style.borderColor='#00E5FF'; this.style.background='rgba(0,229,255,0.16)'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(0,229,255,0.25)';"
+                onmouseout="this.style.borderColor='rgba(0,229,255,0.35)'; this.style.background='rgba(0,229,255,0.08)'; this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00E5FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span>${deadline ? new Date(deadline).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Set deadline'}</span>
+              </button>
             </td>
             <td style="padding: 14px 16px;">
               <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
@@ -190,21 +186,168 @@ const TEAM_DEADLINE_MANAGER = {
     }
   },
 
-  // Save deadline for a single team
-  async saveTeamDeadline(teamId) {
-    try {
-      const input = document.getElementById(`deadline-${teamId}`);
-      const deadline = input ? input.value : '';
+  // ─── Deadline Picker Modal ────────────────────────────────────────────
+  // Quick-preset + live-preview deadline picker, opened from the compact
+  // "Set deadline" chip in the teams table (replaces the old always-visible
+  // raw datetime-local input + Set button pair).
+  _deadlineModalTeamId: null,
 
+  createDeadlineModalHTML() {
+    if (document.getElementById('deadlineModal')) return;
+
+    const stylesHTML = `
+      <style id="deadlineModalStyles">
+        @keyframes deadlineModalPop { from { opacity:0; transform:scale(0.94) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        .deadline-preset-btn { padding:10px 16px; border-radius:10px; border:1.5px solid rgba(0,229,255,0.3); background:rgba(0,229,255,0.08); color:#00E5FF; font-weight:700; font-size:0.85rem; cursor:pointer; transition:all 0.2s; }
+        .deadline-preset-btn:hover { border-color:#00E5FF; background:rgba(0,229,255,0.18); transform:translateY(-2px); }
+        .deadline-preset-btn.active { background:#00E5FF; color:#000; border-color:#00E5FF; box-shadow:0 4px 14px rgba(0,229,255,0.4); }
+        .deadline-preset-clear { border-color:rgba(255,165,0,0.35); background:rgba(255,165,0,0.08); color:#FFA500; }
+        .deadline-preset-clear:hover { border-color:#FFA500; background:rgba(255,165,0,0.18); }
+        .deadline-preset-clear.active { background:#FFA500; color:#000; border-color:#FFA500; box-shadow:0 4px 14px rgba(255,165,0,0.4); }
+        .deadline-input-big { color-scheme: dark; width:100%; padding:16px 18px; font-size:1.1rem; background:rgba(0,0,0,0.5); border:2px solid rgba(0,229,255,0.5); border-radius:14px; color:#fff; outline:none; transition:border-color 0.2s, box-shadow 0.2s; cursor:pointer; box-sizing:border-box; }
+        .deadline-input-big:focus { border-color:#FFD700; box-shadow:0 0 0 4px rgba(255,215,0,0.15); }
+      </style>
+    `;
+
+    const modalHTML = `
+      <div id="deadlineModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:2100; align-items:center; justify-content:center; backdrop-filter:blur(6px);">
+        <div style="background:linear-gradient(160deg, rgba(12,18,36,0.98) 0%, rgba(20,28,50,0.98) 100%); border:2px solid #00E5FF; border-radius:22px; padding:34px; width:92%; max-width:460px; box-shadow:0 24px 70px rgba(0,229,255,0.25); animation:deadlineModalPop 0.22s ease;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <h2 style="margin:0; font-size:1.3rem; color:#00E5FF;">⏰ Registration Deadline</h2>
+            <button onclick="TEAM_DEADLINE_MANAGER.closeDeadlineModal()" style="background:transparent; border:none; color:#00E5FF; font-size:26px; cursor:pointer; line-height:1; padding:4px;">×</button>
+          </div>
+          <p id="deadlineModalTeamName" style="margin:0 0 24px; color:var(--border-gold); font-weight:700; font-size:1.05rem;"></p>
+
+          <div style="margin-bottom:18px;">
+            <label style="display:block; font-size:0.78rem; font-weight:700; color:var(--text-gray); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px;">Quick Set</label>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              <button type="button" class="deadline-preset-btn" onclick="TEAM_DEADLINE_MANAGER.applyDeadlinePreset(1, this)">+1 Hour</button>
+              <button type="button" class="deadline-preset-btn" onclick="TEAM_DEADLINE_MANAGER.applyDeadlinePreset(24, this)">+1 Day</button>
+              <button type="button" class="deadline-preset-btn" onclick="TEAM_DEADLINE_MANAGER.applyDeadlinePreset(72, this)">+3 Days</button>
+              <button type="button" class="deadline-preset-btn" onclick="TEAM_DEADLINE_MANAGER.applyDeadlinePreset(168, this)">+1 Week</button>
+              <button type="button" class="deadline-preset-btn deadline-preset-clear" onclick="TEAM_DEADLINE_MANAGER.clearDeadlineInModal(this)">🚫 No Deadline</button>
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label style="display:block; font-size:0.78rem; font-weight:700; color:var(--text-gray); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px;">Or Pick Exact Date &amp; Time</label>
+            <input type="datetime-local" id="deadlineInput" class="deadline-input-big" oninput="TEAM_DEADLINE_MANAGER.onDeadlineInputChange()">
+          </div>
+
+          <div id="deadlinePreviewBox" style="padding:14px 16px; border-radius:12px; background:rgba(255,255,255,0.04); border:1.5px dashed rgba(255,255,255,0.15); margin-bottom:26px;">
+            <span id="deadlinePreviewText" style="font-size:0.92rem;"></span>
+          </div>
+
+          <div style="display:flex; gap:12px;">
+            <button type="button" onclick="TEAM_DEADLINE_MANAGER.closeDeadlineModal()" style="flex:1; padding:13px; background:rgba(255,255,255,0.08); color:#fff; border:none; border-radius:10px; font-weight:700; cursor:pointer;">Cancel</button>
+            <button type="button" onclick="TEAM_DEADLINE_MANAGER.saveDeadlineFromModal()" style="flex:1.4; padding:13px; background:linear-gradient(135deg,#00E5FF,#0088FF); color:#000; border:none; border-radius:10px; font-weight:900; cursor:pointer; letter-spacing:0.3px;">💾 Save Deadline</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.head.insertAdjacentHTML('beforeend', stylesHTML);
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    document.getElementById('deadlineModal').addEventListener('click', (e) => {
+      if (e.target.id === 'deadlineModal') TEAM_DEADLINE_MANAGER.closeDeadlineModal();
+    });
+  },
+
+  openDeadlineModal(btnEl) {
+    this.createDeadlineModalHTML();
+
+    this._deadlineModalTeamId = btnEl.dataset.teamId;
+    document.getElementById('deadlineModalTeamName').textContent = btnEl.dataset.teamName || '';
+    document.getElementById('deadlineInput').value = btnEl.dataset.deadline || '';
+    document.querySelectorAll('.deadline-preset-btn').forEach(b => b.classList.remove('active'));
+    this.updateDeadlinePreview();
+
+    document.getElementById('deadlineModal').style.display = 'flex';
+  },
+
+  closeDeadlineModal() {
+    const modal = document.getElementById('deadlineModal');
+    if (modal) modal.style.display = 'none';
+    this._deadlineModalTeamId = null;
+  },
+
+  applyDeadlinePreset(hours, btnEl) {
+    const d = new Date(Date.now() + hours * 3600000);
+    const pad = n => String(n).padStart(2, '0');
+    document.getElementById('deadlineInput').value =
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    document.querySelectorAll('.deadline-preset-btn').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+    this.updateDeadlinePreview();
+  },
+
+  clearDeadlineInModal(btnEl) {
+    document.getElementById('deadlineInput').value = '';
+    document.querySelectorAll('.deadline-preset-btn').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+    this.updateDeadlinePreview();
+  },
+
+  onDeadlineInputChange() {
+    document.querySelectorAll('.deadline-preset-btn').forEach(b => b.classList.remove('active'));
+    this.updateDeadlinePreview();
+  },
+
+  // Live "closes in Xd Xh Xm" (or "already passed") preview, recalculated on
+  // every preset click or manual edit — lets the admin see the effect of a
+  // deadline before saving it.
+  updateDeadlinePreview() {
+    const val = document.getElementById('deadlineInput')?.value;
+    const box = document.getElementById('deadlinePreviewBox');
+    const text = document.getElementById('deadlinePreviewText');
+    if (!text || !box) return;
+
+    if (!val) {
+      text.textContent = '♾️ No deadline — registration stays open until manually closed.';
+      text.style.color = 'var(--text-gray)';
+      box.style.borderColor = 'rgba(255,255,255,0.15)';
+      return;
+    }
+
+    const d = new Date(val);
+    const diffMs = d - new Date();
+    const formatted = d.toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    if (diffMs <= 0) {
+      text.innerHTML = `⏰ <strong>${formatted}</strong> — this deadline has already passed`;
+      text.style.color = '#FFA500';
+      box.style.borderColor = 'rgba(255,165,0,0.4)';
+    } else {
+      const totalMins = Math.floor(diffMs / 60000);
+      const days = Math.floor(totalMins / 1440);
+      const hours = Math.floor((totalMins % 1440) / 60);
+      const mins = totalMins % 60;
+      const parts = [];
+      if (days) parts.push(`${days}d`);
+      if (days || hours) parts.push(`${hours}h`);
+      parts.push(`${mins}m`);
+      text.innerHTML = `✅ Closes <strong>${formatted}</strong> — in ${parts.join(' ')}`;
+      text.style.color = 'var(--success-green)';
+      box.style.borderColor = 'rgba(0,230,118,0.35)';
+    }
+  },
+
+  async saveDeadlineFromModal() {
+    const teamId = this._deadlineModalTeamId;
+    if (!teamId) return;
+    const deadline = document.getElementById('deadlineInput')?.value || '';
+
+    try {
       await dbUpdate(dbRef(database, `teams/${teamId}`), {
         registrationDeadline: deadline
       });
 
       if (typeof MODAL !== 'undefined') {
-        MODAL.success(deadline ? `Deadline set to ${deadline}` : 'Deadline cleared');
+        MODAL.success(deadline ? 'Deadline updated.' : 'Deadline cleared — registration stays open.');
       }
 
-      // Refresh table
+      this.closeDeadlineModal();
       await this.renderTeamsTable('teamsTableContainer');
     } catch (error) {
       console.error('❌ Error saving deadline:', error);

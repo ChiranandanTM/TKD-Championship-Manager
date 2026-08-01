@@ -64,7 +64,7 @@ const ADMIN_FORM_EDITOR = {
           ${this.champInput('champ_address','Address / Location','text', c.address||'')}
           ${this.champInput('champ_date','Event Date','date', c.date||'')}
           ${this.champInput('champ_organizer','Organizer','text', c.organizer||'')}
-          ${this.champInput('champ_registrationDeadline','Registration Deadline','date', c.registrationDeadline||'')}
+          ${this.champDeadlineChip(c.registrationDeadline||'')}
         </div>
         <div class="afe-note">💡 Changes here reflect on all team registration forms immediately after saving.</div>
       </div>
@@ -106,6 +106,169 @@ const ADMIN_FORM_EDITOR = {
         <label class="afe-label">${label}</label>
         <input type="${type}" id="${id}" value="${val.replace(/"/g,'&quot;')}" class="afe-input">
       </div>`;
+  },
+
+  // ── Registration Deadline chip + picker modal ───────────────────────────
+  // Same interaction pattern as the per-team deadline picker (Team-deadline-
+  // manager.js): a compact chip replaces the plain date input, opening a
+  // modal with quick-set presets and a live "closes in N days" preview.
+  // The hidden #champ_registrationDeadline input keeps its value in sync so
+  // saveAllChanges() (which reads it directly) needs no changes.
+  champDeadlineChip(value) {
+    const display = value ? this.formatChampDeadlineDisplay(value) : 'No deadline set — click to set';
+    return `
+      <div class="afe-form-group">
+        <label class="afe-label">Registration Deadline</label>
+        <input type="hidden" id="champ_registrationDeadline" value="${value}">
+        <button type="button" class="champ-deadline-chip" onclick="ADMIN_FORM_EDITOR.openChampDeadlineModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          <span id="champDeadlineChipText">${display}</span>
+        </button>
+      </div>`;
+  },
+
+  formatChampDeadlineDisplay(val) {
+    const d = new Date(val + 'T00:00:00');
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+  },
+
+  createChampDeadlineModalHTML() {
+    if (document.getElementById('champDeadlineModal')) return;
+
+    const stylesHTML = `
+      <style id="champDeadlineModalStyles">
+        @keyframes champDeadlineModalPop { from { opacity:0; transform:scale(0.94) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }
+        .champ-deadline-preset-btn { padding:10px 16px; border-radius:10px; border:1.5px solid rgba(0,229,255,0.3); background:rgba(0,229,255,0.08); color:var(--accent-cyan); font-weight:700; font-size:0.85rem; cursor:pointer; transition:all 0.2s; }
+        .champ-deadline-preset-btn:hover { border-color:var(--accent-cyan); background:rgba(0,229,255,0.18); transform:translateY(-2px); }
+        .champ-deadline-preset-btn.active { background:var(--accent-cyan); color:#000; border-color:var(--accent-cyan); box-shadow:0 4px 14px rgba(0,229,255,0.4); }
+        .champ-deadline-preset-clear { border-color:rgba(255,165,0,0.35); background:rgba(255,165,0,0.08); color:#FFA500; }
+        .champ-deadline-preset-clear:hover { border-color:#FFA500; background:rgba(255,165,0,0.18); }
+        .champ-deadline-preset-clear.active { background:#FFA500; color:#000; border-color:#FFA500; box-shadow:0 4px 14px rgba(255,165,0,0.4); }
+        .champ-deadline-input-big { color-scheme: dark; width:100%; padding:16px 18px; font-size:1.1rem; background:rgba(0,0,0,0.5); border:2px solid rgba(0,229,255,0.5); border-radius:14px; color:#fff; outline:none; transition:border-color 0.2s, box-shadow 0.2s; cursor:pointer; box-sizing:border-box; }
+        .champ-deadline-input-big:focus { border-color:var(--border-gold); box-shadow:0 0 0 4px rgba(255,215,0,0.15); }
+      </style>
+    `;
+
+    const modalHTML = `
+      <div id="champDeadlineModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:2100; align-items:center; justify-content:center; backdrop-filter:blur(6px);">
+        <div style="background:linear-gradient(160deg, rgba(12,18,36,0.98) 0%, rgba(20,28,50,0.98) 100%); border:2px solid var(--accent-cyan); border-radius:22px; padding:34px; width:92%; max-width:460px; box-shadow:0 24px 70px rgba(0,229,255,0.25); animation:champDeadlineModalPop 0.22s ease;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <h2 style="margin:0; font-size:1.3rem; color:var(--accent-cyan);">📅 Registration Deadline</h2>
+            <button onclick="ADMIN_FORM_EDITOR.closeChampDeadlineModal()" style="background:transparent; border:none; color:var(--accent-cyan); font-size:26px; cursor:pointer; line-height:1; padding:4px;">×</button>
+          </div>
+          <p style="margin:0 0 24px; color:var(--border-gold); font-weight:700; font-size:0.95rem;">Championship-wide deadline shown on the registration form</p>
+
+          <div style="margin-bottom:18px;">
+            <label style="display:block; font-size:0.78rem; font-weight:700; color:var(--text-gray); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px;">Quick Set</label>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              <button type="button" class="champ-deadline-preset-btn" onclick="ADMIN_FORM_EDITOR.applyChampDeadlinePreset(1, this)">+1 Day</button>
+              <button type="button" class="champ-deadline-preset-btn" onclick="ADMIN_FORM_EDITOR.applyChampDeadlinePreset(7, this)">+1 Week</button>
+              <button type="button" class="champ-deadline-preset-btn" onclick="ADMIN_FORM_EDITOR.applyChampDeadlinePreset(14, this)">+2 Weeks</button>
+              <button type="button" class="champ-deadline-preset-btn" onclick="ADMIN_FORM_EDITOR.applyChampDeadlinePreset(30, this)">+1 Month</button>
+              <button type="button" class="champ-deadline-preset-btn champ-deadline-preset-clear" onclick="ADMIN_FORM_EDITOR.clearChampDeadlineInModal(this)">🚫 No Deadline</button>
+            </div>
+          </div>
+
+          <div style="margin-bottom:16px;">
+            <label style="display:block; font-size:0.78rem; font-weight:700; color:var(--text-gray); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:10px;">Or Pick Exact Date</label>
+            <input type="date" id="champDeadlineInput" class="champ-deadline-input-big" oninput="ADMIN_FORM_EDITOR.onChampDeadlineInputChange()">
+          </div>
+
+          <div id="champDeadlinePreviewBox" style="padding:14px 16px; border-radius:12px; background:rgba(255,255,255,0.04); border:1.5px dashed rgba(255,255,255,0.15); margin-bottom:26px;">
+            <span id="champDeadlinePreviewText" style="font-size:0.92rem;"></span>
+          </div>
+
+          <div style="display:flex; gap:12px;">
+            <button type="button" onclick="ADMIN_FORM_EDITOR.closeChampDeadlineModal()" style="flex:1; padding:13px; background:rgba(255,255,255,0.08); color:#fff; border:none; border-radius:10px; font-weight:700; cursor:pointer;">Cancel</button>
+            <button type="button" onclick="ADMIN_FORM_EDITOR.applyChampDeadlineFromModal()" style="flex:1.4; padding:13px; background:linear-gradient(135deg,#00E5FF,#0088FF); color:#000; border:none; border-radius:10px; font-weight:900; cursor:pointer; letter-spacing:0.3px;">✓ Apply</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.head.insertAdjacentHTML('beforeend', stylesHTML);
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    document.getElementById('champDeadlineModal').addEventListener('click', (e) => {
+      if (e.target.id === 'champDeadlineModal') ADMIN_FORM_EDITOR.closeChampDeadlineModal();
+    });
+  },
+
+  openChampDeadlineModal() {
+    this.createChampDeadlineModalHTML();
+
+    const current = document.getElementById('champ_registrationDeadline').value || '';
+    document.getElementById('champDeadlineInput').value = current;
+    document.querySelectorAll('.champ-deadline-preset-btn').forEach(b => b.classList.remove('active'));
+    this.updateChampDeadlinePreview();
+
+    document.getElementById('champDeadlineModal').style.display = 'flex';
+  },
+
+  closeChampDeadlineModal() {
+    const modal = document.getElementById('champDeadlineModal');
+    if (modal) modal.style.display = 'none';
+  },
+
+  applyChampDeadlinePreset(days, btnEl) {
+    const d = new Date(Date.now() + days * 86400000);
+    const pad = n => String(n).padStart(2, '0');
+    document.getElementById('champDeadlineInput').value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    document.querySelectorAll('.champ-deadline-preset-btn').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+    this.updateChampDeadlinePreview();
+  },
+
+  clearChampDeadlineInModal(btnEl) {
+    document.getElementById('champDeadlineInput').value = '';
+    document.querySelectorAll('.champ-deadline-preset-btn').forEach(b => b.classList.remove('active'));
+    if (btnEl) btnEl.classList.add('active');
+    this.updateChampDeadlinePreview();
+  },
+
+  onChampDeadlineInputChange() {
+    document.querySelectorAll('.champ-deadline-preset-btn').forEach(b => b.classList.remove('active'));
+    this.updateChampDeadlinePreview();
+  },
+
+  updateChampDeadlinePreview() {
+    const val = document.getElementById('champDeadlineInput')?.value;
+    const box = document.getElementById('champDeadlinePreviewBox');
+    const text = document.getElementById('champDeadlinePreviewText');
+    if (!text || !box) return;
+
+    if (!val) {
+      text.textContent = '♾️ No deadline set — registration form stays open indefinitely.';
+      text.style.color = 'var(--text-gray)';
+      box.style.borderColor = 'rgba(255,255,255,0.15)';
+      return;
+    }
+
+    const d = new Date(val + 'T23:59:59');
+    const diffMs = d - new Date();
+    const formatted = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
+    if (diffMs <= 0) {
+      text.innerHTML = `⏰ <strong>${formatted}</strong> — this date has already passed`;
+      text.style.color = '#FFA500';
+      box.style.borderColor = 'rgba(255,165,0,0.4)';
+    } else {
+      const days = Math.ceil(diffMs / 86400000);
+      text.innerHTML = `✅ Closes <strong>${formatted}</strong> — in ${days} day${days === 1 ? '' : 's'}`;
+      text.style.color = 'var(--success-green)';
+      box.style.borderColor = 'rgba(0,230,118,0.35)';
+    }
+  },
+
+  // Applies the modal's chosen date back onto the hidden field + chip label
+  // only — the actual Firebase write still happens via the page's single
+  // "💾 Save All Changes" button, same as every other championship field.
+  applyChampDeadlineFromModal() {
+    const val = document.getElementById('champDeadlineInput')?.value || '';
+    document.getElementById('champ_registrationDeadline').value = val;
+    const chipText = document.getElementById('champDeadlineChipText');
+    if (chipText) chipText.textContent = val ? this.formatChampDeadlineDisplay(val) : 'No deadline set — click to set';
+    this.closeChampDeadlineModal();
   },
 
   // ── Drag-and-drop reorder ─────────────────────────────────────────────────
@@ -317,6 +480,9 @@ const ADMIN_FORM_EDITOR = {
       .afe-label small { font-size:.75rem; text-transform:none; font-weight:400; color:#666; }
       .afe-input { padding:11px 14px; background:rgba(0,0,0,.5); border:2px solid rgba(255,255,255,.12); border-radius:10px; color:var(--text-white); font-size:.95rem; font-family:inherit; transition:border-color .2s; width:100%; box-sizing:border-box; }
       .afe-input:focus { outline:none; border-color:var(--border-gold); box-shadow:0 0 16px rgba(255,215,0,.25); }
+      .champ-deadline-chip { display:flex; align-items:center; gap:9px; padding:11px 14px; background:rgba(0,0,0,.5); border:2px solid rgba(255,255,255,.12); border-radius:10px; color:var(--text-white); font-size:.95rem; font-family:inherit; cursor:pointer; transition:all .2s; width:100%; box-sizing:border-box; text-align:left; }
+      .champ-deadline-chip:hover { border-color:var(--border-gold); background:rgba(255,215,0,.06); transform:translateY(-1px); }
+      .champ-deadline-chip svg { color:var(--accent-cyan); flex-shrink:0; }
       .afe-fields-list { display:flex; flex-direction:column; gap:12px; }
       .afe-field-card { display:flex; align-items:center; gap:14px; background:linear-gradient(135deg,rgba(0,229,255,.05),rgba(255,215,0,.03)); border:1.5px solid rgba(0,229,255,.2); border-radius:12px; padding:14px 18px; cursor:grab; transition:all .2s; }
       .afe-field-card:hover { border-color:var(--border-gold); background:linear-gradient(135deg,rgba(255,215,0,.07),rgba(0,229,255,.04)); transform:translateY(-2px); box-shadow:0 6px 20px rgba(255,215,0,.15); }
