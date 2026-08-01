@@ -2592,8 +2592,16 @@ const BRACKET = {
 
   // Derive final rankings from bracket structure
   // 1st = winner of final, 2nd = loser of final, 3rd = both semi-final losers
+  // Kept as a thin wrapper over buildRankingsFor() so the currently-open
+  // category's UI/exports and the all-categories export (which has no
+  // "current" bracket — it reads each category straight from Firebase)
+  // share one implementation instead of drifting apart.
   buildRankings() {
-    const rounds = this.currentBracket.rounds || [];
+    return this.buildRankingsFor(this.currentBracket);
+  },
+
+  buildRankingsFor(bracket) {
+    const rounds = (bracket && bracket.rounds) || [];
     const totalRounds = rounds.length;
     const rankings = [];
 
@@ -2602,7 +2610,7 @@ const BRACKET = {
     const finalRound = rounds[totalRounds - 1];
     if (!finalRound || finalRound.length === 0) {
       // Handle single-player categories: only a bye player, no matches
-      const byePlayers = this.currentBracket.byePlayers || {};
+      const byePlayers = (bracket && bracket.byePlayers) || {};
       const byePlayer = byePlayers['0'];
       if (byePlayer) {
         rankings.push({ rank: 1, medal: 'Gold', player: byePlayer, note: 'Winner (walkover)' });
@@ -2648,6 +2656,255 @@ const BRACKET = {
     }
 
     return rankings;
+  },
+
+  // ── ALL-CATEGORIES RESULTS EXPORT (Excel / PDF) ──────────────────────────
+  // One flat file spanning every COMPLETED category — medal winners only
+  // (Gold/Silver/1st Bronze/2nd Bronze), grouped by category. Reads every
+  // bracket straight from Firebase in one shot rather than relying on
+  // this.currentBracket (which only ever holds the ONE category currently
+  // open), so it works directly from the categories list without opening
+  // each category individually first.
+  _normalizeBracketRoundsForExport(bracketData) {
+    const toArray = (obj) => Array.isArray(obj)
+      ? obj
+      : Object.keys(obj || {}).sort((a, b) => Number(a) - Number(b)).map(k => obj[k]);
+    const rounds = toArray(bracketData.rounds || []).map(round => toArray(round || []));
+    return { ...bracketData, rounds };
+  },
+
+  // Returns [{ category, rows: [{ playerName, medal, teamName }] }] — one
+  // group per COMPLETED category, in category-name order. teamName falls
+  // back to centerName the same way the rest of the app already does
+  // (_normalizePlayerTeam keeps the two in sync, but older records may only
+  // have one or the other set).
+  async _collectAllCategoryMedalGroups() {
+    const bracketsSnap = await dbGet(dbRef(database, 'brackets'));
+    const allBrackets = bracketsSnap.exists() ? bracketsSnap.val() : {};
+
+    const categoryKeys = Object.keys(this.categories).sort((a, b) => {
+      const ca = this.categories[a], cb = this.categories[b];
+      return `${ca.gender} ${ca.ageCategory} ${ca.weightCategory}`
+        .localeCompare(`${cb.gender} ${cb.ageCategory} ${cb.weightCategory}`);
+    });
+
+    const groups = [];
+    categoryKeys.forEach(key => {
+      const bracketData = allBrackets[key];
+      if (!bracketData || bracketData.status !== 'complete') return;
+
+      const cat = this.categories[key];
+      const categoryLabel = `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`;
+      const normalized = this._normalizeBracketRoundsForExport(bracketData);
+      const medalRows = this.buildRankingsFor(normalized)
+        .filter(r => r.medal && r.player)
+        .map(r => ({
+          playerName: r.player.playerName,
+          medal: r.medal,
+          teamName: r.player.teamName || r.player.centerName || '',
+        }));
+
+      if (medalRows.length > 0) groups.push({ category: categoryLabel, rows: medalRows });
+    });
+
+    return groups;
+  },
+
+  async downloadAllCategoriesResults(format) {
+    this.closeDownloadAllMenu?.();
+
+    if (format === 'excel' && typeof XLSX === 'undefined') {
+      MODAL.error('Excel library not loaded. Please refresh the page and try again.');
+      return;
+    }
+    if (format === 'pdf' && typeof window.jspdf === 'undefined' && typeof jsPDF === 'undefined') {
+      MODAL.error('PDF library not loaded. Please refresh and try again.');
+      return;
+    }
+
+    let groups;
+    try {
+      groups = await this._collectAllCategoryMedalGroups();
+    } catch (err) {
+      console.error('❌ Error collecting all-category results:', err);
+      MODAL.error('Error loading category results: ' + err.message);
+      return;
+    }
+
+    if (groups.length === 0) {
+      MODAL.warning('No completed categories with medal results yet.');
+      return;
+    }
+
+    const champTitle = document.title.replace(' - Bracket Management', '').trim() || 'Tournament';
+    const dateStr = new Date().toISOString().slice(0, 10);
+
+    if (format === 'excel') {
+      this._writeAllResultsWorkbook(groups, `All_Category_Results_${dateStr}.xlsx`, 'All Results');
+      return;
+    }
+
+    this._writeAllResultsPDF(groups, champTitle, `All_Category_Results_${dateStr}.pdf`, 'All Category Results');
+  },
+
+  // Excel: one sheet, categories stacked top-to-bottom — a bold category
+  // heading row, a table header (Player Name / Medal / Team Name / Remark),
+  // then one row per medal winner, then a blank spacer before the next
+  // category. Remark is left empty for the tournament desk to fill in by
+  // hand. EXPO_BRACKET keeps its own copy in expoBracket.js — the two
+  // systems are intentionally independent.
+  _writeAllResultsWorkbook(groups, fileName, sheetName) {
+    const NAVY = '17305E', WHITE = 'FFFFFF', LTGRAY = 'E8ECF0';
+    const fgFill = (hex) => ({ patternType: 'solid', fgColor: { rgb: hex } });
+    const catStyle = { font: { bold: true, sz: 12, color: { rgb: WHITE } }, fill: fgFill(NAVY), alignment: { vertical: 'center' } };
+    const hdrStyle = { font: { bold: true, sz: 9, color: { rgb: WHITE } }, fill: fgFill('2C4A7C'), alignment: { horizontal: 'center', vertical: 'center' } };
+    const cellStyle = { font: { sz: 9 }, fill: fgFill(LTGRAY), alignment: { vertical: 'center' } };
+
+    const ws = {};
+    const COLS = 4; // Player Name, Medal, Team Name, Remark
+    let r = 0;
+    const enc = (row, col) => XLSX.utils.encode_cell({ r: row, c: col });
+    const setCell = (row, col, v, s) => { ws[enc(row, col)] = { v: v ?? '', t: typeof v === 'number' ? 'n' : 's', s: s || {} }; };
+    ws['!merges'] = [];
+
+    groups.forEach(group => {
+      ws['!merges'].push({ s: { r, c: 0 }, e: { r, c: COLS - 1 } });
+      setCell(r, 0, group.category, catStyle);
+      r++;
+      ['Player Name', 'Medal', 'Team Name', 'Remark'].forEach((h, c) => setCell(r, c, h, hdrStyle));
+      r++;
+      group.rows.forEach(row => {
+        setCell(r, 0, row.playerName, cellStyle);
+        setCell(r, 1, row.medal, cellStyle);
+        setCell(r, 2, row.teamName, cellStyle);
+        setCell(r, 3, '', cellStyle); // Remark — left blank
+        r++;
+      });
+      r++; // spacer row between categories
+    });
+
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(r - 1, 0), c: COLS - 1 } });
+    ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 30 }, { wch: 24 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, fileName);
+  },
+
+  // PDF: one bordered table per category (Player Name / Medal / Team Name /
+  // Remark), stacked one after another; a category whose table won't fit in
+  // the remaining page space starts on a fresh page instead of splitting.
+  // Long titles and long names/team names WRAP within their own width
+  // (title within the page, each cell within its column) rather than
+  // running off the page or overlapping the next column — text is never
+  // shrunk or truncated, rows just grow taller to fit.
+  _writeAllResultsPDF(groups, champTitle, fileName, headingSuffix) {
+    const { jsPDF: JsPDFCtor } = window.jspdf || window;
+    const doc = new JsPDFCtor({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+    const ML = 40, MR = 40, PAGE_W = 595, BOTTOM = 800;
+    const contentW = PAGE_W - ML - MR;
+    const tableW = contentW;
+    const colW = [tableW * 0.32, tableW * 0.16, tableW * 0.32, tableW * 0.20];
+    const CELL_PAD = 6, LINE_H = 12, HEADER_H = 22, ROW_MIN_H = 20;
+    let y = 44;
+
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(16);
+    const titleLines = doc.splitTextToSize(`${champTitle} — ${headingSuffix}`, contentW);
+    titleLines.forEach(line => { doc.text(line, ML, y); y += 19; });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, ML, y);
+    y += 26;
+
+    const drawTable = (categoryLabel, rows) => {
+      // Pre-wrap every cell within its own column width so each row's
+      // height (and the table's total height, needed for the page-break
+      // check below) is known before anything is drawn.
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      const wrapped = rows.map(row => {
+        const cellLines = [row.playerName, row.medal, row.teamName, ''].map((val, i) =>
+          doc.splitTextToSize(String(val || ''), colW[i] - CELL_PAD * 2));
+        const rowH = Math.max(ROW_MIN_H, Math.max(...cellLines.map(l => l.length)) * LINE_H + 8);
+        return { cellLines, rowH };
+      });
+      const tableH = HEADER_H + wrapped.reduce((sum, w) => sum + w.rowH, 0);
+      const neededH = 20 + tableH; // category heading + table
+      if (y + neededH > BOTTOM && y > 44) { doc.addPage(); y = 44; }
+
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+      doc.setTextColor(0, 0, 0);
+      doc.text(categoryLabel, ML, y);
+      y += 16;
+      const tableTop = y;
+
+      // Header row
+      doc.setFillColor(23, 48, 94);
+      doc.rect(ML, y, tableW, HEADER_H, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+      doc.setTextColor(255, 255, 255);
+      let cx = ML;
+      ['Player Name', 'Medal', 'Team Name', 'Remark'].forEach((h, i) => {
+        doc.text(h, cx + CELL_PAD, y + HEADER_H / 2, { baseline: 'middle' });
+        cx += colW[i];
+      });
+      doc.setDrawColor(150, 150, 150); doc.setLineWidth(0.5);
+      doc.rect(ML, y, tableW, HEADER_H);
+      y += HEADER_H;
+
+      // Data rows
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      wrapped.forEach((w, ri) => {
+        if (ri % 2 === 1) { doc.setFillColor(240, 243, 248); doc.rect(ML, y, tableW, w.rowH, 'F'); }
+        doc.setTextColor(20, 20, 20);
+        cx = ML;
+        w.cellLines.forEach((lines, i) => {
+          lines.forEach((line, li) => {
+            doc.text(line, cx + CELL_PAD, y + CELL_PAD + 6 + li * LINE_H);
+          });
+          cx += colW[i];
+        });
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(ML, y, tableW, w.rowH);
+        y += w.rowH;
+      });
+
+      // Column separators for the whole table block
+      doc.setDrawColor(150, 150, 150);
+      let sepX = ML;
+      colW.forEach(w => { sepX += w; doc.line(sepX, tableTop, sepX, y); });
+
+      y += 24; // gap before next category
+    };
+
+    groups.forEach(group => drawTable(group.category, group.rows));
+
+    doc.save(fileName);
+  },
+
+  // Small popover next to the status-filter tabs offering the two export
+  // formats for downloadAllCategoriesResults() — kept local to this file
+  // rather than extending MODAL, since it's just a two-item menu anchored
+  // to a button (not a full dialog).
+  toggleDownloadAllMenu(event) {
+    event?.stopPropagation();
+    const menu = document.getElementById('downloadAllMenu');
+    if (!menu) return;
+    const opening = menu.style.display === 'none' || !menu.style.display;
+    menu.style.display = opening ? 'flex' : 'none';
+    if (opening) {
+      const closeOnOutsideClick = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.style.display = 'none';
+          document.removeEventListener('click', closeOnOutsideClick);
+        }
+      };
+      // Deferred so the click that opened the menu doesn't also close it.
+      setTimeout(() => document.addEventListener('click', closeOnOutsideClick), 0);
+    }
+  },
+
+  closeDownloadAllMenu() {
+    const menu = document.getElementById('downloadAllMenu');
+    if (menu) menu.style.display = 'none';
   },
 
   // Download fixture bracket as PDF — landscape A3, professional navy style
