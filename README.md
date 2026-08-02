@@ -36,9 +36,10 @@ This is a complete championship operations platform built for Taekwondo events. 
 - [20. Roadmap Ideas](#20-roadmap-ideas)
 - [21. Recent Updates (May 2026)](#21-recent-updates-may-2026)
 - [22. Recent Updates (July 2026)](#22-recent-updates-july-2026)
-- [23. Credits](#23-credits)
+- [23. Recent Updates (August 2026)](#23-recent-updates-august-2026)
+- [24. Credits](#24-credits)
 
-> **Latest updates:** Poomsae Registration system, stale-token auto-retry for DB ops, footer branding update, Expo Competition System, Live Matches redesign, referee auth fixes, Excel export tooling — Jul 23 2026
+> **Latest updates:** Bulk "Download All Results" (Excel/PDF) for Official and Expo brackets, Live Matches page moved to a public spectator URL, team leaderboard category filter with weighted scoring, DOB calendar picker, cascade-delete for Expo/Poomsae players — Aug 1 2026
 
 ## 1. Project Summary
 
@@ -84,7 +85,7 @@ Primary capabilities:
 | Admin | Full control: teams, form config, weight categories, referee management, championship lifecycle, bracket operations (Official + Expo), archive/restore, statistics export. |
 | Judge | Match handling and bracket progression actions (as allowed by pages and rules). |
 | Team | Login with team credentials, register/edit players (Official/Expo/Both), manage own team workflow and filters, export roster/results to Excel. |
-| Referee | Login with referee ID, assigned to a fixed court, run Official/Expo matches from the shared bracket page, view the Live Matches board, message admin in real time. |
+| Referee | Login with referee ID, assigned to a fixed court, run Official/Expo matches from the shared bracket page, message admin in real time. (Live Matches board is now a public link, not a dashboard nav item — see [Section 23](#23-recent-updates-august-2026).) |
 
 ## 4. Architecture
 
@@ -118,11 +119,11 @@ flowchart LR
 | `/referee-login.html` | Referee login (ID/password + anonymous Firebase Auth sign-in) |
 | `/player-register.html` | Public player registration form (no authentication required) |
 | `/thank-you.html` | Post-registration success page with history protection and close functionality |
-| `/leaderboard.html` | Public leaderboard view |
+| `/leaderboard.html` | Public leaderboard view — Overall + per gender/age-category team point rankings |
+| `/Live-matches.html` | Public spectator board — Court-based Live/Up-Next match display, merges Official + Expo, division badges, real-time sync. No login required (moved out of `/admin/` and off all staff nav menus in Jul 2026 — meant to be shared as a plain link, e.g. on a venue screen); see [Section 23](#23-recent-updates-august-2026) |
 | `/register.html` | Team player registration/edit form |
 | `/admin/dashboard.html` | Main admin control center — team management, championship statistics (with Excel export), navigation hub |
 | `/admin/bracket.html` | Tournament bracket operations — Official and Expo tabs, shared by admin/judge/referee roles |
-| `/admin/Live-matches.html` | Court-based Live/Up-Next match board — merges Official + Expo, division badges, real-time sync |
 | `/admin/form-preview.html` | Team-facing form preview |
 | `/admin/weight-categories.html` | Weight category management |
 | `/admin/championships.html` | Championship CRUD manager |
@@ -130,7 +131,7 @@ flowchart LR
 | `/admin/referees.html` | Referee account management (create/edit referees, assign court numbers) |
 | `/admin/edit-form.html` | Registration form field editor |
 | `/team/dashboard.html` | Team roster dashboard — medal filter, age-category filter, search, Excel export of player info and results |
-| `/referee/dashboard.html` | Referee-specific dashboard — assigned court, nav to Bracket/Live Matches, court messaging inbox |
+| `/referee/dashboard.html` | Referee-specific dashboard — assigned court, nav to Bracket, court messaging inbox |
 
 ## 6. Repository Structure
 
@@ -155,13 +156,13 @@ flowchart LR
     ├── player-register.html        # Public registration form
     ├── thank-you.html              # Post-registration success page
     ├── leaderboard.html            # Public leaderboard
+    ├── Live-matches.html           # Public spectator live board (Official+Expo, no login)
     ├── register.html
     ├── admin/
     │   ├── dashboard.html
     │   ├── bracket.html             # Official + Expo tabs
     │   ├── championships.html
     │   ├── form-preview.html
-    │   ├── Live-matches.html        # Court-based Official+Expo live board
     │   ├── standings.html
     │   ├── weight-categories.html
     │   ├── referees.html            # Referee account + court management
@@ -193,12 +194,14 @@ flowchart LR
         ├── player-manager.js
         ├── Team-deadline-manager.js
         ├── custom-select.js
+        ├── dob-picker.js            # Calendar-style DOB picker (replaces native date wheel)
         ├── performance-cache.js
         ├── history-protection.js    # Browser history protection module
         ├── image-optimizer.js       # Adaptive image compression
+        ├── live-presence.js         # Per-court bracket-session presence (onDisconnect-backed)
         ├── messaging.js             # Firestore admin↔referee court messaging
         ├── notifications.js         # Real-time popup/sound notifications
-        ├── leaderboard.js
+        ├── leaderboard.js           # Category-filtered, weighted team leaderboard
         ├── service-worker.js
         └── referee-manager.js
 ```
@@ -223,8 +226,10 @@ flowchart LR
 | `public/js/referee-manager.js` | Referee account CRUD and court assignment (used by `admin/referees.html`) |
 | `public/js/messaging.js` | Firestore-based real-time messaging between admin and referees, per-court or broadcast |
 | `public/js/notifications.js` | Real-time popup/browser/sound notifications for new messages (admin + referee) |
-| `public/js/leaderboard.js` | Public leaderboard display and filtering |
+| `public/js/leaderboard.js` | Public leaderboard display — Overall + per gender/age-category filter, weighted Gold/Silver/Bronze scoring, Mini category excluded from points |
 | `public/js/image-optimizer.js` | Adaptive image compression (binary-search quality + dimension safety net), format support, EXIF handling |
+| `public/js/live-presence.js` | Writes/clears `liveCourts/<courtNumber>` so the Live Matches page can distinguish "no bracket open" vs "bracket open, no match started" vs "match live" per court; cleaned up via `onDisconnect` plus eager `pagehide`/`beforeunload` handlers |
+| `public/js/dob-picker.js` | Tap-friendly calendar overlay for date-of-birth fields (month/year dropdowns) on both registration forms, replacing the native OS date wheel |
 | `public/js/service-worker.js` | App shell precache and fetch strategies (manually versioned `CACHE_NAME` — bump on any cached-script change) |
 
 ## 8. Firebase Configuration
@@ -762,19 +767,40 @@ The browser history protection system adds an additional security layer:
 
 ### Official bracket exports (from `/admin/bracket.html`)
 
+Per-category buttons (open a category to see them):
+
 | Button | Output | Library |
 | --- | --- | --- |
 | Download Fixture PDF | `Fixture_<category>_<date>.pdf` (landscape A3) | jsPDF (CDN) |
-| Download Fixture Excel | `Fixture_<category>_<date>.xlsx` | SheetJS/XLSX (CDN) |
-| Export Results | `Results_<category>_<date>.xlsx` (auto on bracket complete) | SheetJS/XLSX (CDN) |
+| Download Player List (Excel) | `Players_<category>_<date>.xlsx` — plain name/club/team list, not the bracket tree | SheetJS/XLSX (CDN) |
+| Export Results | `Results_<category>_<date>.xlsx` (auto-prompted on bracket complete, shown once complete) | SheetJS/XLSX (CDN) |
 
-### Expo bracket exports (from `/admin/bracket.html` → Expo tab, via `expoBracket.js`)
+Tab-level bulk button (status filter row, next to All/Live/Pending/Completed):
 
 | Button | Output | Library |
 | --- | --- | --- |
-| Download Fixture (Excel) | `Expo_Fixture_<category>.xlsx` | SheetJS/XLSX (CDN) |
-| Export Results (Excel) | `Expo_Results_<category>.xlsx` (auto-prompted when all matches complete) | SheetJS/XLSX (CDN) |
+| Download All Results → Excel | `All_Category_Results_<date>.xlsx` — one sheet, every completed category stacked with a heading row + medal table (Player/Medal/Team/Remark) | SheetJS/XLSX (CDN) |
+| Download All Results → PDF | `All_Category_Results_<date>.pdf` | jsPDF (CDN) |
+
+> The old standalone "Download Fixture (Excel)" button (visual bracket-tree export) was removed in Jul 2026; "Download Player List (Excel)" is a plain roster export, not a replacement for the bracket-tree layout.
+
+### Expo bracket exports (from `/admin/bracket.html` → Expo tab, via `expoBracket.js`)
+
+Per-category buttons:
+
+| Button | Output | Library |
+| --- | --- | --- |
+| Download Fixture PDF | `Expo_Fixture_<category>.pdf`-style landscape export | jsPDF (CDN) |
+| Download Player List (Excel) | `Players_<category>_Expo_<date>.xlsx` | SheetJS/XLSX (CDN) |
+| Export Results (Excel) | `Expo_Results_<category>.xlsx` (shown once all matches complete; also auto-prompted) | SheetJS/XLSX (CDN) |
 | Download Results (PDF) | `Expo_Results_<category>.pdf` | jsPDF (CDN) |
+
+Tab-level bulk button:
+
+| Button | Output | Library |
+| --- | --- | --- |
+| Download All Results → Excel | `All_Expo_Category_Results_<date>.xlsx` | SheetJS/XLSX (CDN) |
+| Download All Results → PDF | `All_Expo_Category_Results_<date>.pdf` | jsPDF (CDN) |
 
 ### Team Dashboard exports (from `/team/dashboard.html`)
 
@@ -919,7 +945,44 @@ The script outputs `TKD_Bracket_Template.xlsx` in the current directory (landsca
 - ✅ Compression target tightened from 80KB to 35KB after discovering the base64-encoded output of an 80KB blob (~109KB as text) could exceed the 50,000-character Firebase validation cap on `playerImages/<id>`, silently failing the image save after the player record had already been written
 - ✅ Added a hard safety-net pass that progressively shrinks dimensions at minimum quality until the final data URL is guaranteed to fit
 
-## 23. Credits
+## 23. Recent Updates (August 2026)
+
+### Bulk "Download All Results"
+
+- ✅ New tab-level **Download All Results** button (Excel/PDF submenu) on both the Official and Expo bracket status-filter rows — combines every completed category into a single file (`All_Category_Results_<date>.xlsx/.pdf`, `All_Expo_Category_Results_<date>.xlsx/.pdf`) instead of downloading category-by-category
+- ✅ Official bracket's old standalone "Download Fixture (Excel)" visual bracket-tree export was removed (per request); a new **Download Player List (Excel)** button was added to both Official and Expo category views — a plain name/club/team roster export, not a bracket-tree replacement (see [Section 19](#19-bracket-export-tools))
+
+### Live Matches Page Is Now a Public Spectator Board
+
+- ✅ Moved from `/admin/Live-matches.html` to `/Live-matches.html` and removed from the admin dashboard, bracket page, and referee dashboard navigation
+- ✅ Deliberately left open with **no login required** — the underlying `brackets`/`expoBrackets`/`liveCourts` data was already publicly readable, so this only changes the UI gate. Meant to be shared as a plain link (e.g. displayed on a venue screen); the "Back to Dashboard"/"Logout" header controls stay hidden unless a staff `sessionStorage` role is already present
+- ✅ Live grid now sources directly from `brackets`/`expoBrackets` instead of gating on the separate `liveCourts` presence node, so a dropped/late presence write on one court can no longer make that court's live match disappear from the board
+- ✅ Added gold glow/shimmer/trophy animations to highlight Final matches specifically
+- ✅ New `live-presence.js` module tracks per-court bracket-session state (`liveCourts/<courtNumber>`), cleaned up via Firebase `onDisconnect` plus eager `pagehide`/`beforeunload` handlers, so Live Matches can tell apart "no bracket open," "bracket open, no match started," and "match live" per court
+
+### Team Leaderboard Filtering & Scoring
+
+- ✅ `/leaderboard.html` gained a category filter (Overall, or a specific gender × age-category combination) alongside the existing team rankings
+- ✅ Weighted scoring: Gold = 120 pts, Silver = 50 pts, Bronze = 20 pts (both semi-final "1st Bronze" and "2nd Bronze" count equally)
+- ✅ Mini-category medals are still recorded and shown on player-facing pages but never contribute leaderboard points, in Overall or any specific filter
+
+### DOB Calendar Picker
+
+- ✅ New `dob-picker.js` module replaces the native OS date-wheel input on both registration forms with a tap-friendly calendar overlay (month/year dropdowns) — aimed at reducing the scroll distance needed to reach old birth years on mobile
+
+### Team Deletion Cascade Fix
+
+- ✅ Deleting a team now also cleans up that team's Expo, Official & Expo, and Poomsae player records, which were previously left orphaned in `expoPlayers`/related nodes after a team delete
+
+### Bracket & Expo PDF/Bug Fixes
+
+- ✅ Fixed Expo bracket PDF fixture export
+- ✅ Fixed bracket name/spacing rendering issues, plus a redesigned deadline-picker modal (quick presets + live preview) replacing the old always-visible datetime input on the admin team list
+- ✅ Real-time multi-court sync added for Expo brackets (mirrors the Official bracket's per-category/per-bracket listeners), and bracket listeners no longer silently stop resyncing after a tab is backgrounded and resumed
+- ✅ Password visibility toggle extended to the referee password field on `/admin/referees.html`
+- ✅ Fixed image scaling in the optimizer (resized output was being drawn at source size), stacked-modal-dialog blocking clicks, and player-deletion bracket cleanup matching the real `rounds`/`byePlayers` schema
+
+## 24. Credits
 
 - Built and developed by Chiranandan T M
 - Co-supporter: Sharan B N
