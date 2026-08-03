@@ -608,10 +608,11 @@ const BRACKET = {
   },
 
   // Generalized version of createBracket()'s inline expected-round-count
-  // formula, seeded with an explicit Round-1 bye count instead of assuming
-  // n % 2. Used only by the Bracket Editor's save path — createBracket()
-  // keeps its own inline computation (the round1ByeCount = n % 2 case of
-  // this same formula) untouched.
+  // formula, seeded with an explicit Round-1 bye count instead of always
+  // assuming 0 (createBracket() itself never assigns a Round-1 bye — see its
+  // own inline computation). Used only by the Bracket Editor's save path,
+  // where the admin may have manually moved one or more players to the bye
+  // pool.
   computeExpectedRoundMatchCounts(n, round1ByeCount) {
     const counts = [];
     const matches = Math.floor((n - round1ByeCount) / 2);
@@ -804,6 +805,13 @@ const BRACKET = {
         courtNumber: originalMatch.courtNumber || null
       });
     }
+
+    // Re-flag any match left with only one player (odd player count) so the
+    // automatic walkover safety net (processAutoByes) still leaves it alone
+    // after a conflict-driven reshuffle — same rule createBracket() applies.
+    rebuiltMatches.forEach(m => {
+      if (m.player1 && !m.player2) m.pendingManualBye = true;
+    });
 
     // Verify the rebuild resolved all conflicts
     const conflicts = this.detectTeamConflicts(rebuiltMatches);
@@ -1170,7 +1178,11 @@ const BRACKET = {
   // Rounds are built one at a time — Round 1 is created upfront; later rounds
   // are constructed dynamically by buildNextRound() once the previous round
   // is fully complete.  This guarantees:
-  //   • Exact match counts per round (floor(n/2), no power-of-2 padding)
+  //   • No player is ever auto-assigned a bye at generation time — every
+  //     player (even the odd one out when n is odd) is placed into a normal
+  //     Round 1 match slot. If n is odd, the last match is left with only
+  //     one player (pendingManualBye), and only the Bracket Editor can turn
+  //     that into an official bye (see saveEditBracket / processAutoByes).
   //   • Bye players wait in their round until all real matches finish
   //   • No player ever receives two consecutive byes
   //   • Same-team players are not matched in early rounds (where possible)
@@ -1203,26 +1215,36 @@ const BRACKET = {
     };
 
     // ── ROUND 1 ───────────────────────────────────────────────────────────
-    // If n is odd: the last player in the seeded list receives a bye.
-    //   → floor(n/2) real matches + 1 bye player
-    // If n is even: all players are paired normally; no bye.
-    //   → n/2 real matches
-    const round1ByePlayer = (n % 2 === 1) ? this.compressPlayer(shuffled[n - 1]) : null;
-    const round1MatchCount = Math.floor(n / 2);
+    // Every player is placed into a normal match slot — no automatic byes.
+    // The degenerate n === 1 case (a single-entrant category) still declares
+    // that lone player the champion directly, since there is no possible
+    // opponent slot to place them in.
+    // If n is odd (and > 1): the last match is left with only player1 —
+    //   → ceil(n/2) match slots, the final one unpaired
+    // If n is even: all players are paired normally; no unpaired slot.
+    //   → n/2 match slots
     const round1 = [];
 
-    for (let i = 0; i < round1MatchCount; i++) {
-      round1.push({
-        matchId: `R1_M${i + 1}`,
-        round: 1,
-        player1: this.compressPlayer(shuffled[i * 2]),
-        player2: this.compressPlayer(shuffled[i * 2 + 1]),
-        winner: null,
-        eliminated: null,
-        status: 'pending',
-        startTime: null,
-        endTime: null
-      });
+    if (n === 1) {
+      const soleChampion = this.compressPlayer(shuffled[0]);
+      bracket.byePlayers['0'] = soleChampion;
+      bracket.byeHistory[soleChampion.id] = 1;
+    } else {
+      const round1MatchCount = Math.ceil(n / 2);
+
+      for (let i = 0; i < round1MatchCount; i++) {
+        round1.push({
+          matchId: `R1_M${i + 1}`,
+          round: 1,
+          player1: this.compressPlayer(shuffled[i * 2]),
+          player2: (i * 2 + 1 < n) ? this.compressPlayer(shuffled[i * 2 + 1]) : null,
+          winner: null,
+          eliminated: null,
+          status: 'pending',
+          startTime: null,
+          endTime: null
+        });
+      }
     }
 
     // ── APPLY TEAM-AWARE CONFLICT RESOLUTION ──────────────────────────────
@@ -1246,12 +1268,15 @@ const BRACKET = {
       };
     }
 
-    bracket.rounds.push(round1);
+    // Flag any match left with only one player (odd n) so the automatic
+    // walkover safety net (processAutoByes, meant for players deleted mid-
+    // tournament) leaves it alone — only the Bracket Editor may resolve it,
+    // by dragging that player into the BYE pool or pairing them with someone.
+    round1.forEach(m => {
+      if (m.player1 && !m.player2) m.pendingManualBye = true;
+    });
 
-    if (round1ByePlayer) {
-      bracket.byePlayers['0'] = round1ByePlayer;
-      bracket.byeHistory[round1ByePlayer.id] = 1;
-    }
+    bracket.rounds.push(round1);
 
     // ── VALIDATE BRACKET INTEGRITY ────────────────────────────────────────
     const validation = this.validateBracketIntegrity(bracket, players);
@@ -1739,6 +1764,7 @@ const BRACKET = {
             if (match.startTime) leanMatch.startTime = match.startTime;
             if (match.endTime) leanMatch.endTime = match.endTime;
             if (match.courtNumber) leanMatch.courtNumber = match.courtNumber;
+            if (match.pendingManualBye) leanMatch.pendingManualBye = true;
             return leanMatch;
           })
         )
@@ -1823,6 +1849,7 @@ const BRACKET = {
             if (match.startTime) leanMatch.startTime = match.startTime;
             if (match.endTime) leanMatch.endTime = match.endTime;
             if (match.courtNumber) leanMatch.courtNumber = match.courtNumber;
+            if (match.pendingManualBye) leanMatch.pendingManualBye = true;
             return leanMatch;
           })
         )
@@ -2312,8 +2339,14 @@ const BRACKET = {
     
     const hasByePlayer = this.getByeList(this.currentBracket, roundIndex).length > 0;
 
-    // Find unpaired matches (exactly 1 player)
-    const unpairedMatches = round.filter(m => m.status === 'pending' && ((m.player1 && !m.player2) || (!m.player1 && m.player2)));
+    // Find unpaired matches (exactly 1 player). Matches flagged
+    // `pendingManualBye` are intentionally left unpaired by bracket
+    // generation (odd player count) or Round-1 conflict reshuffling — those
+    // must wait for an explicit admin decision in the Bracket Editor, not
+    // get auto-completed here. This walkover path exists purely as a safety
+    // net for players deleted mid-tournament, leaving a genuine orphan.
+    const unpairedMatches = round.filter(m => m.status === 'pending' && !m.pendingManualBye &&
+      ((m.player1 && !m.player2) || (!m.player1 && m.player2)));
     
     // Find empty matches (0 players)
     const emptyMatches = round.filter(m => m.status === 'pending' && !m.player1 && !m.player2);
