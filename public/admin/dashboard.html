@@ -930,6 +930,82 @@
             border-radius: 14px;
             border: 1.5px solid rgba(255, 255, 255, .06)
         }
+
+        /* Team Player Counts — live badge + category chips + leaderboard rank */
+        .tc-live-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            background: rgba(0, 230, 118, .1);
+            border: 1.5px solid rgba(0, 230, 118, .45);
+            color: #00E676;
+            font-size: .72rem;
+            font-weight: 900;
+            letter-spacing: 1px;
+            padding: 6px 14px;
+            border-radius: 20px
+        }
+
+        .tc-live-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00E676;
+            box-shadow: 0 0 8px #00E676;
+            animation: tcPulse 1.4s ease-in-out infinite
+        }
+
+        @keyframes tcPulse {
+
+            0%,
+            100% {
+                transform: scale(1);
+                opacity: 1
+            }
+
+            50% {
+                transform: scale(1.5);
+                opacity: .5
+            }
+        }
+
+        .tc-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 34px;
+            padding: 4px 11px;
+            border-radius: 20px;
+            font-size: .82rem;
+            font-weight: 800
+        }
+
+        .tc-chip-official {
+            background: rgba(255, 215, 0, .1);
+            color: #FFD700;
+            border: 1.5px solid rgba(255, 215, 0, .3)
+        }
+
+        .tc-chip-expo {
+            background: rgba(255, 152, 0, .1);
+            color: #FF9800;
+            border: 1.5px solid rgba(255, 152, 0, .3)
+        }
+
+        .tc-chip-poomsae {
+            background: rgba(0, 200, 83, .1);
+            color: #00C853;
+            border: 1.5px solid rgba(0, 200, 83, .3)
+        }
+
+        .tc-chip-total {
+            background: rgba(0, 229, 255, .14);
+            color: #00E5FF;
+            border: 1.5px solid rgba(0, 229, 255, .4);
+            font-size: .9rem;
+            min-width: 40px
+        }
+
     </style>
 </head>
 
@@ -984,6 +1060,8 @@
             <button class="admin-nav-btn" id="navStats" onclick="showSection('stats')">📈 Statistics</button>
             <button class="admin-nav-btn" id="navForm" onclick="showSection('formEditor')">📝 Edit Form</button>
             <button class="admin-nav-btn" id="navTeams" onclick="showSection('teams')">🛡️ Manage Teams</button>
+            <button class="admin-nav-btn" id="navTeamCounts" onclick="showSection('teamCounts')">👥 Team Player
+                Counts</button>
             <button class="admin-nav-btn" id="navReferees" onclick="window.location.href='referees.html'">⚖️ Manage
                 Referees</button>
             <button class="admin-nav-btn" id="navBracket" onclick="window.location.href='bracket.html'">🏆 Tournament
@@ -1174,6 +1252,31 @@
 
             <h3 style="margin-top: 30px;">Registered Teams</h3>
             <div id="teamsTableContainer"></div>
+        </div>
+
+        <!-- Team Player Counts Section -->
+        <div id="teamCountsSection" class="section hidden">
+            <div class="st-hdr">
+                <div>
+                    <h2 style="margin:0;font-size:1.6rem">👥 Team Player Counts</h2>
+                    <p style="color:#555;margin:4px 0 0;font-size:.88rem">Players registered per team — Official,
+                        Expo &amp; Poomsae</p>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <span class="tc-live-badge"><span class="tc-live-dot"></span>LIVE</span>
+                    <span class="st-pill" id="teamCountsPill">0 teams</span>
+                </div>
+            </div>
+
+            <div class="st-hdr">
+                <h3>Team Breakdown</h3>
+                <span style="color:#444;font-size:.76rem;font-style:italic" id="teamCountsUpdatedAt"></span>
+            </div>
+            <input type="text" class="st-search" id="teamCountsSearch" placeholder="🔍 Search by team name…"
+                oninput="filterTeamCountsTable(this.value)">
+            <div class="st-wrap">
+                <div id="teamCountsTableContainer"></div>
+            </div>
         </div>
 
         <!-- New Championship Section -->
@@ -1492,6 +1595,7 @@
                 stats: 'navStats',
                 formEditor: 'navForm',
                 teams: 'navTeams',
+                teamCounts: 'navTeamCounts',
                 newChampionship: 'navNewChamp',
                 overallChampionship: 'navOverall'
             };
@@ -1549,6 +1653,9 @@
                         if (attempts > 50) clearInterval(wait);
                     }, 100);
                 }
+            } else if (section === 'teamCounts') {
+                document.getElementById('teamCountsSection').classList.remove('hidden');
+                loadTeamPlayerCounts();
             } else if (section === 'newChampionship') {
                 document.getElementById('newChampionshipSection').classList.remove('hidden');
             } else if (section === 'overallChampionship') {
@@ -2185,6 +2292,179 @@
 
         window.loadPoomsaeStatistics = loadPoomsaeStatistics;
         window.renderPoomsaeStatistics = renderPoomsaeStatistics;
+
+        // ── Team Player Counts (Official / Expo / Poomsae per team) ──
+        // Same players/ + expoPlayers/ dedup-by-id source used throughout this
+        // file, so "Official & Expo" registrants (same id in both trees) are
+        // counted once toward Total but contribute to both the Official and
+        // Expo columns — mirroring the wantsOfficial/wantsExpo routing in
+        // public-registration.js. Each team's counts are built from Sets of
+        // playerId, so a player registered for multiple events (e.g. Official +
+        // Poomsae) is only ever added once per Set — Total is the size of the
+        // union Set, i.e. unique players, never the sum of event registrations.
+        //
+        // Stays live via onValue() listeners (same pattern as the Statistics
+        // panel above) instead of one-shot dbGet() calls — a new registration
+        // updates this table within a fraction of a second, no refresh needed.
+        // Listeners are started once and left running for the page's lifetime.
+        let _teamCountsListenersStarted = false;
+        const _teamCountsRawCache = { players: null, expoPlayers: null, teams: null };
+        let _teamCountsComputeTimer = null;
+        let _teamCountsCache = [];
+
+        function startTeamCountsListeners() {
+            if (_teamCountsListenersStarted) return;
+            _teamCountsListenersStarted = true;
+
+            const scheduleCompute = () => {
+                clearTimeout(_teamCountsComputeTimer);
+                _teamCountsComputeTimer = setTimeout(computeTeamCounts, 200);
+            };
+
+            ['players', 'expoPlayers', 'teams'].forEach(path => {
+                dbOnValue(dbRef(database, path), (snapshot) => {
+                    _teamCountsRawCache[path] = snapshot.exists() ? snapshot.val() : null;
+                    scheduleCompute();
+                }, (error) => {
+                    console.warn(`⚠️ Team Player Counts listener error on ${path} (non-fatal):`, error.message);
+                });
+            });
+        }
+
+        function computeTeamCounts() {
+            const teamsMap = {};
+            if (_teamCountsRawCache.teams) {
+                Object.entries(_teamCountsRawCache.teams).forEach(([id, val]) => {
+                    teamsMap[id] = (val && val.teamName) || 'Unnamed Team';
+                });
+            }
+
+            const seenIds = new Set();
+            const players = [];
+            if (_teamCountsRawCache.players) {
+                Object.entries(_teamCountsRawCache.players).forEach(([id, val]) => {
+                    players.push({ id, ...val });
+                    seenIds.add(id);
+                });
+            }
+            if (_teamCountsRawCache.expoPlayers) {
+                Object.entries(_teamCountsRawCache.expoPlayers).forEach(([id, val]) => {
+                    if (!seenIds.has(id)) {
+                        players.push({ id, ...val });
+                        seenIds.add(id);
+                    }
+                });
+            }
+
+            const byTeam = {};
+            players.forEach(player => {
+                const teamName = teamsMap[player.teamId] || player.centerName || player.teamName || 'Unassigned Team';
+                if (!byTeam[teamName]) {
+                    byTeam[teamName] = { official: new Set(), expo: new Set(), poomsae: new Set(), all: new Set() };
+                }
+                const bucket = byTeam[teamName];
+
+                const category = player.competitionCategory;
+                const hasPoomsae = Array.isArray(player.poomsaeCategories) && player.poomsaeCategories.length > 0;
+                const isExpo = category === 'Expo' || category === 'Official & Expo';
+                // A blank/undefined category only defaults to Official for legacy
+                // Kyorugi-only records (pre-dates this field). A player who left it
+                // blank because they picked Poomsae only (allowed — see
+                // updateKyorugiFieldRequirements in public-registration.js) must NOT
+                // also be counted as Official.
+                const isOfficial = category === 'Official' || category === 'Official & Expo' || (!category && !hasPoomsae);
+
+                if (isOfficial) bucket.official.add(player.id);
+                if (isExpo) bucket.expo.add(player.id);
+                if (hasPoomsae) bucket.poomsae.add(player.id);
+                bucket.all.add(player.id);
+            });
+
+            _teamCountsCache = Object.entries(byTeam)
+                .map(([teamName, b]) => ({
+                    teamName,
+                    official: b.official.size,
+                    expo: b.expo.size,
+                    poomsae: b.poomsae.size,
+                    total: b.all.size
+                }))
+                .sort((a, b) => a.teamName.localeCompare(b.teamName));
+
+            renderTeamCountsTable();
+
+            const updatedEl = document.getElementById('teamCountsUpdatedAt');
+            if (updatedEl) updatedEl.textContent = `Updated ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+        }
+
+        function renderTeamCountsTable(filterQuery) {
+            const container = document.getElementById('teamCountsTableContainer');
+            const pill = document.getElementById('teamCountsPill');
+            if (!container) return;
+
+            const q = (filterQuery !== undefined ? filterQuery : (document.getElementById('teamCountsSearch')?.value || '')).trim().toLowerCase();
+            const rowsData = q ? _teamCountsCache.filter(t => t.teamName.toLowerCase().includes(q)) : _teamCountsCache;
+
+            if (pill) pill.textContent = `${rowsData.length} team${rowsData.length !== 1 ? 's' : ''}`;
+
+            if (_teamCountsCache.length === 0) {
+                container.innerHTML = `<div class="st-empty"><div class="st-empty-icon">👥</div><div style="font-size:1rem;font-weight:700;color:#555">No players registered yet</div></div>`;
+                return;
+            }
+            if (rowsData.length === 0) {
+                container.innerHTML = `<div class="st-empty"><div class="st-empty-icon">🔍</div><div style="font-size:1rem;font-weight:700;color:#555">No teams match your search</div></div>`;
+                return;
+            }
+
+            const grandOfficial = rowsData.reduce((s, t) => s + t.official, 0);
+            const grandExpo = rowsData.reduce((s, t) => s + t.expo, 0);
+            const grandPoomsae = rowsData.reduce((s, t) => s + t.poomsae, 0);
+            const grandTotal = rowsData.reduce((s, t) => s + t.total, 0);
+
+            let html = `<table class="st-table" id="teamCountsTable"><thead><tr>
+                <th style="width:52px;text-align:center">#</th><th>Team</th><th>Official</th><th>Expo</th><th>Poomsae</th><th>Total Players</th>
+            </tr></thead><tbody>`;
+
+            rowsData.forEach((t, idx) => {
+                html += `<tr>
+                    <td class="st-num">${idx + 1})</td>
+                    <td class="st-name">${t.teamName}</td>
+                    <td><span class="tc-chip tc-chip-official">${t.official}</span></td>
+                    <td><span class="tc-chip tc-chip-expo">${t.expo}</span></td>
+                    <td><span class="tc-chip tc-chip-poomsae">${t.poomsae}</span></td>
+                    <td><span class="tc-chip tc-chip-total">${t.total}</span></td>
+                </tr>`;
+            });
+
+            html += `</tbody><tfoot><tr style="background:rgba(255,215,0,.06);border-top:2px solid rgba(255,215,0,.3)">
+                <td></td><td style="font-weight:800;color:#FFD700">TOTAL</td>
+                <td style="font-weight:800;color:#FFD700">${grandOfficial}</td>
+                <td style="font-weight:800;color:#FFD700">${grandExpo}</td>
+                <td style="font-weight:800;color:#FFD700">${grandPoomsae}</td>
+                <td style="font-weight:800;color:#FFD700">${grandTotal}</td>
+            </tr></tfoot></table>`;
+
+            container.innerHTML = html;
+        }
+
+        function filterTeamCountsTable(query) {
+            renderTeamCountsTable(query);
+        }
+
+        // Entry point for the nav button — starts the live listeners on first
+        // visit (they then run for the page's lifetime) and repaints instantly
+        // from cache on every subsequent visit, no network round-trip needed.
+        function loadTeamPlayerCounts() {
+            if (!_teamCountsListenersStarted) {
+                const container = document.getElementById('teamCountsTableContainer');
+                if (container) container.innerHTML = `<p style="color:#555">Loading team player counts...</p>`;
+                startTeamCountsListeners();
+            } else {
+                computeTeamCounts();
+            }
+        }
+
+        window.loadTeamPlayerCounts = loadTeamPlayerCounts;
+        window.filterTeamCountsTable = filterTeamCountsTable;
 
         // Kyorugi / Poomsae statistics switcher — purely a visibility toggle;
         // both panels' data is already loaded (loadStatistics()/loadPoomsaeStatistics()
