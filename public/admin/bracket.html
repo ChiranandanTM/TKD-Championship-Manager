@@ -778,8 +778,17 @@
             const NAME_FONT_SIZE = 10.5;
             const CENTER_FONT_SIZE = 8.5;
             const MIN_LINE_LEN = 75;   // floor for empty/TBD rounds, matches old default look
-            const LINE_PAD = 14;       // clearance between longest text and the line's end
             const CONNECTOR_GAP = 42;  // fixed gap reserved for the match-number label + connector elbow — kept constant so round-to-round spacing stays consistent regardless of name length
+            const TEXT_LEFT_PAD = 3;         // drawSlot's existing left padding before player text (x + TEXT_LEFT_PAD)
+            const CONNECTOR_LINE_GAP = 10;   // fixed visual gap between the end of a player's own text and where their connector line starts
+            const CONNECTOR_STUB_MIN = 10;   // smallest visible connector-line segment, guaranteed even for the round's single widest label
+            // Per-round column clearance (text end → xEnd) must be big enough to
+            // hold BOTH the fixed gap AND a real, visible line stub for the
+            // round's single widest label — otherwise that one row's connector
+            // line shrinks to almost nothing and reads as touching the text.
+            // Deriving it from the other two constants keeps that guarantee
+            // explicit instead of relying on a bare magic number.
+            const LINE_PAD = TEXT_LEFT_PAD + CONNECTOR_LINE_GAP + CONNECTOR_STUB_MIN;
 
             const measureDoc = new JsPDFCtor({ unit: 'pt' });
             const measureWidth = (text, style, size) => {
@@ -854,16 +863,49 @@
 
             const drawSlot = (x, yc, player, label, lineLen) => {
                 doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
-                doc.text(label ? `${label}` : '', x - 16, yc + 3);
-                doc.line(x, yc, x + lineLen, yc);
-                if (player) {
-                    doc.setFont('helvetica', 'bold'); doc.setFontSize(NAME_FONT_SIZE);
-                    doc.text(player.playerName || '', x + 3, yc - 4);
+                doc.text(label ? `${label}` : '', x - 16, yc, { baseline: 'middle' });
 
+                // The connector line must never cross the name or team text.
+                // lineLen (and therefore xEnd, where the line ends) is sized
+                // to the ROUND's single widest label, but each player's own
+                // text is usually shorter — so measure THIS player's actual
+                // rendered name/team width and start the line only after
+                // whichever is wider, plus a fixed gap. Short names get a
+                // long line out to xEnd; long names push the start point
+                // right, but never past xEnd (see CONNECTOR_LINE_GAP).
+                let lineStartX = x;
+                if (player) {
+                    const nameText = player.playerName || '';
                     const centerText = player.centerName || player.teamName || '';
+
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(NAME_FONT_SIZE);
+                    const nameW = doc.getTextWidth(nameText);
+
                     doc.setFont('helvetica', 'normal'); doc.setFontSize(CENTER_FONT_SIZE);
-                    doc.text(centerText, x + 3, yc + 11);
+                    const teamW = doc.getTextWidth(centerText);
+
+                    // Always textEnd + CONNECTOR_LINE_GAP, clamped so it can
+                    // never reach past xEnd even under rounding — LINE_PAD is
+                    // sized (see its definition above) to keep this clamp from
+                    // ever actually engaging in practice.
+                    lineStartX = Math.min(
+                        x + TEXT_LEFT_PAD + Math.max(nameW, teamW) + CONNECTOR_LINE_GAP,
+                        x + lineLen - 1
+                    );
+
+                    // baseline:'middle' centers the name glyphs exactly on yc
+                    // — the same y the connector line is drawn at — so the
+                    // line runs level with the vertical center of the name
+                    // instead of trailing below the whole text block; the
+                    // horizontal gap above keeps it from ever touching the
+                    // text itself.
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(NAME_FONT_SIZE);
+                    doc.text(nameText, x + TEXT_LEFT_PAD, yc, { baseline: 'middle' });
+
+                    doc.setFont('helvetica', 'normal'); doc.setFontSize(CENTER_FONT_SIZE);
+                    doc.text(centerText, x + TEXT_LEFT_PAD, yc + 14);
                 }
+                doc.line(lineStartX, yc, x + lineLen, yc);
             };
 
             // ── PASS 1: draw every round's own boxes (no cross-round lines yet) ──
@@ -879,20 +921,28 @@
                     // the specific match it's paired with (see r1MatchRow /
                     // r1ByeRow) — matching a standard printed seeding chart
                     // instead of a separate disconnected bye list.
+                    // Player/seed numbers follow the actual printed row order
+                    // (r1MatchRow / r1ByeRow), not raw match-index arithmetic —
+                    // rows are 0-indexed and unique across both matches and
+                    // byes, so seed number = row + 1 for every entry. This is
+                    // what lets a BYE that sits ABOVE match 1 correctly claim
+                    // seed 1, pushing that match's own players to 2 and 3,
+                    // instead of BYE rows being left unnumbered while match
+                    // players kept a match-index-based 1..N that skipped them.
                     r1Matches.forEach((match, i) => {
                         const yTop = r1RowY(r1MatchRow[i]);
                         const yBot = r1RowY(r1MatchRow[i] + 1);
-                        drawSlot(x, yTop, match.player1, (i * 2 + 1), lineLen);
-                        drawSlot(x, yBot, match.player2, (i * 2 + 2), lineLen);
+                        drawSlot(x, yTop, match.player1, (r1MatchRow[i] + 1), lineLen);
+                        drawSlot(x, yBot, match.player2, (r1MatchRow[i] + 2), lineLen);
                         doc.line(xEnd, yTop, xEnd, yBot);
                         doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
                         doc.text(String(matchCounter++), xEnd + 4, matchCenters[0][i]);
                     });
                     r1ByeList.forEach((bye, bi) => {
                         const byeY = r1RowY(r1ByeRow[bi]);
-                        drawSlot(x, byeY, bye, '', lineLen);
+                        drawSlot(x, byeY, bye, (r1ByeRow[bi] + 1), lineLen);
                         doc.setFont('helvetica', 'italic'); doc.setFontSize(7);
-                        doc.text('BYE', x + 3, byeY + 17);
+                        doc.text('BYE', x + 3, byeY + 20);
                     });
                     continue;
                 }
@@ -932,7 +982,7 @@
                     const byeY = byeRowCenters[byeIdx];
                     drawSlot(x, byeY, bye, '', lineLen);
                     doc.setFont('helvetica', 'italic'); doc.setFontSize(7);
-                    doc.text('BYE', x + 3, byeY + 17);
+                    doc.text('BYE', x + 3, byeY + 20);
                 });
             }
 
