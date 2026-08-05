@@ -100,6 +100,90 @@ const EXPO_BRACKET = {
     return !!p1.teamName && p1.teamName === p2.teamName;
   },
 
+  // ── Team-aware pairing (mirrors bracket.js's smart-seeding pipeline) ─────
+  // Official avoids same-team matches by shuffling, spreading teams
+  // round-robin across positions, then swapping any pair that still landed
+  // on the same team. Expo uses the same three-step pipeline (local copy —
+  // same algorithm, expo's own compressed player shape) so its single round
+  // of matches gets the same avoidance behavior instead of a plain shuffle.
+
+  // Stable team key for grouping — same precedence as areSameTeam() (teamId
+  // first, then teamName/centerName string fallback).
+  getPlayerTeamKey(player) {
+    if (!player) return 'unknown';
+    return player.teamId || (player.teamName || player.centerName || 'unknown').toLowerCase();
+  },
+
+  // Round-robin one player from each team in turn so consecutive positions
+  // rarely land on the same team before pairing even starts.
+  distributeTeamsRoundRobin(players) {
+    if (players.length <= 2) return players;
+
+    const teamGroups = {};
+    players.forEach(p => {
+      const teamKey = this.getPlayerTeamKey(p);
+      if (!teamGroups[teamKey]) teamGroups[teamKey] = [];
+      teamGroups[teamKey].push(p);
+    });
+
+    const teams = Object.keys(teamGroups);
+    const teamQueues = {};
+    teams.forEach(team => {
+      teamQueues[team] = this.shuffleFisherYates(teamGroups[team]);
+    });
+
+    const result = [];
+    while (result.length < players.length) {
+      for (let i = 0; i < teams.length && result.length < players.length; i++) {
+        const teamKey = teams[i];
+        if (teamQueues[teamKey].length > 0) {
+          result.push(teamQueues[teamKey].shift());
+        }
+      }
+    }
+    return result;
+  },
+
+  // Final pass over consecutive pairs (0-1, 2-3, ...): whenever a pair would
+  // be same-team, swap one side with a nearby player from a different team so
+  // the match-up changes without disturbing the overall shuffle. Falls back
+  // to leaving the pair as-is (unavoidable conflict) when no swap works.
+  finalizePositionsForPairing(players) {
+    if (players.length <= 2) return players;
+
+    const result = [...players];
+    for (let i = 0; i < result.length - 1; i += 2) {
+      if (!this.areSameTeam(result[i], result[i + 1])) continue;
+
+      let swapped = false;
+      for (let j = i + 2; j < Math.min(i + 4, result.length); j++) {
+        if (!this.areSameTeam(result[i], result[j])) {
+          [result[i + 1], result[j]] = [result[j], result[i + 1]];
+          swapped = true;
+          break;
+        }
+      }
+      if (swapped) continue;
+
+      for (let j = Math.max(0, i - 2); j < i; j++) {
+        if (!this.areSameTeam(result[i], result[j])) {
+          [result[i + 1], result[j]] = [result[j], result[i + 1]];
+          break;
+        }
+      }
+    }
+    return result;
+  },
+
+  // Full pipeline: shuffle → spread teams round-robin → final swap pass to
+  // avoid same-team pairs wherever the team composition allows it.
+  smartSeedForMatching(players) {
+    if (players.length <= 1) return players;
+    const shuffled = this.shuffleFisherYates(players);
+    const distributed = this.distributeTeamsRoundRobin(shuffled);
+    return this.finalizePositionsForPairing(distributed);
+  },
+
   // ── Filters ────────────────────────────────────────────────────────────
   async filterByStatus(status) {
     this.currentFilter = status;
@@ -223,19 +307,23 @@ const EXPO_BRACKET = {
   },
 
   // ── Match generation ───────────────────────────────────────────────────
-  // Consecutive pairing after a shuffle: [p0,p1], [p2,p3], ... A leftover
-  // unpaired player becomes an automatic Gold (no match created).
+  // Consecutive pairing after team-aware seeding: [p0,p1], [p2,p3], ... —
+  // same avoid-same-team pipeline as the Official bracket (smartSeedForMatching),
+  // so two players from the same team only ever land in the same match when
+  // team composition makes it truly unavoidable. A leftover unpaired player
+  // becomes an automatic Gold (no match created).
   createExpoBracket(players) {
-    const shuffled = this.shuffleFisherYates(players).map(p => this.compressPlayer(p));
+    const compressed = players.map(p => this.compressPlayer(p));
+    const seeded = this.smartSeedForMatching(compressed);
     const matches = [];
     const byes = [];
     let matchCounter = 1;
 
-    for (let i = 0; i + 1 < shuffled.length; i += 2) {
+    for (let i = 0; i + 1 < seeded.length; i += 2) {
       matches.push({
         matchId: `expo_m${matchCounter}`,
-        player1: shuffled[i],
-        player2: shuffled[i + 1],
+        player1: seeded[i],
+        player2: seeded[i + 1],
         status: 'pending',
         winner: null,
         courtNumber: null,
@@ -244,12 +332,12 @@ const EXPO_BRACKET = {
       });
       matchCounter++;
     }
-    if (shuffled.length % 2 === 1) {
-      byes.push(shuffled[shuffled.length - 1]);
+    if (seeded.length % 2 === 1) {
+      byes.push(seeded[seeded.length - 1]);
     }
 
     return {
-      playerCount: shuffled.length,
+      playerCount: seeded.length,
       status: matches.length === 0 ? 'complete' : 'pending',
       createdAt: new Date().toISOString(),
       matches,
