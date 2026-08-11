@@ -1,7 +1,7 @@
 // FIREBASE v11 - Modular SDK with persistence + performance optimizations
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, onIdTokenChanged, createUserWithEmailAndPassword, signInAnonymously, EmailAuthProvider, reauthenticateWithCredential } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
-import { getDatabase, ref, set, get, update, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, push, query, orderByChild, equalTo, child, goOnline, goOffline, connectDatabaseEmulator, onDisconnect } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
+import { getDatabase, ref, set, get, update, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, push, query, orderByChild, equalTo, child, goOnline, goOffline, connectDatabaseEmulator, onDisconnect, runTransaction } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
 import { getFirestore, collection, addDoc, doc, setDoc, getDoc, updateDoc, deleteDoc, query as fsQuery, where, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
 
@@ -170,6 +170,7 @@ window.dbOnChildAdded = onChildAdded;
 window.dbOnChildChanged = onChildChanged;
 window.dbOnChildRemoved = onChildRemoved;
 window.dbOnDisconnect = onDisconnect;
+window.dbRunTransaction = runTransaction;
 
 // ── Firestore globals ─────────────────────────────────────────────────────────
 window.firestore = firestore;

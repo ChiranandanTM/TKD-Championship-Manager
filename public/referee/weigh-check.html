@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>First Weighing Check — Taekwondo Championship</title>
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Referee first weighing check — enter and lock a player's first check weight.">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script defer src="/js/modal.js"></script>
+
+    <style>
+        .back-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            color: var(--accent-cyan); text-decoration: none;
+            font-weight: 700; font-size: 1rem; letter-spacing: 0.5px;
+            transition: color 0.2s; margin-bottom: 20px;
+            text-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+        }
+        .back-link:hover { color: var(--border-gold); text-shadow: 0 0 10px rgba(255, 215, 0, 0.4); }
+
+        .wc-court-note {
+            background: linear-gradient(135deg, rgba(0,229,255,0.16) 0%, rgba(0,180,220,0.1) 100%);
+            border: 1.5px solid rgba(0,229,255,0.4);
+            border-radius: 10px; padding: 12px 18px;
+            font-size: 0.92rem; color: var(--accent-cyan); font-weight: 600;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        /* ── Search + Filters ─────────────────────────────── */
+        .wc-search-input {
+            width: 100%; box-sizing: border-box;
+            padding: 14px 18px;
+            background: rgba(8, 10, 20, 0.95);
+            border: 2px solid rgba(255,215,0,0.3);
+            border-radius: var(--border-radius);
+            color: var(--text-white);
+            font-size: 1rem; outline: none;
+            transition: border-color 0.2s;
+            margin-bottom: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .wc-search-input:focus { border-color: var(--border-gold); box-shadow: 0 0 0 3px rgba(255,215,0,0.15); }
+        .wc-search-input::placeholder { color: #8891a3; }
+
+        .wc-filters-bar {
+            display: flex; flex-wrap: wrap; gap: 10px;
+            margin-bottom: 10px; align-items: center;
+        }
+        .wc-filter-select {
+            flex: 1 1 150px; min-width: 130px;
+            padding: 10px 12px;
+            background: rgba(8, 10, 20, 0.95);
+            border: 1.5px solid rgba(0,229,255,0.4);
+            border-radius: 10px;
+            color: var(--text-white);
+            font-size: 0.88rem; outline: none;
+            transition: border-color 0.2s;
+        }
+        .wc-filter-select:focus { border-color: var(--accent-cyan); }
+        .wc-clear-btn {
+            flex: 0 0 auto;
+            background: linear-gradient(135deg, rgba(255,23,68,0.22) 0%, rgba(255,23,68,0.14) 100%);
+            border: 1.5px solid rgba(255,23,68,0.5);
+            color: #ff9d90;
+            padding: 10px 16px; border-radius: 10px;
+            font-size: 0.85rem; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .wc-clear-btn:hover { background: rgba(255,23,68,0.32); }
+
+        .wc-list-status { font-size: 0.85rem; color: var(--text-gray); margin: 0 0 12px 4px; }
+
+        .wc-wrap {
+            overflow-x: auto; overflow-y: auto; max-height: 420px;
+            border-radius: 14px; border: 1.5px solid rgba(255,215,0,0.2);
+            margin-bottom: 28px;
+            background: linear-gradient(135deg, rgba(26,26,46,0.97) 0%, rgba(16,21,40,0.97) 100%);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .wc-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+        .wc-table thead { position: sticky; top: 0; z-index: 2; }
+        .wc-table thead tr {
+            background: linear-gradient(90deg, rgba(255,215,0,0.9), rgba(255,190,0,0.85));
+        }
+        .wc-table th {
+            padding: 13px 14px; text-align: left;
+            font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px;
+            color: #1a1a2e; font-weight: 800; white-space: nowrap;
+        }
+        .wc-table td { padding: 12px 14px; color: var(--text-gray); border-bottom: 1px solid rgba(255,255,255,0.07); }
+        .wc-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+        .wc-row { cursor: pointer; transition: background 0.15s; }
+        .wc-row:hover { background: rgba(0,229,255,0.1); }
+        .wc-row-selected { background: rgba(0,229,255,0.18) !important; }
+        .wc-name { color: var(--text-white); font-weight: 700; }
+        .wc-empty-cell { text-align: center; padding: 40px 20px; color: var(--text-gray); }
+
+        .wc-chip-in, .wc-chip-out {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 4px 11px; border-radius: 14px; font-size: 0.76rem; font-weight: 800;
+        }
+        .wc-chip-in { background: rgba(0,255,136,0.2); color: var(--success-green); border: 1px solid rgba(0,255,136,0.5); }
+        .wc-chip-out { background: rgba(120,128,145,0.24); color: #b8bfcc; border: 1px solid rgba(184,191,204,0.38); }
+
+        /* ── Detail panel ─────────────────────────────────── */
+        .wc-detail-card {
+            background: linear-gradient(145deg, rgba(22,33,62,0.98) 0%, rgba(16,21,40,0.98) 100%);
+            border: 2.5px solid var(--border-gold);
+            border-radius: var(--border-radius);
+            padding: 28px 32px;
+            animation: fadeInUp 0.4s ease;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.45), 0 0 20px rgba(255,215,0,0.1);
+        }
+        .wc-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px 24px;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .wc-label {
+            display: block; font-size: 0.72rem; font-weight: 700;
+            color: var(--accent-cyan); text-transform: uppercase; letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .wc-value { display: block; font-size: 1rem; font-weight: 600; color: var(--text-white); }
+
+        .wc-form-label {
+            display: block; font-size: 0.9rem; font-weight: 700;
+            color: var(--border-gold); margin-bottom: 8px;
+        }
+        .wc-weight-input {
+            width: 100%; box-sizing: border-box;
+            padding: 14px 18px;
+            background: rgba(8, 10, 20, 0.95);
+            border: 2px solid rgba(0,229,255,0.45);
+            border-radius: var(--border-radius);
+            color: var(--text-white);
+            font-size: 1.1rem; font-weight: 700; outline: none;
+            transition: border-color 0.2s;
+        }
+        .wc-weight-input:focus { border-color: var(--accent-cyan); box-shadow: 0 0 0 3px rgba(0,229,255,0.18); }
+        .wc-hint { font-size: 0.84rem; color: var(--text-gray); margin-top: 10px; line-height: 1.5; }
+
+        .wc-locked-box {
+            display: flex; align-items: flex-start; gap: 18px;
+            background: linear-gradient(135deg, rgba(0,255,136,0.16) 0%, rgba(0,200,110,0.1) 100%);
+            border: 1.5px solid rgba(0,255,136,0.45);
+            border-radius: 12px;
+            padding: 20px 24px;
+        }
+        .wc-locked-icon { font-size: 2rem; flex-shrink: 0; }
+        .wc-locked-title { font-size: 1.2rem; font-weight: 800; color: var(--success-green); margin-bottom: 6px; }
+        .wc-locked-meta { font-size: 0.85rem; color: var(--text-gray); margin-bottom: 2px; }
+        .wc-locked-note { font-size: 0.82rem; color: var(--text-gray); margin-top: 8px; font-style: italic; }
+
+        .wc-empty-state {
+            text-align: center; padding: 60px 20px;
+            border: 2px dashed rgba(255,215,0,0.3);
+            border-radius: var(--border-radius);
+            background: linear-gradient(135deg, rgba(26,26,46,0.9) 0%, rgba(22,33,62,0.9) 100%);
+            color: var(--text-gray);
+        }
+        .wc-empty-state .e-icon { font-size: 3rem; margin-bottom: 14px; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+    <div class="page-header">
+        <h1 class="page-title">&#x2696;&#xFE0F; First Weighing Check</h1>
+        <div style="display:flex;gap:12px;align-items:center;">
+            <button class="btn-secondary" onclick="window.location.href='dashboard.html'">&#8592; Back to Dashboard</button>
+            <button class="btn-danger" onclick="logoutReferee()">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <a href="dashboard.html" class="back-link">&#8592; Back to Dashboard</a>
+
+        <div class="wc-court-note" id="wcCourtNote">Loading referee info…</div>
+
+        <input type="text" id="wcSearchInput" class="wc-search-input"
+            placeholder="&#x1F50D; Search by player name, team, or player ID…"
+            oninput="applyFilters()">
+
+        <div class="wc-filters-bar">
+            <select id="wcFilterTeam" class="wc-filter-select" onchange="applyFilters()">
+                <option value="all">All Teams</option>
+            </select>
+            <select id="wcFilterGender" class="wc-filter-select" onchange="applyFilters()">
+                <option value="all">All Genders</option>
+            </select>
+            <select id="wcFilterAge" class="wc-filter-select" onchange="applyFilters()">
+                <option value="all">All Age Categories</option>
+            </select>
+            <select id="wcFilterWeight" class="wc-filter-select" onchange="applyFilters()">
+                <option value="all">All Weight Categories</option>
+            </select>
+            <select id="wcFilterDivision" class="wc-filter-select" onchange="applyFilters()">
+                <option value="all">All Divisions</option>
+            </select>
+            <select id="wcFilterPoomsaeType" class="wc-filter-select" onchange="applyFilters()">
+                <option value="all">All Poomsae Types</option>
+            </select>
+            <button class="wc-clear-btn" onclick="clearFilters()">&#x2716; Clear Filters</button>
+        </div>
+
+        <div id="wcListStatus" class="wc-list-status"></div>
+
+        <div class="wc-wrap">
+            <table class="wc-table">
+                <thead>
+                    <tr>
+                        <th>Player</th>
+                        <th>Team</th>
+                        <th>Gender / Age</th>
+                        <th>Weight Category</th>
+                        <th>Division</th>
+                        <th>First Check</th>
+                    </tr>
+                </thead>
+                <tbody id="wcPlayerListBody">
+                    <tr><td colspan="6" class="wc-empty-cell">Loading player roster…</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="wcDetailPanel">
+            <div class="wc-empty-state">
+                <div class="e-icon">&#x2696;&#xFE0F;</div>
+                <p>Select a player from the list above to view their weighing details and enter the First Check.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="site-credit-footer">
+        <span class="credit-line">&#169; Karnataka Taekwondo Association &reg;</span>
+        <span class="credit-line credit-address"># 54/1, 13th 'E' Cross, 7th Main, Rajajinagar Industrial Town, A.D. Halli, Bangalore-560 079</span>
+        <span class="credit-line credit-owner">Built and Developed by Karnataka Taekwondo Association &reg;</span>
+    </div>
+
+    <!-- Firebase modules -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+    <script type="module" src="/js/weigh-check-sync.js"></script>
+
+    <script type="module">
+        // ── State ────────────────────────────────────────────────────────────
+        let _players = [];       // deduped players/ + expoPlayers/ roster
+        let _selectedPlayer = null;
+        let _wcUnsub = null;      // live listener on the currently selected player's weighChecks/{id}
+        let _latestWeighCheck = null;
+
+        // ── Boot ─────────────────────────────────────────────────────────────
+        // Deferred via setTimeout rather than called directly: firebase.js/ui.js
+        // (separate preceding <script type="module"> tags) are usually already
+        // loaded by the time this inline script runs, so this condition can be
+        // true on the very first synchronous check — which used to call all the
+        // way through to startRosterListeners() before this script had finished
+        // running past the `let` declarations further down (a temporal-dead-zone
+        // ReferenceError). Deferring even the first check guarantees this script
+        // always finishes its own top-to-bottom synchronous execution first.
+        setTimeout(waitForModules, 0);
+
+        function waitForModules() {
+            if (typeof UI !== 'undefined' && typeof database !== 'undefined' && typeof dbGet === 'function' && typeof dbRef === 'function') {
+                UI.initPageProtection(['referee']);
+                initPage();
+            } else {
+                setTimeout(waitForModules, 80);
+            }
+        }
+
+        async function initPage() {
+            const refId = sessionStorage.getItem('refId') || sessionStorage.getItem('userId') || '—';
+            const court = sessionStorage.getItem('courtNumber') || '—';
+            const note = document.getElementById('wcCourtNote');
+            if (note) note.textContent = `Logged in as ${refId} — Court ${court}. No password is needed to submit a First Check.`;
+            startRosterListeners();
+        }
+
+        // NOTE: this page deliberately does NOT attempt any Firebase Auth
+        // sign-in (anonymous or otherwise) for the referee session. The
+        // weighChecks security rule is written to work without one — see
+        // firebase-rules.json's weighChecks rule for the full explanation —
+        // so no self-heal/role-sync step is needed here at all.
+
+        // ── Roster (players/ + expoPlayers/, deduped by id) — kept LIVE via
+        // onValue() rather than a one-shot fetch, so a newly-registered player
+        // or a team/weight edit shows up here automatically, with no manual
+        // refresh needed. weighChecks/ is included in the same listener set
+        // purely to show each row's locked/not-yet status in the list — the
+        // existing per-player watchSelectedWeighCheck() below still owns the
+        // detail panel's own live lock state, unchanged. ──────────────────────
+        const _raw = { players: null, expoPlayers: null, teams: null, weighChecks: null };
+        let _weighChecksMap = {};
+        let _rosterListenersStarted = false;
+        let _computeTimer = null;
+
+        // Current filter state
+        let _searchQuery = '';
+        let _filterTeam = 'all';
+        let _filterGender = 'all';
+        let _filterAge = 'all';
+        let _filterWeight = 'all';
+        let _filterDivision = 'all';
+        let _filterPoomsaeType = 'all';
+
+        function startRosterListeners() {
+            if (_rosterListenersStarted) return;
+            _rosterListenersStarted = true;
+            setListStatus('⏳ Loading player roster…', '#888');
+
+            const scheduleCompute = () => {
+                clearTimeout(_computeTimer);
+                _computeTimer = setTimeout(computeRoster, 200);
+            };
+
+            ['players', 'expoPlayers', 'teams', 'weighChecks'].forEach(path => {
+                dbOnValue(dbRef(database, path), (snap) => {
+                    _raw[path] = snap.exists() ? snap.val() : null;
+                    scheduleCompute();
+                }, (error) => {
+                    console.warn(`⚠️ weigh-check roster listener error on ${path} (non-fatal):`, error.message);
+                    setListStatus(`❌ Roster sync error: ${escHtml(error.message)}`, '#FF5252');
+                });
+            });
+        }
+
+        function computeRoster() {
+            const teamsMap = {};
+            if (_raw.teams) {
+                Object.entries(_raw.teams).forEach(([id, v]) => {
+                    teamsMap[id] = (v && v.teamName) || 'Unnamed Team';
+                });
+            }
+
+            const seen = new Set();
+            const list = [];
+            if (_raw.players) {
+                Object.entries(_raw.players).forEach(([id, v]) => {
+                    list.push(buildEntry(id, v, teamsMap, 'players'));
+                    seen.add(id);
+                });
+            }
+            if (_raw.expoPlayers) {
+                Object.entries(_raw.expoPlayers).forEach(([id, v]) => {
+                    if (!seen.has(id)) {
+                        list.push(buildEntry(id, v, teamsMap, 'expoPlayers'));
+                        seen.add(id);
+                    }
+                });
+            }
+            _players = list.sort((a, b) => a.playerName.localeCompare(b.playerName));
+            _weighChecksMap = _raw.weighChecks || {};
+
+            populateFilterOptions();
+            renderPlayerList();
+
+            // If the currently-open player's own record just changed (e.g. this
+            // referee's own weight-correction propagation updated it), refresh
+            // the reference so the detail panel keeps showing current data.
+            if (_selectedPlayer) {
+                const fresh = _players.find(p => p.id === _selectedPlayer.id);
+                if (fresh) { _selectedPlayer = fresh; renderDetailPanel(); }
+            }
+        }
+
+        function setListStatus(html, color) {
+            const el = document.getElementById('wcListStatus');
+            if (!el) return;
+            el.innerHTML = html;
+            el.style.color = color || '#888';
+        }
+
+        // Parses "Official Individual" / "Expo Pair" etc. into just the size/
+        // type part ("Individual" / "Pair") — dynamic, not a hardcoded list;
+        // whatever divisions actually appear in poomsaeCategories are what
+        // show up here and in the Poomsae Type filter.
+        function derivePoomsaeTypes(poomsaeCategories) {
+            const set = new Set();
+            (poomsaeCategories || []).forEach(cat => {
+                const type = String(cat || '').replace(/^Official\s+/, '').replace(/^Expo\s+/, '').trim();
+                if (type) set.add(type);
+            });
+            return [...set];
+        }
+
+        function buildEntry(id, v, teamsMap, source) {
+            const poomsaeCategories = Array.isArray(v.poomsaeCategories) ? v.poomsaeCategories : [];
+            const hasPoomsae = poomsaeCategories.length > 0;
+            const divisionBits = [];
+            if (v.competitionCategory) divisionBits.push(v.competitionCategory);
+            if (hasPoomsae) divisionBits.push('Poomsae');
+            return {
+                id,
+                source,
+                playerName: v.playerName || 'Unknown',
+                teamName: teamsMap[v.teamId] || v.centerName || v.teamName || 'Unassigned Team',
+                gender: v.gender || '',
+                ageCategory: v.ageCategory || '',
+                weight: (v.weight !== undefined && v.weight !== null && v.weight !== '') ? v.weight : null,
+                weightCategory: v.weightCategory || '',
+                competitionCategory: v.competitionCategory || '',
+                hasPoomsae,
+                poomsaeTypes: derivePoomsaeTypes(poomsaeCategories),
+                division: divisionBits.join(' + ') || '—'
+            };
+        }
+
+        // ── Filter dropdowns — options always derived from the CURRENT roster,
+        // never hardcoded, so a category that doesn't exist in the data simply
+        // doesn't appear as an option. ────────────────────────────────────────
+        function rebuildSelect(sel, defaultLabel, values) {
+            if (!sel) return;
+            const current = sel.value; // capture before rebuilding the option list
+            sel.innerHTML = `<option value="all">${escHtml(defaultLabel)}</option>` +
+                values.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+            sel.value = values.includes(current) ? current : 'all';
+        }
+
+        function populateFilterOptions() {
+            rebuildSelect(document.getElementById('wcFilterTeam'), 'All Teams',
+                [...new Set(_players.map(p => p.teamName))].sort((a, b) => a.localeCompare(b)));
+
+            rebuildSelect(document.getElementById('wcFilterGender'), 'All Genders',
+                [...new Set(_players.map(p => p.gender).filter(Boolean))].sort());
+
+            rebuildSelect(document.getElementById('wcFilterAge'), 'All Age Categories',
+                [...new Set(_players.map(p => p.ageCategory).filter(Boolean))].sort());
+
+            rebuildSelect(document.getElementById('wcFilterWeight'), 'All Weight Categories',
+                [...new Set(_players.map(p => p.weightCategory).filter(Boolean))].sort());
+
+            const divisionOptions = [];
+            if (_players.some(p => p.competitionCategory === 'Official' || p.competitionCategory === 'Official & Expo')) divisionOptions.push('Official');
+            if (_players.some(p => p.competitionCategory === 'Expo' || p.competitionCategory === 'Official & Expo')) divisionOptions.push('Expo');
+            if (_players.some(p => p.hasPoomsae)) divisionOptions.push('Poomsae');
+            rebuildSelect(document.getElementById('wcFilterDivision'), 'All Divisions', divisionOptions);
+
+            rebuildSelect(document.getElementById('wcFilterPoomsaeType'), 'All Poomsae Types',
+                [...new Set(_players.flatMap(p => p.poomsaeTypes))].sort());
+        }
+
+        // ── Combined search + filters (all AND together) ────────────────────
+        function applyFilters() {
+            _searchQuery = document.getElementById('wcSearchInput').value;
+            _filterTeam = document.getElementById('wcFilterTeam').value;
+            _filterGender = document.getElementById('wcFilterGender').value;
+            _filterAge = document.getElementById('wcFilterAge').value;
+            _filterWeight = document.getElementById('wcFilterWeight').value;
+            _filterDivision = document.getElementById('wcFilterDivision').value;
+            _filterPoomsaeType = document.getElementById('wcFilterPoomsaeType').value;
+            renderPlayerList();
+        }
+        window.applyFilters = applyFilters;
+
+        function clearFilters() {
+            document.getElementById('wcSearchInput').value = '';
+            ['wcFilterTeam', 'wcFilterGender', 'wcFilterAge', 'wcFilterWeight', 'wcFilterDivision', 'wcFilterPoomsaeType']
+                .forEach(id => { const el = document.getElementById(id); if (el) el.value = 'all'; });
+            applyFilters();
+        }
+        window.clearFilters = clearFilters;
+
+        function getFilteredPlayers() {
+            const q = _searchQuery.trim().toLowerCase();
+            return _players.filter(p => {
+                if (_filterTeam !== 'all' && p.teamName !== _filterTeam) return false;
+                if (_filterGender !== 'all' && p.gender !== _filterGender) return false;
+                if (_filterAge !== 'all' && p.ageCategory !== _filterAge) return false;
+                if (_filterWeight !== 'all' && p.weightCategory !== _filterWeight) return false;
+                if (_filterDivision === 'Official' && !(p.competitionCategory === 'Official' || p.competitionCategory === 'Official & Expo')) return false;
+                if (_filterDivision === 'Expo' && !(p.competitionCategory === 'Expo' || p.competitionCategory === 'Official & Expo')) return false;
+                if (_filterDivision === 'Poomsae' && !p.hasPoomsae) return false;
+                if (_filterPoomsaeType !== 'all' && !p.poomsaeTypes.includes(_filterPoomsaeType)) return false;
+                if (q && !(p.playerName.toLowerCase().includes(q) || p.teamName.toLowerCase().includes(q) || p.id.toLowerCase().includes(q))) return false;
+                return true;
+            });
+        }
+
+        // ── Always-visible, filterable player list ───────────────────────────
+        function renderPlayerList() {
+            const tbody = document.getElementById('wcPlayerListBody');
+            if (!tbody) return;
+
+            if (_players.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="wc-empty-cell">No players registered yet.</td></tr>`;
+                setListStatus('⚠️ No players found in the database.', '#FF9500');
+                return;
+            }
+
+            const filtered = getFilteredPlayers();
+            setListStatus(`Showing ${filtered.length} of ${_players.length} player${_players.length !== 1 ? 's' : ''}`, filtered.length === 0 ? '#FF9500' : '#888');
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="wc-empty-cell">No players match the current search/filters.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = filtered.map(p => {
+                const wc = _weighChecksMap[p.id];
+                const isLocked = !!(wc && wc.locked);
+                const statusChip = isLocked
+                    ? `<span class="wc-chip-in" title="Submitted by ${escHtml(wc.submittedBy || '')}">&#x1F512; ${escHtml(String(wc.firstCheckWeight))} kg</span>`
+                    : `<span class="wc-chip-out">&#x2B1C; Not yet</span>`;
+                const selected = _selectedPlayer && _selectedPlayer.id === p.id ? ' wc-row-selected' : '';
+                return `<tr class="wc-row${selected}" onclick="selectPlayer('${p.id}')">
+                    <td class="wc-name">${escHtml(p.playerName)}</td>
+                    <td>${escHtml(p.teamName)}</td>
+                    <td>${escHtml([p.gender, p.ageCategory].filter(Boolean).join(' · ') || '—')}</td>
+                    <td>${escHtml(p.weightCategory || '—')}</td>
+                    <td>${escHtml(p.division)}</td>
+                    <td>${statusChip}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function selectPlayer(id) {
+            const player = _players.find(p => p.id === id);
+            if (!player) return;
+            _selectedPlayer = player;
+            renderPlayerList(); // re-render to apply the wc-row-selected highlight
+            watchSelectedWeighCheck(id);
+            document.getElementById('wcDetailPanel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        window.selectPlayer = selectPlayer;
+
+        // ── Live weigh-check status for the selected player ─────────────────
+        // Kept live (not a one-shot fetch) so the lock state always reflects
+        // reality — including an admin resetting/editing it while this referee
+        // still has the same player open, or the "already locked" case a second
+        // referee hits after someone else beat them to the submission.
+        function watchSelectedWeighCheck(playerId) {
+            if (_wcUnsub) { _wcUnsub(); _wcUnsub = null; }
+            _wcUnsub = dbOnValue(dbRef(database, 'weighChecks/' + playerId), (snap) => {
+                _latestWeighCheck = snap.exists() ? snap.val() : null;
+                renderDetailPanel();
+            }, (error) => {
+                console.warn('⚠️ weighChecks listener error (non-fatal):', error.message);
+            });
+        }
+
+        function renderDetailPanel() {
+            const panel = document.getElementById('wcDetailPanel');
+            const player = _selectedPlayer;
+            if (!player) return;
+
+            const infoHtml = `
+                <div class="wc-info-grid">
+                    <div><span class="wc-label">Player</span><span class="wc-value">${escHtml(player.playerName)}</span></div>
+                    <div><span class="wc-label">Team</span><span class="wc-value">${escHtml(player.teamName)}</span></div>
+                    <div><span class="wc-label">Gender / Age</span><span class="wc-value">${escHtml([player.gender, player.ageCategory].filter(Boolean).join(' · ') || '—')}</span></div>
+                    <div><span class="wc-label">Registered Weight</span><span class="wc-value">${player.weight !== null ? player.weight + ' kg' : '—'}</span></div>
+                    <div><span class="wc-label">Weight Category</span><span class="wc-value">${escHtml(player.weightCategory || '—')}</span></div>
+                    <div><span class="wc-label">Division</span><span class="wc-value">${escHtml(player.division)}</span></div>
+                </div>
+            `;
+
+            let actionHtml;
+            if (_latestWeighCheck && _latestWeighCheck.locked) {
+                const wc = _latestWeighCheck;
+                actionHtml = `
+                    <div class="wc-locked-box">
+                        <div class="wc-locked-icon">&#x1F512;</div>
+                        <div>
+                            <div class="wc-locked-title">First Check Locked — ${escHtml(String(wc.firstCheckWeight))} kg</div>
+                            <div class="wc-locked-meta">Submitted by ${escHtml(wc.submittedBy || '—')}${wc.submittedByCourt ? ' (Court ' + escHtml(wc.submittedByCourt) + ')' : ''} at ${formatTime(wc.submittedAt)}</div>
+                            ${wc.modifiedBy ? `<div class="wc-locked-meta">Last modified by Admin at ${formatTime(wc.modifiedAt)}</div>` : ''}
+                            <div class="wc-locked-note">This result is locked. Only Admin can change it from the Admin Page.</div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                actionHtml = `
+                    <label class="wc-form-label">First Check Weight (kg)</label>
+                    <input type="number" id="wcWeightInput" class="wc-weight-input" step="0.1" min="0" max="300" placeholder="e.g. 52.3">
+                    <button class="btn-primary" id="wcSubmitBtn" onclick="submitFirstCheck()" style="width:100%;margin-top:14px;padding:14px;font-size:1rem">&#x2705; Submit First Check</button>
+                    <p class="wc-hint">No password needed. Once submitted, this locks automatically — a referee cannot edit or resubmit it. Only Admin can change it afterwards.</p>
+                `;
+            }
+
+            panel.innerHTML = `<div class="wc-detail-card">${infoHtml}${actionHtml}</div>`;
+        }
+
+        // ── Submit (create-once; the Firebase rule is what actually enforces
+        // "exactly once" — this is just the UI trigger for that write) ──────
+        async function submitFirstCheck() {
+            const player = _selectedPlayer;
+            if (!player) return;
+
+            const input = document.getElementById('wcWeightInput');
+            const raw = input ? input.value.trim() : '';
+            const weight = parseFloat(raw);
+
+            if (!raw || Number.isNaN(weight) || weight <= 0 || weight > 300) {
+                if (typeof MODAL !== 'undefined') MODAL.error('Enter a valid weight in kg (e.g. 52.3).');
+                return;
+            }
+
+            const refId = sessionStorage.getItem('refId') || sessionStorage.getItem('userId') || 'unknown';
+            const courtNumber = sessionStorage.getItem('courtNumber') || '';
+            const now = new Date().toISOString();
+
+            const payload = {
+                playerId: player.id,
+                playerName: player.playerName,
+                teamName: player.teamName,
+                source: player.source,
+                registeredWeight: player.weight,
+                weightCategory: player.weightCategory || '',
+                firstCheckWeight: weight,
+                locked: true,
+                submittedBy: refId,
+                submittedByCourt: courtNumber,
+                submittedAt: now,
+                modifiedBy: null,
+                modifiedAt: null
+            };
+
+            const btn = document.getElementById('wcSubmitBtn');
+            if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+            try {
+                await dbSet(dbRef(database, 'weighChecks/' + player.id), payload);
+                // The live listener (watchSelectedWeighCheck) will pick up the
+                // new value and re-render the locked view automatically.
+
+                // Propagate the confirmed weight onto the player's own record
+                // (source of truth for Team Dashboard) and recompute/sync their
+                // weight category — including brackets, when it's safe to.
+                // Never let this secondary step block the referee from seeing
+                // their First Check succeeded; report it, don't throw on it.
+                try {
+                    const propagation = await WEIGH_CHECK_SYNC.applyWeightCorrection(player, weight);
+                    player.weight = weight;
+                    player.weightCategory = propagation.weightCategory;
+                    // The live players/ listener will also pick this up shortly
+                    // and recompute _players on its own — this just avoids a
+                    // flash of stale data in the list/filters until it does.
+                    const idx = _players.findIndex(p => p.id === player.id);
+                    if (idx !== -1) { _players[idx].weight = weight; _players[idx].weightCategory = propagation.weightCategory; }
+                    renderPlayerList();
+
+                    let msg = 'First Check submitted and locked.';
+                    if (propagation.categoryChanged) {
+                        msg += `\n\nWeight category updated: ${propagation.oldCategoryKey.split('-').pop()} → ${propagation.newCategoryKey.split('-').pop()}.`;
+                        if (propagation.bracketReport?.touched.length) {
+                            msg += `\nBracket(s) auto-updated: ${propagation.bracketReport.touched.join(', ')}.`;
+                        }
+                        if (propagation.bracketReport?.warnings.length) {
+                            msg += `\n\n⚠️ ${propagation.bracketReport.warnings.join('\n⚠️ ')}`;
+                        }
+                    }
+                    if (typeof MODAL !== 'undefined') MODAL.success(msg);
+                } catch (propErr) {
+                    console.error('⚠️ First Check saved, but weight/category propagation failed:', propErr);
+                    if (typeof MODAL !== 'undefined') {
+                        MODAL.success('First Check submitted and locked.\n\n⚠️ Could not update the player\'s weight category automatically — please check it on the Admin page.');
+                    }
+                }
+            } catch (err) {
+                console.error('First Check submit failed:', err);
+                const isPermission = String(err.message || '').toLowerCase().includes('permission');
+
+                if (isPermission) {
+                    // The weighChecks rule only denies a referee's write when the
+                    // record already exists (i.e. it's genuinely already locked —
+                    // by another referee, or an admin edit landed in the same
+                    // instant). Re-check the actual record so the message
+                    // reflects reality instead of guessing.
+                    try {
+                        const check = await dbGet(dbRef(database, 'weighChecks/' + player.id));
+                        if (check.exists() && check.val().locked) {
+                            if (typeof MODAL !== 'undefined') MODAL.error('This player\'s First Check was already submitted and locked (possibly by another referee just now).');
+                        } else if (typeof MODAL !== 'undefined') {
+                            MODAL.error('Failed to submit: permission denied. Please try again.');
+                        }
+                    } catch (_) {
+                        if (typeof MODAL !== 'undefined') MODAL.error('Failed to submit: permission denied. Please try again.');
+                    }
+                } else if (typeof MODAL !== 'undefined') {
+                    MODAL.error('Failed to submit: ' + err.message);
+                }
+                if (btn) { btn.disabled = false; btn.textContent = '✅ Submit First Check'; }
+            }
+        }
+        window.submitFirstCheck = submitFirstCheck;
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+        function formatTime(iso) {
+            if (!iso) return '—';
+            try {
+                return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            } catch (_) {
+                return '—';
+            }
+        }
+
+        function escHtml(str) {
+            return String(str || '').replace(/[&<>"']/g, ch => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[ch]));
+        }
+
+        // ── Logout (mirrors dashboard.html's referee logout) ────────────────
+        window.logoutReferee = async function () {
+            const yes = typeof MODAL !== 'undefined' ? await MODAL.showConfirm('Are you sure you want to logout?') : confirm('Logout?');
+            if (!yes) return;
+            sessionStorage.clear();
+            window.location.href = window.location.origin + '/index.html';
+        };
+
+        window.alert = function (m) { return MODAL.showAlert(m); };
+        window.confirm = function (m) { return MODAL.showConfirm(m); };
+    </script>
+</body>
+</html>

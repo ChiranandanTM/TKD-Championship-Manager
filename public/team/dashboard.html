@@ -941,9 +941,6 @@
         <div class="team-buttons-container">
             <button class="btn-primary" id="registerBtn" onclick="window.location.href='/register.html'"
                 style="border-radius:10px;font-weight:800;">➕ Register Player</button>
-            <button class="btn-primary" id="leaderboardBtn" onclick="window.open('/leaderboard.html','_blank')"
-                style="border-radius:10px;font-weight:800;background:linear-gradient(135deg, #FFD700, #FFA500);color:#000;border:none;">🏆
-                Leaderboard</button>
             <button class="btn-danger team-logout-btn" onclick="UI.logout()"
                 style="border-radius:10px;font-weight:700;padding:10px 18px;">Logout</button>
         </div>
@@ -1859,14 +1856,43 @@
         // same age-category ranking used by the on-page filter, so the export
         // always mirrors what loadPlayers() populated — no separate data path.
 
+        // Export-only sort order: Male before Female, then Mini < Sub-Junior <
+        // Cadet < Junior < Senior (reusing the existing getAgeCategorySortRank
+        // ranking, unchanged), then within each Gender+Age-Category group,
+        // lightest-to-heaviest by registered weight (numeric, so it follows
+        // real weight-category order rather than an alphabetical one), then
+        // alphabetically by player name as the final tie-break. Used ONLY by
+        // the three Excel export functions below (downloadPlayerInformation,
+        // downloadResults, downloadPoomsaeExcel) — the on-page player list
+        // (renderPlayersList) never calls this, so this has zero effect on
+        // what's displayed on the Team Dashboard itself.
+        function getGenderSortRank(gender) {
+            if (gender === 'Male') return 1;
+            if (gender === 'Female') return 2;
+            return 99; // any other/missing value sorts after Male/Female
+        }
+
         function sortPlayersByAgeCategory(players) {
             return players
                 .map((player, index) => ({ player, index }))
                 .sort((a, b) => {
+                    const genderRankA = getGenderSortRank(a.player.gender);
+                    const genderRankB = getGenderSortRank(b.player.gender);
+                    if (genderRankA !== genderRankB) return genderRankA - genderRankB;
+
                     const rankA = getAgeCategorySortRank(getPlayerAgeCategory(a.player));
                     const rankB = getAgeCategorySortRank(getPlayerAgeCategory(b.player));
                     if (rankA !== rankB) return rankA - rankB;
-                    return a.index - b.index; // preserve existing relative order
+
+                    const weightA = (a.player.weight !== undefined && a.player.weight !== null && a.player.weight !== '') ? Number(a.player.weight) : Infinity;
+                    const weightB = (b.player.weight !== undefined && b.player.weight !== null && b.player.weight !== '') ? Number(b.player.weight) : Infinity;
+                    if (weightA !== weightB) return weightA - weightB;
+
+                    const nameA = (a.player.playerName || '').toLowerCase();
+                    const nameB = (b.player.playerName || '').toLowerCase();
+                    if (nameA !== nameB) return nameA.localeCompare(nameB);
+
+                    return a.index - b.index; // stable fallback — preserve original relative order
                 })
                 .map(entry => entry.player);
         }

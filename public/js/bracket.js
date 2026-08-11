@@ -33,6 +33,7 @@ const BRACKET = {
   _teamNameCache: null,  // { teamId → teamName } lookup built once per session
   editingSlot: null,     // { matchId, slot } when inline edit form is open
   _liveCourtNumber: null, // court this session registered live presence under, if any
+  _lockedCourtNumber: null, // court that currently holds this session's exclusive bracketLocks/official claim, if any
   editMode: false,        // true while the Bracket Editor is open for currentCategory
   _editDraft: null,       // { activePlayers, byePool, hadStartedMatches } — edit-mode working copy
   _editPwModalDiv: null,  // DOM node for the edit-mode password prompt, if open
@@ -285,14 +286,59 @@ const BRACKET = {
     const renderRequestId = ++this.categoriesRenderRequestId;
 
     try {
-      // One request for all bracket statuses instead of one per category
+      // One request for all bracket statuses — this one is load-bearing for
+      // the whole categories list, so it stays outside any try/catch that
+      // would swallow it silently (unchanged from before the lock feature).
       const bracketsSnap = await dbGet(dbRef(database, 'brackets'));
       const allBrackets = bracketsSnap.exists() ? bracketsSnap.val() : {};
+
+      // Who (if anyone) currently holds each category's exclusive court
+      // lock — purely cosmetic (just the "Opened by: Court X" line), so a
+      // failure here must NEVER take down the rest of the categories list
+      // the way a Promise.all([...]) would if this read alone got denied.
+      let allLocks = {};
+      try {
+        const locksSnap = await dbGet(dbRef(database, 'bracketLocks/official'));
+        allLocks = locksSnap.exists() ? locksSnap.val() : {};
+      } catch (lockErr) {
+        console.warn('⚠️ Could not read bracket locks (non-fatal — "Opened by" info unavailable):', lockErr.message);
+      }
+
+      // Referee court-assignment gate — admin/judge sessions are completely
+      // unaffected (they still see every category, unchanged). Referees only
+      // ever see brackets assigned to their own court; this read is
+      // load-bearing for referees (fail closed: show nothing rather than
+      // everything if it can't be read), but optional for admin/judge.
+      const role = sessionStorage.getItem('userRole');
+      const isReferee = role === 'referee';
+      const myCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+      let allAssignments = {};
+      try {
+        const assignSnap = await dbGet(dbRef(database, 'bracketAssignments/official'));
+        allAssignments = assignSnap.exists() ? assignSnap.val() : {};
+      } catch (assignErr) {
+        console.warn('⚠️ Could not read bracket assignments:', assignErr.message);
+        if (isReferee) {
+          if (renderRequestId !== this.categoriesRenderRequestId) return;
+          container.innerHTML = '<div class="category-empty-state">Could not load your assigned brackets — please check your connection and try again.</div>';
+          return;
+        }
+      }
 
       // Ignore stale async renders and keep latest filter result on screen.
       if (renderRequestId !== this.categoriesRenderRequestId) return;
 
       const categoryCards = Object.keys(this.categories).map((key) => {
+        // A referee only ever sees categories assigned to their own court —
+        // everything else (unassigned, or assigned to a different court) is
+        // hidden entirely, not just visually de-emphasized.
+        if (isReferee) {
+          const assignment = allAssignments[key];
+          if (!assignment || String(assignment.courtNumber).trim() !== myCourt) {
+            return null;
+          }
+        }
+
         const cat = this.categories[key];
         const playerCount = cat.players.length;
 
@@ -333,6 +379,13 @@ const BRACKET = {
           statusColor = 'var(--accent-cyan)';
         }
 
+        // Only shown while Live — whichever court currently holds the
+        // exclusive lock on this category (see _acquireBracketLock).
+        const lock = allLocks[key];
+        const courtLine = (status === 'Live' && lock && lock.courtNumber)
+          ? `<p class="court-label" style="margin:2px 0 0;font-size:0.85rem;color:var(--warning-orange);font-weight:700;">Opened by: Court ${lock.courtNumber}</p>`
+          : '';
+
         return `
           <div class="category-card" onclick="BRACKET.openCategory('${key}')">
             <h3>${cat.gender} ${cat.ageCategory}</h3>
@@ -340,8 +393,9 @@ const BRACKET = {
             <p class="player-count">${playerCount} Player${playerCount !== 1 ? 's' : ''}</p>
             <div style="margin: 12px 0; padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; text-align: center;">
               <span style="color: ${statusColor}; font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                ${statusText === 'Live' ? '🔴 ' : ''}${statusText === 'Completed' ? '✅ ' : ''}${statusText === 'Pending' ? '⏳ ' : ''}${statusText}
+                ${statusText === 'Live' ? '🔴 ' : ''}${statusText === 'Completed' ? '✅ ' : ''}${statusText === 'Pending' ? '🟡 ' : ''}${statusText}
               </span>
+              ${courtLine}
             </div>
             <button class="btn-primary">View Bracket</button>
           </div>
@@ -365,86 +419,161 @@ const BRACKET = {
   },
 
   // Open category bracket directly
+  //
+  // Reliability notes (fixes an intermittent "won't open" failure seen only
+  // on slower devices/networks):
+  //   1. Re-entrancy guard (_openingCategory) — a double-tap, or any tap
+  //      registered before the first one's visual feedback appears (common
+  //      on slower touchscreens), used to fire two concurrent opens of the
+  //      same bracket, racing two independent load/fix/save sequences
+  //      against each other.
+  //   2. stopCategoriesListener() now runs FIRST, before any of the slower
+  //      Firebase work below, instead of right at the end. The categories
+  //      list's own live listener (players/ changes) rebuilds
+  //      this.categories from scratch (categorizePlayers() does
+  //      `this.categories = {}` then repopulates it) — on a fast
+  //      connection the whole open sequence used to finish before that
+  //      listener could ever fire mid-flight, so this race was invisible;
+  //      on a slow connection the multiple sequential awaits below left a
+  //      window of potentially several seconds for another court's
+  //      registration/weigh-in change to rebuild this.categories while
+  //      still in progress, so that by the time renderBracket() finally ran,
+  //      this.categories[this.currentCategory] could be transiently
+  //      missing — renderBracket() dereferenced it unguarded and threw,
+  //      leaving a blank screen with no user-facing message.
+  //   3. A visible loading state while the bracket is fetched, and a
+  //      top-level try/catch around the whole sequence so any Firebase
+  //      failure (network drop, permission hiccup, unexpected data) shows a
+  //      clear message and cleanly returns to the categories list instead
+  //      of leaving the page stuck or throwing an unhandled rejection.
   async openCategory(categoryKey) {
-    this.currentCategory = categoryKey;
-    const category = this.categories[categoryKey];
+    if (this._openingCategory) return;
+    this._openingCategory = true;
 
-    if (!category) {
-      if (typeof MODAL !== 'undefined') {
-        MODAL.error('Category not found');
-      } else {
-        alert('Category not found');
+    try {
+      const category = this.categories[categoryKey];
+      if (!category) {
+        if (typeof MODAL !== 'undefined') MODAL.error('Category not found');
+        else alert('Category not found');
+        return;
       }
-      return;
-    }
 
-    console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
+      if (!(await this._assertCategoryAssignedToMe(categoryKey))) {
+        return;
+      }
 
-    // Load bracket WITH conflict fixes applied
-    await this.loadBracketWithFixes(categoryKey);
+      this.currentCategory = categoryKey;
 
-    // Check for player count mismatch (new players added)
-    if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
-      const playerCountDiff = category.players.length - this.currentBracket.playerCount;
-      console.log(`\n⚠️  PLAYER COUNT CHANGE DETECTED`);
-      console.log(`   Previous: ${this.currentBracket.playerCount} players`);
-      console.log(`   Current: ${category.players.length} players`);
-      console.log(`   Added: ${playerCountDiff > 0 ? '+' : ''}${playerCountDiff} player(s)\n`);
+      if (!(await this._tryClaimCourtLock(categoryKey))) {
+        this.currentCategory = null;
+        return;
+      }
 
-      // Check if bracket has started
-      const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] &&
-        this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+      // Stop the categories-level listener BEFORE any slow work — see notes above.
+      this.stopCategoriesListener();
+      this._showBracketLoading();
 
-      if (!hasStarted) {
-        console.log(`✅ Bracket hasn't started — regenerating with all players integrated...\n`);
+      console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
+
+      // Load bracket WITH conflict fixes applied
+      await this.loadBracketWithFixes(categoryKey);
+
+      // Check for player count mismatch (new players added)
+      if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
+        const playerCountDiff = category.players.length - this.currentBracket.playerCount;
+        console.log(`\n⚠️  PLAYER COUNT CHANGE DETECTED`);
+        console.log(`   Previous: ${this.currentBracket.playerCount} players`);
+        console.log(`   Current: ${category.players.length} players`);
+        console.log(`   Added: ${playerCountDiff > 0 ? '+' : ''}${playerCountDiff} player(s)\n`);
+
+        // Check if bracket has started
+        const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] &&
+          this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+
+        if (!hasStarted) {
+          console.log(`✅ Bracket hasn't started — regenerating with all players integrated...\n`);
+          this.currentBracket = this.createBracket(category.players);
+          await this.saveBracket(categoryKey, this.currentBracket);
+        } else {
+          console.warn(`⛔ Bracket already in progress — cannot regenerate automatically`);
+          console.warn(`📝 To include new players, archive this bracket and create a new one\n`);
+        }
+      }
+
+      if (!this.currentBracket) {
+        console.log(`Creating new bracket with all ${category.players.length} players...`);
         this.currentBracket = this.createBracket(category.players);
         await this.saveBracket(categoryKey, this.currentBracket);
       } else {
-        console.warn(`⛔ Bracket already in progress — cannot regenerate automatically`);
-        console.warn(`📝 To include new players, archive this bracket and create a new one\n`);
+        // Bracket exists and was loaded - fix any conflicts
+        console.log(`Bracket exists - applying conflict resolution...`);
+        await this.fixBracketConflicts();
       }
-    }
 
-    if (!this.currentBracket) {
-      console.log(`Creating new bracket with all ${category.players.length} players...`);
-      this.currentBracket = this.createBracket(category.players);
-      await this.saveBracket(categoryKey, this.currentBracket);
-    } else {
-      // Bracket exists and was loaded - fix any conflicts
-      console.log(`Bracket exists - applying conflict resolution...`);
-      await this.fixBracketConflicts();
-    }
-
-    // Determine and persist bracket status before entering the view
-    if (this.isCategoryComplete()) {
-      // Correct any stale status to 'complete' (e.g. after a crash left it as 'pending')
-      if (this.currentBracket.status !== 'complete') {
-        this.currentBracket.status = 'complete';
+      // Determine and persist bracket status before entering the view
+      if (this.isCategoryComplete()) {
+        // Correct any stale status to 'complete' (e.g. after a crash left it as 'pending')
+        if (this.currentBracket.status !== 'complete') {
+          this.currentBracket.status = 'complete';
+          await this.saveBracket(categoryKey, this.currentBracket);
+        }
+        console.log(`✅ Bracket ${categoryKey} is COMPLETED`);
+      } else {
+        // Mark as live so other users' category lists update in real time
+        this.currentBracket.status = 'live';
         await this.saveBracket(categoryKey, this.currentBracket);
+        console.log(`📍 Bracket ${categoryKey} marked as LIVE`);
       }
-      console.log(`✅ Bracket ${categoryKey} is COMPLETED`);
-    } else {
-      // Mark as live so other users' category lists update in real time
-      this.currentBracket.status = 'live';
-      await this.saveBracket(categoryKey, this.currentBracket);
-      console.log(`📍 Bracket ${categoryKey} marked as LIVE`);
+
+      await this.loadMatchHistory(categoryKey);
+
+      // Start real-time listeners for multi-court synchronization
+      this.setupBracketListeners(categoryKey);
+
+      // Bracket is now open for this referee's court — mark it active so the
+      // Live Matches page shows the Upcoming Match immediately, even before any
+      // score/timer starts.
+      this._openLiveCourtPresence(categoryKey);
+
+      this.renderBracket();
+    } catch (error) {
+      console.error('❌ Error opening bracket:', error);
+      this.stopBracketListeners(); // in case setupBracketListeners() ran before a later step failed
+      this.currentCategory = null;
+      this.currentBracket = null;
+      this._hideBracketLoading();
+      this.setupCategoriesListener(); // resume live sync — we're bailing back to the list
+      const msg = 'Could not open this bracket — please check your connection and try again.';
+      if (typeof MODAL !== 'undefined') MODAL.error(msg);
+      else alert(msg);
+    } finally {
+      this._openingCategory = false;
     }
+  },
 
-    await this.loadMatchHistory(categoryKey);
+  // Loading state shown the instant a bracket open is requested, replaced
+  // by renderBracket()'s own output on success (same container), or handed
+  // back to the categories list on failure via _hideBracketLoading().
+  _showBracketLoading() {
+    const listEl = document.getElementById('categoriesList');
+    const containerEl = document.getElementById('bracketContainer');
+    if (listEl) listEl.style.display = 'none';
+    if (containerEl) {
+      containerEl.style.display = 'block';
+      containerEl.innerHTML = `
+        <div style="text-align:center;padding:80px 20px;">
+          <div class="spinner"></div>
+          <p>Loading bracket…</p>
+        </div>
+      `;
+    }
+  },
 
-    // Pause the categories-level listener — we no longer need it while inside
-    // the bracket view, and it avoids re-render churn during active matches.
-    this.stopCategoriesListener();
-
-    // Start real-time listeners for multi-court synchronization
-    this.setupBracketListeners(categoryKey);
-
-    // Bracket is now open for this referee's court — mark it active so the
-    // Live Matches page shows the Upcoming Match immediately, even before any
-    // score/timer starts.
-    this._openLiveCourtPresence(categoryKey);
-
-    this.renderBracket();
+  _hideBracketLoading() {
+    const listEl = document.getElementById('categoriesList');
+    const containerEl = document.getElementById('bracketContainer');
+    if (containerEl) containerEl.style.display = 'none';
+    if (listEl) listEl.style.display = 'block';
   },
 
   // Show category modal with image and details
@@ -475,83 +604,114 @@ const BRACKET = {
     this.pendingCategoryData = null;
   },
 
-  // Start bracket when user confirms from modal
+  // Start bracket when user confirms from modal — same reliability fixes as
+  // openCategory() above (re-entrancy guard, listener stopped before the
+  // slow work, loading state, top-level error handling). Also drops the
+  // redundant loadPlayers()+categorizePlayers() re-fetch that used to run
+  // here: this.categories is already kept fresh by the live listener
+  // started in init(), and pendingCategoryData was populated from that same
+  // this.categories a moment ago when the info modal opened, so re-fetching
+  // here was both an unnecessary Firebase read and another source of the
+  // same race window described on openCategory().
   async startBracket() {
-    if (!this.pendingCategoryData) return;
+    if (!this.pendingCategoryData || this._openingCategory) return;
+    this._openingCategory = true;
 
     const categoryKey = this.pendingCategoryData.key;
     const category = this.pendingCategoryData.data;
 
-    this.closeCategoryModal();
-    this.currentCategory = categoryKey;
+    try {
+      if (!(await this._assertCategoryAssignedToMe(categoryKey))) {
+        this.closeCategoryModal();
+        return;
+      }
 
-    await this.loadPlayers();
-    this.categorizePlayers();
+      if (!(await this._tryClaimCourtLock(categoryKey))) {
+        this.closeCategoryModal();
+        return;
+      }
 
-    console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
+      this.closeCategoryModal();
+      this.currentCategory = categoryKey;
 
-    // Load bracket WITH conflict fixes applied
-    await this.loadBracketWithFixes(categoryKey);
+      // Stop the categories-level listener BEFORE any slow work — see
+      // openCategory()'s notes for the full explanation.
+      this.stopCategoriesListener();
+      this._showBracketLoading();
 
-    // Check for player count mismatch (new players added)
-    if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
-      const playerCountDiff = category.players.length - this.currentBracket.playerCount;
-      console.log(`\n⚠️  PLAYER COUNT CHANGE DETECTED`);
-      console.log(`   Previous: ${this.currentBracket.playerCount} players`);
-      console.log(`   Current: ${category.players.length} players`);
-      console.log(`   Added: ${playerCountDiff > 0 ? '+' : ''}${playerCountDiff} player(s)\n`);
+      console.log(`Opening category ${categoryKey} with ${category.players.length} players`);
 
-      // Check if bracket has started
-      const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] &&
-        this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+      // Load bracket WITH conflict fixes applied
+      await this.loadBracketWithFixes(categoryKey);
 
-      if (!hasStarted) {
-        console.log(`✅ Bracket hasn't started — regenerating with all players integrated...\n`);
+      // Check for player count mismatch (new players added)
+      if (this.currentBracket && this.currentBracket.playerCount !== category.players.length) {
+        const playerCountDiff = category.players.length - this.currentBracket.playerCount;
+        console.log(`\n⚠️  PLAYER COUNT CHANGE DETECTED`);
+        console.log(`   Previous: ${this.currentBracket.playerCount} players`);
+        console.log(`   Current: ${category.players.length} players`);
+        console.log(`   Added: ${playerCountDiff > 0 ? '+' : ''}${playerCountDiff} player(s)\n`);
+
+        // Check if bracket has started
+        const hasStarted = this.currentBracket.rounds && this.currentBracket.rounds[0] &&
+          this.currentBracket.rounds[0].some(m => m.status !== 'pending' || m.winner);
+
+        if (!hasStarted) {
+          console.log(`✅ Bracket hasn't started — regenerating with all players integrated...\n`);
+          this.currentBracket = this.createBracket(category.players);
+          await this.saveBracket(categoryKey, this.currentBracket);
+        } else {
+          console.warn(`⛔ Bracket already in progress — cannot regenerate automatically`);
+          console.warn(`📝 To include new players, archive this bracket and create a new one\n`);
+        }
+      }
+
+      if (!this.currentBracket) {
+        console.log(`Creating new bracket with all ${category.players.length} players...`);
         this.currentBracket = this.createBracket(category.players);
         await this.saveBracket(categoryKey, this.currentBracket);
       } else {
-        console.warn(`⛔ Bracket already in progress — cannot regenerate automatically`);
-        console.warn(`📝 To include new players, archive this bracket and create a new one\n`);
+        // Bracket exists and was loaded - fix any conflicts
+        console.log(`Bracket exists - applying conflict resolution...`);
+        await this.fixBracketConflicts();
       }
-    }
 
-    if (!this.currentBracket) {
-      console.log(`Creating new bracket with all ${category.players.length} players...`);
-      this.currentBracket = this.createBracket(category.players);
-      await this.saveBracket(categoryKey, this.currentBracket);
-    } else {
-      // Bracket exists and was loaded - fix any conflicts
-      console.log(`Bracket exists - applying conflict resolution...`);
-      await this.fixBracketConflicts();
-    }
-
-    // Determine and persist bracket status before entering the view
-    if (this.isCategoryComplete()) {
-      if (this.currentBracket.status !== 'complete') {
-        this.currentBracket.status = 'complete';
+      // Determine and persist bracket status before entering the view
+      if (this.isCategoryComplete()) {
+        if (this.currentBracket.status !== 'complete') {
+          this.currentBracket.status = 'complete';
+          await this.saveBracket(categoryKey, this.currentBracket);
+        }
+        console.log(`✅ Bracket ${categoryKey} is COMPLETED`);
+      } else {
+        this.currentBracket.status = 'live';
         await this.saveBracket(categoryKey, this.currentBracket);
+        console.log(`📍 Bracket ${categoryKey} marked as LIVE`);
       }
-      console.log(`✅ Bracket ${categoryKey} is COMPLETED`);
-    } else {
-      this.currentBracket.status = 'live';
-      await this.saveBracket(categoryKey, this.currentBracket);
-      console.log(`📍 Bracket ${categoryKey} marked as LIVE`);
+
+      await this.loadMatchHistory(categoryKey);
+
+      // Start real-time listeners for multi-court synchronization
+      this.setupBracketListeners(categoryKey);
+
+      // Bracket is now open for this referee's court — mark it active so the
+      // Live Matches page shows the Upcoming Match immediately, even before any
+      // score/timer starts.
+      this._openLiveCourtPresence(categoryKey);
+
+      this.renderBracket();
+    } catch (error) {
+      console.error('❌ Error opening bracket:', error);
+      this.currentCategory = null;
+      this.currentBracket = null;
+      this._hideBracketLoading();
+      this.setupCategoriesListener();
+      const msg = 'Could not open this bracket — please check your connection and try again.';
+      if (typeof MODAL !== 'undefined') MODAL.error(msg);
+      else alert(msg);
+    } finally {
+      this._openingCategory = false;
     }
-
-    await this.loadMatchHistory(categoryKey);
-
-    // Pause the categories-level listener while inside the bracket view
-    this.stopCategoriesListener();
-
-    // Start real-time listeners for multi-court synchronization
-    this.setupBracketListeners(categoryKey);
-
-    // Bracket is now open for this referee's court — mark it active so the
-    // Live Matches page shows the Upcoming Match immediately, even before any
-    // score/timer starts.
-    this._openLiveCourtPresence(categoryKey);
-
-    this.renderBracket();
   },
 
   // Helper: Store only essential player info to reduce Firebase write size
@@ -1666,18 +1826,57 @@ const BRACKET = {
   // Setup real-time listener on the brackets node so ALL users see status changes
   // (Live / Pending / Completed) in the categories list without refreshing.
   // Debounced to 500 ms to avoid flooding re-renders during active matches.
+  //
+  // ALSO listens on players/ — the category cards are grouped by each
+  // player's CURRENT gender-ageCategory-weightCategory (categorizePlayers()),
+  // computed once from this.players at page load. Without this second
+  // listener, a weight/category correction made elsewhere (e.g. the Weighing
+  // Check pages) never gets picked up by an already-open Bracket page: the
+  // player would keep showing under their OLD category card here until a
+  // manual reload, which looks exactly like "the same player in two
+  // categories" if compared against a freshly-loaded view. Both listeners
+  // funnel into one debounce so rapid-fire events coalesce into a single
+  // re-render, and a players/ change always triggers a full
+  // loadPlayers()+categorizePlayers() before rendering (a brackets/-only
+  // change just re-renders from the existing this.categories, unchanged).
   setupCategoriesListener() {
     this.stopCategoriesListener();
     let debounceTimer = null;
-    const bracketsRef = dbRef(database, 'brackets');
-    this.categoriesListener = dbOnValue(bracketsRef, () => {
+    let needsRecategorize = false;
+
+    const scheduleRefresh = (recategorize) => {
+      if (recategorize) needsRecategorize = true;
       // Skip if the user is currently inside the bracket view
       const bracketContainer = document.getElementById('bracketContainer');
       if (bracketContainer && bracketContainer.style.display === 'block') return;
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => this.renderCategories(), 500);
+      debounceTimer = setTimeout(async () => {
+        if (needsRecategorize) {
+          await this.loadPlayers();
+          this.categorizePlayers();
+          needsRecategorize = false;
+        }
+        this.renderCategories();
+      }, 500);
+    };
+
+    const unsubBrackets = dbOnValue(dbRef(database, 'brackets'), () => scheduleRefresh(false));
+    const unsubPlayers = dbOnValue(dbRef(database, 'players'), () => scheduleRefresh(true));
+    // Court-lock changes (a court claiming/releasing a category) never
+    // change who's registered in it, so this never needs a recategorize —
+    // just re-render so the "Opened by: Court X" line updates live.
+    const unsubLocks = dbOnValue(dbRef(database, 'bracketLocks/official'), () => scheduleRefresh(false), (err) => {
+      console.warn('⚠️ bracketLocks listener error (non-fatal):', err.message);
     });
-    console.log('✅ Categories real-time listener active');
+    // Assignment changes (admin assigning/reassigning/removing a court) never
+    // change who's registered in a category either — just re-render so a
+    // referee's list picks up newly (un)assigned brackets live, without a
+    // manual refresh.
+    const unsubAssignments = dbOnValue(dbRef(database, 'bracketAssignments/official'), () => scheduleRefresh(false), (err) => {
+      console.warn('⚠️ bracketAssignments listener error (non-fatal):', err.message);
+    });
+    this.categoriesListener = () => { unsubBrackets(); unsubPlayers(); unsubLocks(); unsubAssignments(); };
+    console.log('✅ Categories real-time listener active (brackets + players + locks + assignments)');
   },
 
   // Tear down the categories listener (called when entering bracket view)
@@ -1906,16 +2105,39 @@ const BRACKET = {
     const container = document.getElementById('bracketContainer');
     if (!container) return;
 
+    // this.currentBracket should always be populated by the time
+    // openCategory() reaches this call, but guard it explicitly rather than
+    // let a missing/cleared value (e.g. a concurrent closeCategory(), or a
+    // bracket deleted from another admin tab mid-load) throw here with no
+    // way back to the categories list.
+    if (!this.currentBracket) {
+      console.warn('⚠️ renderBracket() called with no currentBracket — returning to categories list.');
+      this._hideBracketLoading?.();
+      if (typeof this.closeCategory === 'function') this.closeCategory();
+      return;
+    }
+
     const isComplete = this.isCategoryComplete();
+    // this.categories can be transiently rebuilt by the categories-level
+    // players/ listener (categorizePlayers() does `this.categories = {}`
+    // before repopulating) — openCategory() now stops that listener before
+    // this ever runs, but this guard is defense-in-depth so a stale/missing
+    // entry degrades gracefully (falls back to the raw category key as the
+    // title, edit button hidden) instead of throwing and leaving a blank
+    // screen with no way back to the categories list.
     const category = this.categories[this.currentCategory];
+    const categoryTitle = category
+      ? `${category.gender} ${category.ageCategory} - ${category.weightCategory}`
+      : (this.currentCategory || '');
     // Editing needs at least 2 players (a single-player category is a pure
-    // walkover with no Round 1 to arrange) and is admin/judge only.
-    const canEdit = this._canEditBracket() && category.players.length > 1;
+    // walkover with no Round 1 to arrange) and is admin/judge only. Falls
+    // back to non-editable when category info is unavailable.
+    const canEdit = this._canEditBracket() && !!category && category.players.length > 1;
 
     let html = `
       <div class="bracket-header">
         <button class="btn-back" onclick="BRACKET.closeCategory()">← Back to Categories</button>
-        <h2>${this.categories[this.currentCategory].gender} ${this.categories[this.currentCategory].ageCategory} - ${this.categories[this.currentCategory].weightCategory}${this.currentBracket.manuallyEdited ? ' <span class="manually-edited-badge" title="Round 1 was manually arranged via the Bracket Editor">✏️ Manually Edited</span>' : ''}</h2>
+        <h2>${categoryTitle}${this.currentBracket.manuallyEdited ? ' <span class="manually-edited-badge" title="Round 1 was manually arranged via the Bracket Editor">✏️ Manually Edited</span>' : ''}</h2>
         <div style="display:flex;gap:10px;align-items:center;">
           ${canEdit ? `<button class="btn-secondary edit-bracket-btn" onclick="BRACKET.promptEditPassword('${this.currentCategory}')" style="padding:8px 18px;font-size:0.95rem;border:1.5px dashed var(--border-gold);color:var(--border-gold);">✏️ Edit Bracket</button>` : ''}
           ${isComplete ? `<button class="btn-success" onclick="BRACKET.exportToExcel()" style="background:var(--success-green);color:#fff;border:none;padding:8px 18px;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.95rem;">📥 Export Results</button>` : ''}
@@ -2562,6 +2784,14 @@ const BRACKET = {
     if (typeof LIVE_PRESENCE !== 'undefined' && this._liveCourtNumber) {
       LIVE_PRESENCE.closeCourt(this._liveCourtNumber);
       this._liveCourtNumber = null;
+    }
+
+    // Release this court's exclusive claim on the category — whether the
+    // bracket ended up Complete or reverted to Pending below, nobody should
+    // still be "holding" it once this court has left.
+    if (this._lockedCourtNumber && this.currentCategory) {
+      await this._releaseBracketLock(this.currentCategory, this._lockedCourtNumber);
+      this._lockedCourtNumber = null;
     }
 
     // Update bracket status before closing
@@ -4482,7 +4712,151 @@ const BRACKET = {
     const safeLabel = categoryLabel.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_');
     const fileName = `Players_${safeLabel}_${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(wb, fileName);
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BRACKET STATUS & COURT ASSIGNMENT — exclusive per-court locking
+  //
+  // Stored entirely under its own top-level node, bracketLocks/official/
+  // {categoryKey} = { courtNumber, openedAt }, completely separate from
+  // brackets/{categoryKey} itself (which already carries the Pending/Live/
+  // Completed status via its own `status` field, unchanged). Keeping the
+  // lock in its own node — rather than adding fields onto the bracket
+  // object — means saveBracket()'s existing lean-object serialization,
+  // championship archival, and every other reader of brackets/{categoryKey}
+  // needs zero changes and can't be affected by this feature at all.
+  //
+  // Admin/judge sessions (no fixed court, per sessionStorage.courtNumber)
+  // bypass the lock entirely — they already have unrestricted access
+  // elsewhere in this app (e.g. _openLiveCourtPresence's identical bypass).
+  // The exclusivity guarantee is scoped to preventing two COURTS/referees
+  // from operating the same bracket at once, matching the actual scenario
+  // this feature exists to prevent.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Defense-in-depth court-assignment guard, shared by openCategory() and
+  // startBracket() — called BEFORE the lock claim below. renderCategories()
+  // already hides unassigned/other-court brackets from a referee's category
+  // list, but a category card is only a link; this check is what actually
+  // stops a referee from reaching a bracket they were never shown, whether
+  // via a stale bookmark, a race with a just-removed assignment, or manual
+  // console/URL manipulation. Admin/judge sessions always pass through
+  // (unrestricted, matching every other admin/judge bypass in this file).
+  async _assertCategoryAssignedToMe(categoryKey) {
+    if (sessionStorage.getItem('userRole') !== 'referee') return true;
+    const myCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+    if (!myCourt) return true; // no session-level court to check against — leave to the lock/rules layer
+
+    try {
+      const snap = await dbGet(dbRef(database, `bracketAssignments/official/${categoryKey}`));
+      const assignment = snap.exists() ? snap.val() : null;
+      if (!assignment || String(assignment.courtNumber).trim() !== myCourt) {
+        const msg = 'This bracket is not assigned to your court.';
+        if (typeof MODAL !== 'undefined') MODAL.error(msg);
+        else alert(msg);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('⚠️ Could not verify bracket assignment (blocking, fail-closed):', err.message);
+      const msg = 'Could not verify this bracket is assigned to you — please check your connection and try again.';
+      if (typeof MODAL !== 'undefined') MODAL.error(msg);
+      else alert(msg);
+      return false;
+    }
+  },
+
+  // Entry guard shared by openCategory() and startBracket() — the two paths
+  // that both open a bracket for live editing. Claims this court's lock via
+  // a Firebase transaction (so two courts opening the exact same bracket in
+  // the same instant can't both win) or blocks with a message naming
+  // whichever court already holds it. Returns true if the caller should
+  // proceed, false if it was blocked (or the user should be left where they
+  // were, without entering the bracket view).
+  async _tryClaimCourtLock(categoryKey) {
+    // Gate on an ACTUAL referee session, not merely a non-empty courtNumber
+    // key — login pages only ever ADD session keys, they never
+    // sessionStorage.clear() first (only logout() does). So a tab that was
+    // a referee earlier and then logged into admin/judge in the same tab
+    // without an explicit logout keeps its old courtNumber value sitting in
+    // storage, which would otherwise get this admin session mistaken for a
+    // real court and blocked by whoever actually holds that court's lock.
+    if (sessionStorage.getItem('userRole') !== 'referee') return true;
+    const assignedCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+    if (!assignedCourt) return true;
+
+    const lock = await this._acquireBracketLock(categoryKey, assignedCourt);
+    if (!lock.granted) {
+      const msg = `This bracket is currently being managed by Court ${lock.courtNumber}.`;
+      if (typeof MODAL !== 'undefined') MODAL.error(msg);
+      else alert(msg);
+      return false;
+    }
+    this._lockedCourtNumber = assignedCourt;
+    return true;
+  },
+
+  async _acquireBracketLock(categoryKey, courtNumber) {
+    if (typeof dbRunTransaction !== 'function') {
+      // Transactions unavailable for some reason (e.g. an older cached
+      // firebase.js) — fail OPEN rather than blocking referees from ever
+      // opening a bracket; the lock is a safety net, not a hard requirement
+      // for the app's core function to keep working.
+      console.warn('⚠️ dbRunTransaction unavailable — bracket lock not enforced this session.');
+      return { granted: true };
+    }
+    try {
+      const lockRef = dbRef(database, `bracketLocks/official/${categoryKey}`);
+      const result = await dbRunTransaction(lockRef, (current) => {
+        if (current && current.courtNumber && current.courtNumber !== courtNumber) {
+          return current; // someone else already holds it — commit a no-op, don't overwrite
+        }
+        return { courtNumber, openedAt: Date.now() };
+      });
+      const finalVal = result.snapshot.val();
+      if (finalVal && finalVal.courtNumber && finalVal.courtNumber !== courtNumber) {
+        return { granted: false, courtNumber: finalVal.courtNumber };
+      }
+      // Granted — best-effort auto-release if this tab disconnects
+      // ungracefully (crash/network loss), matching LIVE_PRESENCE's own
+      // established risk posture for this class of cleanup elsewhere in
+      // the app.
+      try { await dbOnDisconnect(lockRef).remove(); } catch (_) { /* non-fatal */ }
+      return { granted: true };
+    } catch (err) {
+      console.warn('⚠️ Bracket lock check failed (non-fatal) — proceeding without it:', err.message);
+      return { granted: true };
+    }
+  },
+
+  async _releaseBracketLock(categoryKey, courtNumber) {
+    try {
+      const lockRef = dbRef(database, `bracketLocks/official/${categoryKey}`);
+      const snap = await dbGet(lockRef);
+      // Only clear it if THIS court still holds it — never blindly remove a
+      // lock some other court has since legitimately acquired (e.g. after
+      // this court's own release raced with someone else's claim).
+      if (snap.exists() && snap.val()?.courtNumber === courtNumber) {
+        await dbRemove(lockRef);
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not release bracket lock (non-fatal):', err.message);
+    }
+  },
+
+  // Best-effort synchronous-ish release on tab close/navigation-away — the
+  // onDisconnect registered in _acquireBracketLock is the reliable fallback
+  // if the browser tears the page down before this completes (same pattern
+  // as LIVE_PRESENCE.clearAllSync()).
+  _releaseLockSync() {
+    if (!this._lockedCourtNumber || !this.currentCategory) return;
+    try {
+      dbRemove(dbRef(database, `bracketLocks/official/${this.currentCategory}`));
+    } catch (_) { /* onDisconnect will handle it */ }
   }
 };
 
 window.BRACKET = BRACKET;
+
+window.addEventListener('pagehide', () => BRACKET._releaseLockSync());
+window.addEventListener('beforeunload', () => BRACKET._releaseLockSync());

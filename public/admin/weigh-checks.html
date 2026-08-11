@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>First Weighing Checks — Taekwondo Championship</title>
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Admin panel to review, edit or reset referee-submitted First Weighing Check results.">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script defer src="/js/modal.js"></script>
+
+    <style>
+        .back-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            color: var(--accent-cyan); text-decoration: none;
+            font-weight: 700; font-size: 1rem; letter-spacing: 0.5px;
+            transition: color 0.2s;
+            text-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+        }
+        .back-link:hover { color: var(--border-gold); text-shadow: 0 0 10px rgba(255, 215, 0, 0.4); }
+
+        .action-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 14px; margin-bottom: 20px;
+        }
+
+        .wc-intro {
+            background: linear-gradient(135deg, rgba(22, 33, 62, 0.94) 0%, rgba(26, 26, 46, 0.94) 100%);
+            border: 1.5px solid rgba(0, 229, 255, 0.25);
+            border-radius: var(--border-radius);
+            padding: 14px 18px;
+            margin: 0 0 22px;
+            color: var(--text-gray);
+            font-size: 0.92rem;
+            line-height: 1.55;
+        }
+
+        .wc-hdr {
+            display: flex; align-items: center; justify-content: space-between;
+            flex-wrap: wrap; gap: 12px; margin: 0 0 18px;
+        }
+        .wc-hdr h3 { margin: 0; color: var(--text-white); font-size: 1.15rem; }
+
+        .wc-pill {
+            background: linear-gradient(135deg, rgba(255,215,0,0.22) 0%, rgba(255,180,0,0.16) 100%);
+            border: 1.5px solid rgba(255,215,0,0.45);
+            color: var(--border-gold);
+            padding: 7px 18px; border-radius: 20px;
+            font-size: 0.85rem; font-weight: 800;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+        }
+
+        .wc-search {
+            width: 100%; box-sizing: border-box;
+            padding: 13px 18px;
+            background: rgba(8, 10, 20, 0.95);
+            border: 2px solid rgba(255,215,0,0.3);
+            border-radius: var(--border-radius);
+            color: var(--text-white);
+            font-size: 0.95rem; outline: none;
+            margin-bottom: 18px;
+            transition: border-color 0.2s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .wc-search:focus { border-color: var(--border-gold); box-shadow: 0 0 0 3px rgba(255,215,0,0.15); }
+        .wc-search::placeholder { color: #8891a3; }
+
+        .wc-wrap {
+            overflow-x: auto; border-radius: 14px;
+            border: 1.5px solid rgba(255,215,0,0.2);
+            background: linear-gradient(135deg, rgba(26,26,46,0.97) 0%, rgba(16,21,40,0.97) 100%);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+
+        .wc-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .wc-table thead tr { background: linear-gradient(90deg, rgba(255,215,0,0.18), rgba(0,229,255,0.13)); }
+        .wc-table th {
+            padding: 14px 16px; text-align: left; font-size: 0.72rem; text-transform: uppercase;
+            letter-spacing: 1px; color: var(--border-gold); font-weight: 800; white-space: nowrap;
+            border-bottom: 2px solid rgba(255,215,0,0.3);
+        }
+        .wc-table td {
+            padding: 13px 16px; color: var(--text-gray);
+            border-bottom: 1px solid rgba(255,255,255,0.07); vertical-align: middle;
+        }
+        .wc-table tbody tr { transition: background 0.15s ease; }
+        .wc-table tbody tr:hover { background: rgba(0,229,255,0.08); }
+        .wc-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+        .wc-table tbody tr:last-child td { border-bottom: none; }
+        .wc-name { color: var(--text-white); font-weight: 700; font-size: 0.95rem; }
+
+        .wc-chip-locked {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: rgba(0,255,136,0.18); color: var(--success-green);
+            border: 1.5px solid rgba(0,255,136,0.45);
+            padding: 5px 13px; border-radius: 20px; font-size: 0.8rem; font-weight: 800;
+        }
+        .wc-chip-open {
+            display: inline-flex; align-items: center; gap: 5px;
+            background: rgba(120,128,145,0.22); color: #b8bfcc;
+            border: 1.5px solid rgba(184,191,204,0.35);
+            padding: 5px 13px; border-radius: 20px; font-size: 0.8rem; font-weight: 800;
+        }
+
+        .wc-empty {
+            text-align: center; padding: 60px 20px; color: var(--text-gray);
+        }
+        .wc-empty-icon { font-size: 3rem; margin-bottom: 12px; }
+
+        .wc-modal-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.78); z-index: 3000;
+            align-items: center; justify-content: center;
+        }
+        .wc-modal-overlay.active { display: flex; }
+        .wc-modal {
+            background: linear-gradient(145deg, rgba(22,33,62,0.99) 0%, rgba(10,10,20,0.99) 100%);
+            border: 2px solid var(--border-gold);
+            border-radius: var(--border-radius);
+            padding: 32px 36px; width: 90%; max-width: 460px;
+            box-shadow: 0 16px 48px rgba(255,215,0,0.25);
+            animation: fadeInUp 0.35s ease;
+        }
+        .wc-modal h3 { margin-bottom: 8px; font-size: 1.4rem; color: var(--border-gold); text-shadow: 0 0 12px rgba(255,215,0,0.35); }
+        .wc-modal-sub { font-size: 0.88rem; color: var(--text-gray); margin-bottom: 22px; }
+        .wc-modal .form-group { margin-bottom: 18px; }
+        .wc-modal-btns { display: flex; gap: 12px; margin-top: 6px; }
+        .wc-modal-btns button { flex: 1; padding: 13px; font-size: 0.95rem; }
+    </style>
+</head>
+<body>
+
+    <div class="page-header">
+        <h1 class="page-title">&#x2696;&#xFE0F; First Weighing Checks</h1>
+        <button class="btn-secondary" onclick="window.location.href='dashboard.html'">&#8592; Back to Dashboard</button>
+        <button class="btn-danger" onclick="UI.logout()">Logout</button>
+    </div>
+
+    <div class="container">
+        <div class="action-bar">
+            <a href="dashboard.html" class="back-link">&#8592; Back to Dashboard</a>
+        </div>
+
+        <p class="wc-intro">
+            Referees submit each player's First Check exactly once from the Referee Page (no password needed) and it
+            locks immediately. Only Admin can edit or reset a locked result from here.
+        </p>
+
+        <div class="wc-hdr">
+            <h3>⚖️ Player Roster</h3>
+            <span class="wc-pill" id="wcCountPill">0 / 0 locked</span>
+        </div>
+        <input type="text" class="wc-search" id="wcSearchInput" placeholder="&#x1F50D; Search by player or team name…" oninput="renderWeighChecksTable(this.value)">
+
+        <div class="wc-wrap">
+            <div id="wcTableContainer">
+                <div class="wc-empty"><div class="wc-empty-icon">&#x23F3;</div><p>Loading…</p></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="site-credit-footer">
+        <span class="credit-line">&#169; Karnataka Taekwondo Association &reg;</span>
+        <span class="credit-line credit-address"># 54/1, 13th 'E' Cross, 7th Main, Rajajinagar Industrial Town, A.D. Halli, Bangalore-560 079</span>
+        <span class="credit-line credit-owner">Built and Developed by Karnataka Taekwondo Association &reg;</span>
+    </div>
+
+    <!-- Edit Modal (existing, referee-submitted records only) -->
+    <div id="wcModal" class="wc-modal-overlay">
+        <div class="wc-modal">
+            <h3 id="wcModalTitle">Edit First Check</h3>
+            <p class="wc-modal-sub" id="wcModalSub"></p>
+
+            <input type="hidden" id="wcModalPlayerId">
+
+            <div class="form-group">
+                <label for="wcModalWeightInput">First Check Weight (kg)</label>
+                <input type="number" id="wcModalWeightInput" step="0.1" min="0" max="300" placeholder="e.g. 52.3">
+            </div>
+
+            <div class="wc-modal-btns">
+                <button class="btn-success" id="wcModalSaveBtn" onclick="saveWeighCheckModal()">&#x1F4BE; Save</button>
+                <button class="btn-secondary" onclick="closeWeighCheckModal()">&#x2716; Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase modules -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+    <script type="module" src="/js/weigh-check-sync.js"></script>
+
+    <script type="module">
+        // ── State ────────────────────────────────────────────────────────────
+        const _raw = { players: null, expoPlayers: null, teams: null, weighChecks: null };
+        let _rows = [];
+        let _listenersStarted = false;
+        let _computeTimer = null;
+
+        // ── Boot ─────────────────────────────────────────────────────────────
+        waitForModules();
+
+        function waitForModules() {
+            if (typeof UI !== 'undefined' && typeof database !== 'undefined' && typeof dbGet === 'function' && typeof dbOnValue === 'function') {
+                UI.initPageProtection(['admin']);
+                startListeners();
+            } else {
+                setTimeout(waitForModules, 80);
+            }
+        }
+
+        // Firebase Auth's signed-in session is shared across every tab of the
+        // same browser (it's persisted in IndexedDB, not per-tab). If this
+        // browser was also used to open a referee page, that page's anonymous
+        // sign-in silently displaces whatever was signed in here — the admin
+        // dashboard still LOOKS logged in (sessionStorage.userRole is per-tab
+        // and doesn't know), but every write now fails with a generic
+        // PERMISSION_DENIED because auth.currentUser is no longer the admin
+        // account. Checked before every write below so that shows up as a
+        // clear message + a one-click way to fix it, not a cryptic Firebase
+        // error.
+        async function verifyAdminSession() {
+            if (!window.auth || !auth.currentUser) {
+                return { ok: false, reason: 'not-signed-in' };
+            }
+            try {
+                const snap = await dbGet(dbRef(database, 'users/' + auth.currentUser.uid));
+                if (snap.exists() && snap.val()?.role === 'admin') return { ok: true };
+                return { ok: false, reason: 'wrong-role' };
+            } catch (err) {
+                console.warn('⚠️ Could not verify admin session:', err.message);
+                return { ok: false, reason: 'check-failed' };
+            }
+        }
+
+        async function warnStaleAdminSession() {
+            const relogin = await MODAL.showConfirm(
+                'Your admin session on this browser tab is no longer valid — most likely because this browser also opened a Referee or Team page, which silently signs this tab out (Firebase only keeps one signed-in session per browser at a time).\n\nLog out and back in now to fix it?',
+                '⚠️ Session No Longer Valid'
+            );
+            if (relogin) {
+                sessionStorage.clear();
+                window.location.href = window.location.origin + '/admin-login.html';
+            }
+        }
+
+        // ── Password re-confirmation before RESETTING a locked First Check ──
+        // Resetting deletes the referee's locked result outright — that's
+        // destructive enough to warrant re-confirming it's really the admin,
+        // by re-authenticating against their OWN Firebase Auth password (no
+        // separate secret to store/manage). Editing the weight itself no
+        // longer goes through this gate (an already-signed-in admin can edit
+        // directly — see openWeighCheckModal()); verifyAdminSession() alone
+        // still guards the actual write in both cases. Mirrors bracket.js's
+        // promptEditPassword/_submitEditPassword pattern (same modal styling,
+        // same reauthenticateWithCredential approach) so it looks and behaves
+        // consistently with the existing Bracket Editor password gate
+        // elsewhere in the app.
+        let _pwModalDiv = null;
+        let _pwPendingCallback = null;
+
+        async function promptAdminPassword(onConfirmed) {
+            if (typeof auth === 'undefined' || !auth.currentUser || !auth.currentUser.email) {
+                MODAL.error('You must be signed in as an admin to do this.');
+                return;
+            }
+            // Verify this tab's Firebase Auth session is STILL actually the
+            // admin before even opening the password box — otherwise a
+            // displaced session (see verifyAdminSession's notes above) shows
+            // up here as a correct password mysteriously being rejected as
+            // "Incorrect password" every single time, which is confusing and
+            // unfixable by retyping. Catching it here means the admin is told
+            // exactly what's wrong and how to fix it, instead of that dead end.
+            const session = await verifyAdminSession();
+            if (!session.ok) {
+                await warnStaleAdminSession();
+                return;
+            }
+            _pwPendingCallback = onConfirmed;
+            const modalHTML = `
+                <div class="custom-modal-overlay" onclick="if(event.target===this) closeAdminPwModal()">
+                    <div class="custom-modal-content modal-warning">
+                        <div class="custom-modal-header">
+                            <h2>🔒 Confirm Password</h2>
+                            <button class="custom-modal-close" onclick="closeAdminPwModal()">✕</button>
+                        </div>
+                        <div class="custom-modal-body">
+                            <p>Re-enter your admin password to confirm this change to a referee-submitted First Check.</p>
+                            <div style="position:relative;margin-top:10px;">
+                                <input type="password" id="adminPwInput" autocomplete="current-password"
+                                       style="width:100%;box-sizing:border-box;padding:10px 40px 10px 12px;border-radius:8px;border:1.5px solid var(--accent-cyan);background:rgba(0,0,0,0.45);color:var(--text-white);font-size:0.95rem;" />
+                                <button type="button" onclick="toggleAdminPw(this)"
+                                        style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-gray);cursor:pointer;padding:4px;display:flex;">${pwEyeOpenSvg()}</button>
+                            </div>
+                            <div id="adminPwError" style="color:var(--accent-red);font-size:0.85rem;margin-top:8px;display:none;"></div>
+                        </div>
+                        <div class="custom-modal-footer">
+                            <button class="btn-secondary" onclick="closeAdminPwModal()">Cancel</button>
+                            <button class="btn-primary" onclick="submitAdminPwModal()">Confirm</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            const div = document.createElement('div');
+            div.innerHTML = modalHTML;
+            document.body.appendChild(div);
+            _pwModalDiv = div;
+            setTimeout(() => {
+                const input = document.getElementById('adminPwInput');
+                if (!input) return;
+                input.focus();
+                input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitAdminPwModal(); });
+            }, 50);
+        }
+        window.promptAdminPassword = promptAdminPassword;
+
+        function pwEyeOpenSvg() {
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+        }
+        function pwEyeClosedSvg() {
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+        }
+        window.toggleAdminPw = function (btn) {
+            const input = document.getElementById('adminPwInput');
+            if (!input) return;
+            const isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            btn.innerHTML = isHidden ? pwEyeClosedSvg() : pwEyeOpenSvg();
+        };
+
+        window.closeAdminPwModal = function () {
+            if (_pwModalDiv) { _pwModalDiv.remove(); _pwModalDiv = null; }
+            _pwPendingCallback = null;
+        };
+
+        window.submitAdminPwModal = async function () {
+            const input = document.getElementById('adminPwInput');
+            const errorDiv = document.getElementById('adminPwError');
+            const password = input ? input.value : '';
+            if (!password) {
+                if (errorDiv) { errorDiv.textContent = 'Please enter your password.'; errorDiv.style.display = 'block'; }
+                return;
+            }
+            if (!auth.currentUser) {
+                // Session was displaced in the moment between the modal opening
+                // and Confirm being clicked (e.g. another tab on this browser
+                // just signed into a different account) — nothing to
+                // reauthenticate against at all. Same fix as above, not a
+                // wrong-password situation.
+                closeAdminPwModal();
+                await warnStaleAdminSession();
+                return;
+            }
+            try {
+                const credential = EmailAuthProvider.credential(auth.currentUser.email, password);
+                await reauthenticateWithCredential(auth.currentUser, credential);
+                const callback = _pwPendingCallback;
+                closeAdminPwModal();
+                if (callback) callback();
+            } catch (err) {
+                console.warn('Admin password re-confirmation failed:', err.code || err.message);
+                // A stale/displaced session surfaces here as auth/user-mismatch
+                // or an expired/invalid token — those are NOT "wrong password",
+                // they mean auth.currentUser isn't really the admin anymore.
+                if (err && ['auth/user-mismatch', 'auth/user-token-expired', 'auth/invalid-user-token', 'auth/user-not-found'].includes(err.code)) {
+                    closeAdminPwModal();
+                    await warnStaleAdminSession();
+                    return;
+                }
+                if (errorDiv) { errorDiv.textContent = 'Incorrect password. No changes were made.'; errorDiv.style.display = 'block'; }
+                if (input) { input.value = ''; input.focus(); }
+            }
+        };
+
+        function startListeners() {
+            if (_listenersStarted) return;
+            _listenersStarted = true;
+
+            const scheduleCompute = () => {
+                clearTimeout(_computeTimer);
+                _computeTimer = setTimeout(computeRows, 200);
+            };
+
+            ['players', 'expoPlayers', 'teams', 'weighChecks'].forEach(path => {
+                dbOnValue(dbRef(database, path), (snap) => {
+                    _raw[path] = snap.exists() ? snap.val() : null;
+                    scheduleCompute();
+                }, (error) => {
+                    console.warn(`⚠️ weigh-checks listener error on ${path} (non-fatal):`, error.message);
+                });
+            });
+        }
+
+        function computeRows() {
+            const teamsMap = {};
+            if (_raw.teams) {
+                Object.entries(_raw.teams).forEach(([id, v]) => {
+                    teamsMap[id] = (v && v.teamName) || 'Unnamed Team';
+                });
+            }
+
+            const merged = {};
+            if (_raw.players) {
+                Object.entries(_raw.players).forEach(([id, v]) => {
+                    merged[id] = merged[id] || {};
+                    merged[id].val = v;
+                    merged[id].source = 'players';
+                });
+            }
+            if (_raw.expoPlayers) {
+                Object.entries(_raw.expoPlayers).forEach(([id, v]) => {
+                    if (!merged[id]) { merged[id] = { val: v, source: 'expoPlayers' }; }
+                });
+            }
+
+            const weighChecks = _raw.weighChecks || {};
+
+            _rows = Object.entries(merged).map(([id, { val, source }]) => {
+                const divisionBits = [];
+                if (val.competitionCategory) divisionBits.push(val.competitionCategory);
+                if (Array.isArray(val.poomsaeCategories) && val.poomsaeCategories.length > 0) divisionBits.push('Poomsae');
+                return {
+                    id,
+                    source,
+                    playerName: val.playerName || 'Unknown',
+                    teamName: teamsMap[val.teamId] || val.centerName || val.teamName || 'Unassigned Team',
+                    gender: val.gender || '',
+                    ageCategory: val.ageCategory || '',
+                    registeredWeight: (val.weight !== undefined && val.weight !== null && val.weight !== '') ? val.weight : null,
+                    weightCategory: val.weightCategory || '',
+                    division: divisionBits.join(' + ') || '—',
+                    weighCheck: weighChecks[id] || null
+                };
+            }).sort((a, b) => a.playerName.localeCompare(b.playerName));
+
+            renderWeighChecksTable();
+        }
+
+        // ── Render ───────────────────────────────────────────────────────────
+        function renderWeighChecksTable(filterQuery) {
+            const container = document.getElementById('wcTableContainer');
+            const pill = document.getElementById('wcCountPill');
+            if (!container) return;
+
+            const q = (filterQuery !== undefined ? filterQuery : (document.getElementById('wcSearchInput')?.value || '')).trim().toLowerCase();
+            const rowsData = q
+                ? _rows.filter(r => r.playerName.toLowerCase().includes(q) || r.teamName.toLowerCase().includes(q))
+                : _rows;
+
+            const lockedCount = _rows.filter(r => r.weighCheck && r.weighCheck.locked).length;
+            if (pill) pill.textContent = `${lockedCount} / ${_rows.length} locked`;
+
+            if (_rows.length === 0) {
+                container.innerHTML = `<div class="wc-empty"><div class="wc-empty-icon">&#x2696;&#xFE0F;</div><p>No players registered yet.</p></div>`;
+                return;
+            }
+            if (rowsData.length === 0) {
+                container.innerHTML = `<div class="wc-empty"><div class="wc-empty-icon">&#x1F50D;</div><p>No players match your search.</p></div>`;
+                return;
+            }
+
+            let html = `<table class="wc-table"><thead><tr>
+                <th style="width:48px;text-align:center">#</th><th>Player</th><th>Team</th><th>Registered</th><th>First Check</th><th>Status</th><th style="text-align:center">Actions</th>
+            </tr></thead><tbody>`;
+
+            rowsData.forEach((r, idx) => {
+                const wc = r.weighCheck;
+                const isLocked = !!(wc && wc.locked);
+                const statusChip = isLocked
+                    ? `<span class="wc-chip-locked" title="Submitted by ${escHtml(wc.submittedBy || '')} at ${formatTime(wc.submittedAt)}">&#x1F512; Locked</span>`
+                    : `<span class="wc-chip-open">&#x2B1C; Not yet</span>`;
+                const weightCell = isLocked ? `${escHtml(String(wc.firstCheckWeight))} kg` : '—';
+
+                // Admin can only edit/reset an EXISTING (already-locked) record —
+                // the first check itself must always be entered by a referee from
+                // the Referee Page. This mirrors the Firebase rule, which now
+                // denies admin a write when data.exists() is false, so there is
+                // deliberately no "Submit" action here for not-yet-checked rows.
+                const actions = isLocked
+                    ? `<button class="btn-info" style="padding:6px 12px;font-size:0.78rem;margin-right:6px" onclick="openWeighCheckModal('${r.id}')">&#x270F;&#xFE0F; Edit</button>
+                       <button class="btn-danger" style="padding:6px 12px;font-size:0.78rem" onclick="resetWeighCheck('${r.id}')">&#x1F5D1;&#xFE0F; Reset</button>`
+                    : `<span style="color:#666;font-size:0.78rem;font-style:italic">Waiting for referee</span>`;
+
+                html += `<tr>
+                    <td class="st-num" style="text-align:center;color:var(--border-gold);font-weight:800">${idx + 1})</td>
+                    <td class="wc-name">${escHtml(r.playerName)}</td>
+                    <td>${escHtml(r.teamName)}</td>
+                    <td style="font-size:0.85rem;color:#999">${r.registeredWeight !== null ? r.registeredWeight + ' kg' : '—'}${r.weightCategory ? ' · ' + escHtml(r.weightCategory) : ''}</td>
+                    <td style="font-weight:700;color:var(--text-white)">${weightCell}</td>
+                    <td>${statusChip}</td>
+                    <td style="text-align:center;white-space:nowrap">${actions}</td>
+                </tr>`;
+            });
+
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+        }
+        window.renderWeighChecksTable = renderWeighChecksTable;
+
+        // ── Edit modal (existing, locked records only) ───────────────────────
+        // Password-gated: a locked First Check was entered by a referee at
+        // weigh-in — editing it is exactly the kind of correction that should
+        // require re-confirming it's really the admin doing it, not someone
+        // who walked up to an unattended, already-logged-in browser. Mirrors
+        // the Bracket Editor's own password-gate pattern (bracket.js
+        // promptEditPassword/_submitEditPassword) — same modal styling, same
+        // re-authenticate-with-the-admin's-own-Firebase-password approach, no
+        // separate secret to manage.
+        function openWeighCheckModal(playerId) {
+            const row = _rows.find(r => r.id === playerId);
+            if (!row || !row.weighCheck || !row.weighCheck.locked) return; // nothing to edit yet — referee hasn't submitted
+            // No password re-confirmation here — an admin who is already
+            // signed in should be able to edit a weight directly. Being
+            // genuinely signed in as admin is still enforced: saveWeighCheckModal()
+            // re-checks verifyAdminSession() before it writes, and the
+            // Firebase rule itself only grants an admin's UID a write here.
+            _openWeighCheckModalConfirmed(playerId);
+        }
+
+        function _openWeighCheckModalConfirmed(playerId) {
+            const row = _rows.find(r => r.id === playerId);
+            if (!row || !row.weighCheck || !row.weighCheck.locked) return;
+
+            document.getElementById('wcModalPlayerId').value = playerId;
+            document.getElementById('wcModalTitle').textContent = 'Edit First Check';
+            document.getElementById('wcModalSub').textContent = `${row.playerName} — ${row.teamName}`;
+            document.getElementById('wcModalWeightInput').value = row.weighCheck.firstCheckWeight;
+            document.getElementById('wcModal').classList.add('active');
+            document.getElementById('wcModalWeightInput').focus();
+        }
+        window.openWeighCheckModal = openWeighCheckModal;
+
+        function closeWeighCheckModal() {
+            document.getElementById('wcModal').classList.remove('active');
+        }
+        window.closeWeighCheckModal = closeWeighCheckModal;
+
+        async function saveWeighCheckModal() {
+            const playerId = document.getElementById('wcModalPlayerId').value;
+            const raw = document.getElementById('wcModalWeightInput').value.trim();
+            const weight = parseFloat(raw);
+            const row = _rows.find(r => r.id === playerId);
+            if (!row || !row.weighCheck || !row.weighCheck.locked) return; // must already exist — admin never creates the first check
+
+            if (!raw || Number.isNaN(weight) || weight <= 0 || weight > 300) {
+                MODAL.error('Enter a valid weight in kg (e.g. 52.3).');
+                return;
+            }
+
+            const session = await verifyAdminSession();
+            if (!session.ok) { await warnStaleAdminSession(); return; }
+
+            const adminEmail = (window.auth && window.auth.currentUser && window.auth.currentUser.email) || 'admin';
+            const now = new Date().toISOString();
+            const btn = document.getElementById('wcModalSaveBtn');
+            btn.disabled = true; btn.textContent = 'Saving…';
+
+            try {
+                // Partial update on the existing record only — preserves the
+                // original referee's submittedBy/submittedAt audit trail. The
+                // Firebase rule also only grants admin a write here when the
+                // record already exists, so this is enforced server-side too.
+                await dbUpdate(dbRef(database, 'weighChecks/' + playerId), {
+                    firstCheckWeight: weight,
+                    modifiedBy: adminEmail,
+                    modifiedAt: now
+                });
+
+                // Propagate the corrected weight onto the player's own record
+                // (source of truth for Team Dashboard) and recompute/sync their
+                // weight category — including brackets, when it's safe to.
+                // Never let this secondary step block the edit from being saved.
+                let msg = 'First Check saved.';
+                try {
+                    const propagation = await WEIGH_CHECK_SYNC.applyWeightCorrection(row, weight);
+                    row.registeredWeight = weight;
+                    row.weightCategory = propagation.weightCategory;
+                    if (propagation.categoryChanged) {
+                        msg += `\n\nWeight category updated: ${propagation.oldCategoryKey.split('-').pop()} → ${propagation.newCategoryKey.split('-').pop()}.`;
+                        if (propagation.bracketReport?.touched.length) {
+                            msg += `\nBracket(s) auto-updated: ${propagation.bracketReport.touched.join(', ')}.`;
+                        }
+                        if (propagation.bracketReport?.warnings.length) {
+                            msg += `\n\n⚠️ ${propagation.bracketReport.warnings.join('\n⚠️ ')}`;
+                        }
+                    }
+                } catch (propErr) {
+                    console.error('⚠️ First Check saved, but weight/category propagation failed:', propErr);
+                    msg += '\n\n⚠️ Could not update the player\'s weight category automatically — please check it manually.';
+                }
+
+                closeWeighCheckModal();
+                MODAL.success(msg);
+            } catch (err) {
+                console.error('Failed to save First Check:', err);
+                MODAL.error('Failed to save: ' + err.message);
+            } finally {
+                btn.disabled = false; btn.textContent = '💾 Save';
+            }
+        }
+        window.saveWeighCheckModal = saveWeighCheckModal;
+
+        // ── Reset (delete) ───────────────────────────────────────────────────
+        async function resetWeighCheck(playerId) {
+            const row = _rows.find(r => r.id === playerId);
+            if (!row) return;
+
+            const yes = await MODAL.showConfirm(`Reset the First Check for ${row.playerName}?\n\nThis clears the locked result — the referee will be able to submit a fresh one.`, '↩️ Reset First Check');
+            if (!yes) return;
+
+            promptAdminPassword(() => _resetWeighCheckConfirmed(playerId));
+        }
+
+        async function _resetWeighCheckConfirmed(playerId) {
+            const row = _rows.find(r => r.id === playerId);
+            if (!row) return;
+
+            const session = await verifyAdminSession();
+            if (!session.ok) { await warnStaleAdminSession(); return; }
+
+            try {
+                await dbRemove(dbRef(database, 'weighChecks/' + playerId));
+                MODAL.showToast(`${row.playerName}'s First Check was reset.`, 'info');
+            } catch (err) {
+                console.error('Failed to reset First Check:', err);
+                MODAL.error('Failed to reset: ' + err.message);
+            }
+        }
+        window.resetWeighCheck = resetWeighCheck;
+
+        document.getElementById('wcModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('wcModal')) closeWeighCheckModal();
+        });
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+        function formatTime(iso) {
+            if (!iso) return '—';
+            try {
+                return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            } catch (_) {
+                return '—';
+            }
+        }
+        function escHtml(str) {
+            return String(str || '').replace(/[&<>"']/g, ch => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[ch]));
+        }
+
+        window.alert = function (m) { return MODAL.showAlert(m); };
+        window.confirm = function (m) { return MODAL.showConfirm(m); };
+    </script>
+</body>
+</html>

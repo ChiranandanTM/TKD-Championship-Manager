@@ -95,18 +95,21 @@ const CATEGORY_LOGIC = {
     ]
   },
 
-  // Calculate age from DOB
+  // Competition age per international Taekwondo age-category rules:
+  // Competition Year − Birth Year, using ONLY the birth year. Deliberately
+  // ignores birth month/day and whether the birthday has occurred yet —
+  // e.g. a player born 29-Sep-2011 competing in 2025 is age 2025-2011=14
+  // (Cadet) even in January 2025, months before their birthday, not 13
+  // (Sub-Junior) as a calendar-exact-age calculation would give. This is
+  // the one function every category derivation in the app routes through
+  // (both registration forms call calculateAge() then getAgeCategory();
+  // brackets/filters/cards/exports all read the ageCategory value that was
+  // stored on the player record at that time, never recompute it
+  // themselves) — fixing it here is the complete, app-wide fix.
   calculateAge(dob) {
     const birthDate = new Date(dob);
-    const today = new Date();
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    
-    return age;
+    const competitionYear = new Date().getFullYear();
+    return competitionYear - birthDate.getFullYear();
   },
 
   // Determine age category

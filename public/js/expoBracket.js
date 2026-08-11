@@ -23,8 +23,12 @@ const EXPO_BRACKET = {
   categoriesRenderRequestId: 0,
   _initialized: false,
   _liveCourtNumber: null, // court this session registered live presence under, if any
+  _lockedCourtNumber: null, // court that currently holds this session's exclusive bracketLocks/expo claim, if any
   bracketListener: null,
   categoriesListener: null,
+  editMode: false,        // true while the Bracket Editor is open for currentCategory
+  _editDraft: null,       // { activePlayers, byePool, hadStartedMatches } — edit-mode working copy
+  _editPwModalDiv: null,  // DOM node for the edit-mode password prompt, if open
 
   // Initialize the Expo system (called lazily the first time the Expo tab is opened)
   async init() {
@@ -246,12 +250,51 @@ const EXPO_BRACKET = {
     const renderRequestId = ++this.categoriesRenderRequestId;
 
     try {
+      // Load-bearing for the whole categories list — stays outside any
+      // try/catch that would swallow it silently.
       const bracketsSnap = await dbGet(dbRef(database, 'expoBrackets'));
       const allBrackets = bracketsSnap.exists() ? bracketsSnap.val() : {};
+
+      // Who (if anyone) currently holds each category's exclusive court
+      // lock — purely cosmetic, so a failure here must never take down the
+      // rest of the categories list.
+      let allLocks = {};
+      try {
+        const locksSnap = await dbGet(dbRef(database, 'bracketLocks/expo'));
+        allLocks = locksSnap.exists() ? locksSnap.val() : {};
+      } catch (lockErr) {
+        console.warn('⚠️ Could not read Expo bracket locks (non-fatal — "Opened by" info unavailable):', lockErr.message);
+      }
+
+      // Referee court-assignment gate — admin/judge sessions are unaffected
+      // (see bracket.js's identical block for the full explanation). Fail
+      // closed (show nothing) for referees if this read itself fails.
+      const role = sessionStorage.getItem('userRole');
+      const isReferee = role === 'referee';
+      const myCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+      let allAssignments = {};
+      try {
+        const assignSnap = await dbGet(dbRef(database, 'bracketAssignments/expo'));
+        allAssignments = assignSnap.exists() ? assignSnap.val() : {};
+      } catch (assignErr) {
+        console.warn('⚠️ Could not read Expo bracket assignments:', assignErr.message);
+        if (isReferee) {
+          if (renderRequestId !== this.categoriesRenderRequestId) return;
+          container.innerHTML = '<div class="category-empty-state">Could not load your assigned brackets — please check your connection and try again.</div>';
+          return;
+        }
+      }
 
       if (renderRequestId !== this.categoriesRenderRequestId) return;
 
       const cards = Object.keys(this.categories).map(key => {
+        if (isReferee) {
+          const assignment = allAssignments[key];
+          if (!assignment || String(assignment.courtNumber).trim() !== myCourt) {
+            return null;
+          }
+        }
+
         const cat = this.categories[key];
         const playerCount = cat.players.length;
         const bracketData = allBrackets[key];
@@ -280,13 +323,21 @@ const EXPO_BRACKET = {
         else if (status === 'Live') statusColor = 'var(--warning-orange)';
         else if (status === 'Pending') statusColor = 'var(--accent-cyan)';
 
+        // Only shown while Live — whichever court currently holds the
+        // exclusive lock on this category (see _acquireBracketLock).
+        const lock = allLocks[key];
+        const courtLine = (status === 'Live' && lock && lock.courtNumber)
+          ? `<p class="court-label" style="margin:2px 0 0;font-size:0.85rem;color:var(--warning-orange);font-weight:700;">Opened by: Court ${lock.courtNumber}</p>`
+          : '';
+
         return `
           <div class="category-card" onclick="EXPO_BRACKET.openCategory('${key}')">
             <h3>${cat.gender} ${cat.ageCategory}</h3>
             <p class="weight-label">${cat.weightCategory}</p>
             <p class="player-count">${playerCount} Player${playerCount !== 1 ? 's' : ''}</p>
             <div style="margin: 12px 0; padding: 8px; background: rgba(255, 255, 255, 0.05); border-radius: 6px; text-align: center;">
-              <span style="color: ${statusColor}; font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px;">${status === 'Live' ? '🔴 ' : ''}${status === 'Completed' ? '✅ ' : ''}${status === 'Pending' ? '⏳ ' : ''}${status}</span>
+              <span style="color: ${statusColor}; font-weight: 700; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.5px;">${status === 'Live' ? '🔴 ' : ''}${status === 'Completed' ? '✅ ' : ''}${status === 'Pending' ? '🟡 ' : ''}${status}</span>
+              ${courtLine}
             </div>
             <button class="btn-primary">View Expo Bracket</button>
           </div>
@@ -377,6 +428,17 @@ const EXPO_BRACKET = {
       // Only re-render if the bracket actually changed
       if (JSON.stringify(this.currentBracket) !== JSON.stringify(rawBracket)) {
         this.currentBracket = rawBracket;
+        // While the Bracket Editor is open, do NOT re-render over the
+        // admin's in-progress drag session — a concurrent change from
+        // another court/device would otherwise wipe out unsaved edits. The
+        // editor's own draft is independent of currentBracket until Save, so
+        // it stays intact; the fresh data is picked up next time
+        // renderBracket() runs (edit mode exit, or the next real update).
+        // Mirrors bracket.js's identical guard.
+        if (this.editMode) {
+          console.log('🔄 Expo bracket updated from Firebase (edit mode active — render deferred)');
+          return;
+        }
         console.log('🔄 Expo bracket updated from Firebase - re-rendering');
         this.renderBracket();
       }
@@ -395,18 +457,51 @@ const EXPO_BRACKET = {
   // Real-time listener on the expoBrackets node so ALL users see status
   // changes (Live / Pending / Completed) in the Expo categories list without
   // refreshing — mirrors bracket.js's setupCategoriesListener.
+  //
+  // ALSO listens on expoPlayers/ — same reasoning as bracket.js: the category
+  // cards are grouped by each player's CURRENT weightCategory
+  // (categorizePlayers()), computed once at page load. Without this, a
+  // weight correction made elsewhere never gets picked up by an already-open
+  // Bracket page, and the player keeps showing under their OLD Expo category
+  // card until a manual reload — which looks like duplication when compared
+  // against a fresh view. See bracket.js's setupCategoriesListener for the
+  // full explanation of the debounce/recategorize coalescing below.
   setupCategoriesListener() {
     this.stopCategoriesListener();
     let debounceTimer = null;
-    const bracketsRef = dbRef(database, 'expoBrackets');
-    this.categoriesListener = dbOnValue(bracketsRef, () => {
+    let needsRecategorize = false;
+
+    const scheduleRefresh = (recategorize) => {
+      if (recategorize) needsRecategorize = true;
       // Skip if the user is currently inside the bracket view
       const container = document.getElementById('expoBracketContainer');
       if (container && container.style.display === 'block') return;
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => this.renderCategories(), 500);
+      debounceTimer = setTimeout(async () => {
+        if (needsRecategorize) {
+          await this.loadPlayers();
+          this.categorizePlayers();
+          needsRecategorize = false;
+        }
+        this.renderCategories();
+      }, 500);
+    };
+
+    const unsubBrackets = dbOnValue(dbRef(database, 'expoBrackets'), () => scheduleRefresh(false));
+    const unsubPlayers = dbOnValue(dbRef(database, 'expoPlayers'), () => scheduleRefresh(true));
+    // Court-lock changes (a court claiming/releasing a category) never
+    // change who's registered in it, so this never needs a recategorize —
+    // just re-render so the "Opened by: Court X" line updates live.
+    const unsubLocks = dbOnValue(dbRef(database, 'bracketLocks/expo'), () => scheduleRefresh(false), (err) => {
+      console.warn('⚠️ Expo bracketLocks listener error (non-fatal):', err.message);
     });
-    console.log('✅ Expo categories real-time listener active');
+    // Assignment changes — see bracket.js's identical listener for the
+    // full explanation (keeps a referee's list live without a manual refresh).
+    const unsubAssignments = dbOnValue(dbRef(database, 'bracketAssignments/expo'), () => scheduleRefresh(false), (err) => {
+      console.warn('⚠️ Expo bracketAssignments listener error (non-fatal):', err.message);
+    });
+    this.categoriesListener = () => { unsubBrackets(); unsubPlayers(); unsubLocks(); unsubAssignments(); };
+    console.log('✅ Expo categories real-time listener active (expoBrackets + expoPlayers + locks + assignments)');
   },
 
   stopCategoriesListener() {
@@ -418,74 +513,129 @@ const EXPO_BRACKET = {
   },
 
   // ── Open / close a category ────────────────────────────────────────────
+  // Reliability notes — mirrors bracket.js's Official openCategory() exactly
+  // (same intermittent "won't open" failure, same fix): a re-entrancy guard
+  // against double-taps/slow-device double-fires, stopCategoriesListener()
+  // moved to run BEFORE the slower Firebase work (closing the race window
+  // where a concurrent players/ update rebuilds this.categories out from
+  // under this.categories[this.currentCategory] by the time renderBracket()
+  // reads it), a visible loading state, and a top-level try/catch so any
+  // Firebase failure shows a clear message and returns to the categories
+  // list instead of an unhandled rejection / blank screen.
   async openCategory(categoryKey) {
-    this.currentCategory = categoryKey;
-    const category = this.categories[categoryKey];
-    if (!category) {
-      if (typeof MODAL !== 'undefined') MODAL.error('Category not found');
-      return;
-    }
+    if (this._openingCategory) return;
+    this._openingCategory = true;
 
-    const snap = await dbGet(dbRef(database, `expoBrackets/${categoryKey}`));
+    try {
+      const category = this.categories[categoryKey];
+      if (!category) {
+        if (typeof MODAL !== 'undefined') MODAL.error('Category not found');
+        return;
+      }
 
-    if (snap.exists()) {
-      this.currentBracket = snap.val();
-      // If the roster changed and nothing has started yet, regenerate matches
-      const anyStarted = (this.currentBracket.matches || []).some(m => m.status !== 'pending');
-      if (!anyStarted && this.currentBracket.playerCount !== category.players.length) {
+      if (!(await this._assertCategoryAssignedToMe(categoryKey))) {
+        return;
+      }
+
+      this.currentCategory = categoryKey;
+
+      if (!(await this._tryClaimCourtLock(categoryKey))) {
+        this.currentCategory = null;
+        return;
+      }
+
+      // Stop the categories-level listener BEFORE any slow work — see notes above.
+      this.stopCategoriesListener();
+      this._showBracketLoading();
+
+      const snap = await dbGet(dbRef(database, `expoBrackets/${categoryKey}`));
+
+      if (snap.exists()) {
+        this.currentBracket = snap.val();
+        // If the roster changed and nothing has started yet, regenerate matches
+        const anyStarted = (this.currentBracket.matches || []).some(m => m.status !== 'pending');
+        if (!anyStarted && this.currentBracket.playerCount !== category.players.length) {
+          this.currentBracket = this.createExpoBracket(category.players);
+          await this.saveBracket(categoryKey, this.currentBracket);
+        }
+      } else {
         this.currentBracket = this.createExpoBracket(category.players);
         await this.saveBracket(categoryKey, this.currentBracket);
       }
-    } else {
-      this.currentBracket = this.createExpoBracket(category.players);
-      await this.saveBracket(categoryKey, this.currentBracket);
-    }
 
-    // Mark as live the moment ANY referee opens this bracket — even before a
-    // match is started — so other courts' categories list shows "Live" in
-    // real time (matches bracket.js's Official behavior exactly).
-    if (this.currentBracket.status === 'complete') {
-      console.log(`✅ Expo bracket ${categoryKey} is COMPLETED`);
-    } else {
-      this.currentBracket.status = 'live';
-      await this.saveBracket(categoryKey, this.currentBracket);
-      console.log(`📍 Expo bracket ${categoryKey} marked as LIVE`);
-    }
+      // Mark as live the moment ANY referee opens this bracket — even before a
+      // match is started — so other courts' categories list shows "Live" in
+      // real time (matches bracket.js's Official behavior exactly).
+      if (this.currentBracket.status === 'complete') {
+        console.log(`✅ Expo bracket ${categoryKey} is COMPLETED`);
+      } else {
+        this.currentBracket.status = 'live';
+        await this.saveBracket(categoryKey, this.currentBracket);
+        console.log(`📍 Expo bracket ${categoryKey} marked as LIVE`);
+      }
 
+      // Start real-time sync for this specific bracket (multi-court sync,
+      // matching the Official bracket's behavior).
+      this.setupBracketListeners(categoryKey);
+
+      // Bracket is now open for this referee's court — mark it active so the
+      // Live Matches page shows the Upcoming Match immediately, even before any
+      // score/timer starts. If a match is already live on this court (referee
+      // resumed/refreshed mid-match), restore it as the active match right away.
+      if (typeof LIVE_PRESENCE !== 'undefined') {
+        const assignedCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+        if (assignedCourt) {
+          let resumedMatchId = null;
+          (this.currentBracket.matches || []).forEach(match => {
+            if (match && match.status === 'live' && String(match.courtNumber) === assignedCourt) {
+              resumedMatchId = match.matchId;
+            }
+          });
+          this._liveCourtNumber = assignedCourt;
+          LIVE_PRESENCE.setCourtState(assignedCourt, {
+            categoryKey,
+            matchType: 'expo',
+            activeMatchId: resumedMatchId
+          });
+        }
+      }
+
+      this.renderBracket();
+    } catch (error) {
+      console.error('❌ Error opening Expo bracket:', error);
+      this.stopBracketListeners(); // in case setupBracketListeners() ran before a later step failed
+      this.currentCategory = null;
+      this.currentBracket = null;
+      this._hideBracketLoading();
+      this.setupCategoriesListener();
+      const msg = 'Could not open this bracket — please check your connection and try again.';
+      if (typeof MODAL !== 'undefined') MODAL.error(msg);
+      else alert(msg);
+    } finally {
+      this._openingCategory = false;
+    }
+  },
+
+  _showBracketLoading() {
     const listEl = document.getElementById('expoCategoriesList');
     const containerEl = document.getElementById('expoBracketContainer');
     if (listEl) listEl.style.display = 'none';
-    if (containerEl) containerEl.style.display = 'block';
-
-    // Pause the categories-level listener — we no longer need it while inside
-    // the bracket view — and start real-time sync for this specific bracket
-    // (multi-court sync, matching the Official bracket's behavior).
-    this.stopCategoriesListener();
-    this.setupBracketListeners(categoryKey);
-
-    // Bracket is now open for this referee's court — mark it active so the
-    // Live Matches page shows the Upcoming Match immediately, even before any
-    // score/timer starts. If a match is already live on this court (referee
-    // resumed/refreshed mid-match), restore it as the active match right away.
-    if (typeof LIVE_PRESENCE !== 'undefined') {
-      const assignedCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
-      if (assignedCourt) {
-        let resumedMatchId = null;
-        (this.currentBracket.matches || []).forEach(match => {
-          if (match && match.status === 'live' && String(match.courtNumber) === assignedCourt) {
-            resumedMatchId = match.matchId;
-          }
-        });
-        this._liveCourtNumber = assignedCourt;
-        LIVE_PRESENCE.setCourtState(assignedCourt, {
-          categoryKey,
-          matchType: 'expo',
-          activeMatchId: resumedMatchId
-        });
-      }
+    if (containerEl) {
+      containerEl.style.display = 'block';
+      containerEl.innerHTML = `
+        <div style="text-align:center;padding:80px 20px;">
+          <div class="spinner"></div>
+          <p>Loading bracket…</p>
+        </div>
+      `;
     }
+  },
 
-    this.renderBracket();
+  _hideBracketLoading() {
+    const listEl = document.getElementById('expoCategoriesList');
+    const containerEl = document.getElementById('expoBracketContainer');
+    if (containerEl) containerEl.style.display = 'none';
+    if (listEl) listEl.style.display = 'block';
   },
 
   async closeCategory() {
@@ -497,6 +647,14 @@ const EXPO_BRACKET = {
     if (typeof LIVE_PRESENCE !== 'undefined' && this._liveCourtNumber) {
       LIVE_PRESENCE.closeCourt(this._liveCourtNumber);
       this._liveCourtNumber = null;
+    }
+
+    // Release this court's exclusive claim on the category — whether the
+    // bracket ended up Complete or reverted to Pending below, nobody should
+    // still be "holding" it once this court has left.
+    if (this._lockedCourtNumber && this.currentCategory) {
+      await this._releaseBracketLock(this.currentCategory, this._lockedCourtNumber);
+      this._lockedCourtNumber = null;
     }
 
     // Revert "Live" back to "Pending" for other courts' categories list once
@@ -628,10 +786,19 @@ const EXPO_BRACKET = {
   renderBracket() {
     const container = document.getElementById('expoBracketContainer');
     if (!container || !this.currentBracket) return;
+    // this.categories can be transiently rebuilt by the categories-level
+    // expoPlayers/ listener (categorizePlayers() does `this.categories = {}`
+    // before repopulating) — openCategory() now stops that listener before
+    // this ever runs, but this guard is defense-in-depth so a stale/missing
+    // entry degrades gracefully instead of throwing.
     const category = this.categories[this.currentCategory];
+    const categoryTitle = category
+      ? `${category.gender} ${category.ageCategory} — ${category.weightCategory} (Expo)`
+      : `${this.currentCategory || ''} (Expo)`;
     const matches = this.currentBracket.matches || [];
     const byes = this.currentBracket.byes || [];
     const isComplete = this.currentBracket.status === 'complete';
+    const canEdit = this._canEditBracket() && !!category && category.players.length > 1;
 
     const matchesHtml = matches.map((m, idx) => this.renderMatch(m, idx + 1)).join('');
     const byesHtml = byes.map(p => `
@@ -650,14 +817,17 @@ const EXPO_BRACKET = {
 
     container.innerHTML = `
       <div class="bracket-header">
-        <h2>${category.gender} ${category.ageCategory} — ${category.weightCategory} (Expo)</h2>
         <button class="btn-back" onclick="EXPO_BRACKET.closeCategory()">← Back to Categories</button>
-        <button class="btn-secondary" onclick="EXPO_BRACKET.downloadFixturePDF()">📄 Download Fixture PDF</button>
-        <button class="btn-secondary" onclick="EXPO_BRACKET.downloadPlayerListExcel()">📋 Download Player List (Excel)</button>
-        ${isComplete ? `
-          <button class="btn-secondary" onclick="EXPO_BRACKET.exportResultsToExcel()">📥 Export Results (Excel)</button>
-          <button class="btn-secondary" onclick="EXPO_BRACKET.downloadResultsPDF()">📄 Download Results (PDF)</button>
-        ` : ''}
+        <h2 style="flex:1 1 320px;min-width:280px;word-break:normal;">${categoryTitle}</h2>
+        <div style="display:flex;gap:10px;align-items:center;">
+          ${canEdit ? `<button class="btn-secondary edit-bracket-btn" onclick="EXPO_BRACKET.promptEditPassword('${this.currentCategory}')" style="padding:8px 18px;font-size:0.95rem;border:1.5px dashed var(--border-gold);color:var(--border-gold);">✏️ Edit Bracket</button>` : ''}
+          <button class="btn-secondary" onclick="EXPO_BRACKET.downloadFixturePDF()">📄 Download Fixture PDF</button>
+          <button class="btn-secondary" onclick="EXPO_BRACKET.downloadPlayerListExcel()">📋 Download Player List (Excel)</button>
+          ${isComplete ? `
+            <button class="btn-secondary" onclick="EXPO_BRACKET.exportResultsToExcel()">📥 Export Results (Excel)</button>
+            <button class="btn-secondary" onclick="EXPO_BRACKET.downloadResultsPDF()">📄 Download Results (PDF)</button>
+          ` : ''}
+        </div>
       </div>
       <div class="matches" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px;">
         ${matchesHtml}
@@ -746,6 +916,468 @@ const EXPO_BRACKET = {
             <span class="eliminated-badge">🥈 Silver: ${match.winner === p1.id ? p2.playerName : p1.playerName}</span>
           </div>` : ''}
       </div>`;
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BRACKET EDITOR — password-gated drag-and-drop editing
+  //
+  // Mirrors bracket.js's Official Bracket Editor exactly (same password
+  // gate, same drag-and-drop mechanics, same validation, same "edit a
+  // lightweight draft, never touch this.currentBracket until Save" design),
+  // adapted for Expo's flat schema: there are no rounds here — every player
+  // competes in exactly one match — so "Round 1" becomes simply "Matches",
+  // and the bye pool maps directly onto bracket.byes instead of a per-round
+  // bye list. Editing works on a lightweight in-memory draft (this._editDraft),
+  // never touching this.currentBracket until Save. Cancel just discards the
+  // draft. Save rebuilds matches/byes from the draft and writes them through
+  // the existing saveBracket() path unchanged, so every other module (Live
+  // Matches, referee dashboard, medal calculation, PDF/Excel export) keeps
+  // reading expoBrackets/{categoryKey} exactly as before.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Admin/Judge only — referees can view Expo brackets on this same page but
+  // never get an Edit Bracket button (mirrors bracket.js's identical gate).
+  _canEditBracket() {
+    const role = sessionStorage.getItem('userRole');
+    return role === 'admin' || role === 'judge';
+  },
+
+  // Entry point: password-gate before flipping into edit mode. Reuses the
+  // admin's own real Firebase Auth password via reauthentication — no new
+  // secret to store or manage, and a wrong password leaves the bracket
+  // exactly as read-only as before.
+  promptEditPassword(categoryKey) {
+    if (typeof auth === 'undefined' || !auth.currentUser || !auth.currentUser.email) {
+      MODAL.error('You must be signed in as an admin or judge to edit the bracket.');
+      return;
+    }
+    const modalHTML = `
+      <div class="custom-modal-overlay" onclick="if(event.target===this) EXPO_BRACKET._closeEditPasswordModal()">
+        <div class="custom-modal-content modal-warning">
+          <div class="custom-modal-header">
+            <h2>🔒 Confirm Password</h2>
+            <button class="custom-modal-close" onclick="EXPO_BRACKET._closeEditPasswordModal()">✕</button>
+          </div>
+          <div class="custom-modal-body">
+            <p>Enter your admin/judge password to enable Bracket Edit Mode for this category.</p>
+            <div style="position:relative;margin-top:10px;">
+              <input type="password" id="expoEditPwInput" autocomplete="current-password"
+                     style="width:100%;box-sizing:border-box;padding:10px 40px 10px 12px;border-radius:8px;border:1.5px solid var(--accent-cyan);background:rgba(0,0,0,0.45);color:var(--text-white);font-size:0.95rem;" />
+              <button type="button" onclick="EXPO_BRACKET._toggleEditPw(this)"
+                      style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-gray);cursor:pointer;padding:4px;display:flex;">${this._eyeOpenSvg()}</button>
+            </div>
+            <div id="expoEditPwError" style="color:var(--accent-red);font-size:0.85rem;margin-top:8px;display:none;"></div>
+          </div>
+          <div class="custom-modal-footer">
+            <button class="btn-secondary" onclick="EXPO_BRACKET._closeEditPasswordModal()">Cancel</button>
+            <button class="btn-primary" onclick="EXPO_BRACKET._submitEditPassword('${categoryKey}')">Unlock Editing</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const div = document.createElement('div');
+    div.innerHTML = modalHTML;
+    document.body.appendChild(div);
+    this._editPwModalDiv = div;
+    setTimeout(() => {
+      const input = document.getElementById('expoEditPwInput');
+      if (!input) return;
+      input.focus();
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this._submitEditPassword(categoryKey);
+      });
+    }, 50);
+  },
+
+  _eyeOpenSvg() {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+  },
+  _eyeClosedSvg() {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+  },
+  _toggleEditPw(btn) {
+    const input = document.getElementById('expoEditPwInput');
+    if (!input) return;
+    const isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    btn.innerHTML = isHidden ? this._eyeClosedSvg() : this._eyeOpenSvg();
+  },
+
+  _closeEditPasswordModal() {
+    if (this._editPwModalDiv) {
+      this._editPwModalDiv.remove();
+      this._editPwModalDiv = null;
+    }
+  },
+
+  async _submitEditPassword(categoryKey) {
+    const input = document.getElementById('expoEditPwInput');
+    const errorDiv = document.getElementById('expoEditPwError');
+    const password = input ? input.value : '';
+    if (!password) {
+      if (errorDiv) { errorDiv.textContent = 'Please enter your password.'; errorDiv.style.display = 'block'; }
+      return;
+    }
+    try {
+      const credential = EmailAuthProvider.credential(auth.currentUser.email, password);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      this._closeEditPasswordModal();
+      this.enterEditMode(categoryKey);
+    } catch (err) {
+      console.warn('Edit-mode password check failed:', err.code || err.message);
+      if (errorDiv) {
+        errorDiv.textContent = 'Incorrect password. Bracket remains read-only.';
+        errorDiv.style.display = 'block';
+      }
+      if (input) { input.value = ''; input.focus(); }
+    }
+  },
+
+  // Build the editable draft from the currently saved bracket's matches/byes
+  // and switch into edit-mode rendering.
+  enterEditMode(categoryKey) {
+    const bracket = this.currentBracket;
+    const category = this.categories[categoryKey];
+    if (!bracket || !category) return;
+
+    const matches = bracket.matches || [];
+    const activePlayers = [];
+    matches.forEach(m => {
+      if (m.player1) activePlayers.push(m.player1);
+      if (m.player2) activePlayers.push(m.player2);
+    });
+    const byePool = (bracket.byes || []).map(p => ({ ...p }));
+
+    // Reconcile against the CURRENT roster: keep this bracket's existing
+    // arrangement as the starting point, but if players were added/removed
+    // since it was last saved, drop anyone no longer registered and add any
+    // newly-registered player into the bye pool (least disruptive spot — the
+    // admin can freely drag them into a match).
+    const seenIds = new Set();
+    const rosterIds = new Set(category.players.map(p => p.id));
+    const filteredActive = [];
+    activePlayers.forEach(p => {
+      if (p && rosterIds.has(p.id) && !seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        filteredActive.push(p);
+      }
+    });
+    const filteredBye = [];
+    byePool.forEach(p => {
+      if (p && rosterIds.has(p.id) && !seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        filteredBye.push(p);
+      }
+    });
+    category.players.forEach(p => {
+      if (!seenIds.has(p.id)) {
+        seenIds.add(p.id);
+        filteredBye.push(this.compressPlayer(p));
+      }
+    });
+
+    this._editDraft = {
+      activePlayers: filteredActive,
+      byePool: filteredBye,
+      // Untouched iff no match has ever recorded a winner or left 'pending' —
+      // same signal weigh-check-sync.js's _expoBracketIsUntouched() uses.
+      hadStartedMatches: matches.some(m => m.winner || (m.status && m.status !== 'pending')),
+      // Extra fully-empty match slots the admin has added via "+ Add Match"
+      // (beyond what activePlayers.length implies) so a BYE-pool player can
+      // be dragged back into a real match even when every existing match
+      // slot is already full.
+      extraEmptyMatches: 0
+    };
+    this.editMode = true;
+    this.renderEditBracket();
+  },
+
+  // Full-screen edit-mode render — only the match list + the bye pool are
+  // shown; everything is driven from this._editDraft, not this.currentBracket.
+  renderEditBracket() {
+    const container = document.getElementById('expoBracketContainer');
+    if (!container || !this._editDraft) return;
+    const draft = this._editDraft;
+    const cat = this.categories[this.currentCategory];
+
+    const totalPlayers = draft.activePlayers.length + draft.byePool.length;
+    const matchCount = Math.ceil(draft.activePlayers.length / 2) + (draft.extraEmptyMatches || 0);
+
+    let html = `
+      <div class="bracket-header edit-mode-header">
+        <button class="btn-back" onclick="EXPO_BRACKET.cancelEditBracket()">← Cancel</button>
+        <h2 style="flex:1 1 320px;min-width:280px;word-break:normal;">🔧 EDIT MODE — ${cat.gender} ${cat.ageCategory} - ${cat.weightCategory} (Expo)</h2>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <span class="edit-mode-counts">${draft.activePlayers.length} in matches · ${draft.byePool.length} bye${draft.byePool.length === 1 ? '' : 's'} · ${totalPlayers} total</span>
+          <button class="btn-secondary" onclick="EXPO_BRACKET.cancelEditBracket()">Cancel</button>
+          <button class="btn-primary edit-save-btn" onclick="EXPO_BRACKET.saveEditBracket()">💾 Save Bracket</button>
+        </div>
+      </div>
+      <div class="edit-mode-banner">🔧 EDIT MODE — drag a player onto another slot to swap or replace them, or drag them into the BYE pool. Nothing is saved until you click Save.</div>
+      <div class="bracket-rounds">
+        <div class="round edit-round">
+          <h3 class="round-title">Matches (editable)</h3>
+          <div class="matches">
+    `;
+
+    for (let i = 0; i < matchCount; i++) {
+      html += this.renderEditMatchCard(draft, i);
+    }
+
+    html += `
+            <button type="button" class="btn-secondary edit-add-match-btn" onclick="EXPO_BRACKET.addEmptyEditMatch()">➕ Add Match</button>
+          </div>
+        </div>
+      </div>
+      ${this.renderEditByePool(draft)}
+    `;
+
+    container.innerHTML = html;
+    document.getElementById('expoCategoriesList').style.display = 'none';
+    container.style.display = 'block';
+  },
+
+  renderEditMatchCard(draft, matchIndex) {
+    const i1 = matchIndex * 2;
+    const i2 = matchIndex * 2 + 1;
+    const p1 = draft.activePlayers[i1] || null;
+    const p2 = draft.activePlayers[i2] || null;
+    const sameTeam = p1 && p2 && this.areSameTeam(p1, p2);
+
+    const slot = (player, idx, side) => {
+      if (player) {
+        return `
+          <div class="player player-${side} edit-slot"
+               draggable="true"
+               ondragstart="EXPO_BRACKET.editDragStart(event,'active',${idx})"
+               ondragover="EXPO_BRACKET.editDragOver(event)"
+               ondragleave="EXPO_BRACKET.editDragLeave(event)"
+               ondrop="EXPO_BRACKET.editDrop(event,'active',${idx})">
+            <span class="player-name">${player.playerName}</span>
+            <span class="player-center">${player.centerName || ''}</span>
+          </div>
+        `;
+      }
+      return `
+        <div class="player edit-slot drop-target"
+             ondragover="EXPO_BRACKET.editDragOver(event)"
+             ondragleave="EXPO_BRACKET.editDragLeave(event)"
+             ondrop="EXPO_BRACKET.editDrop(event,'active',${idx})">
+          <span class="player-center" style="opacity:.6;">Empty — drop a player here</span>
+        </div>
+      `;
+    };
+
+    return `
+      <div class="match pending edit-match${sameTeam ? ' same-team-match' : ''}">
+        <span class="match-number-badge">Match ${matchIndex + 1}</span>
+        <div class="match-players">
+          ${slot(p1, i1, 'blue')}
+          <div class="vs">VS</div>
+          ${slot(p2, i2, 'red')}
+        </div>
+        ${sameTeam ? `<div class="edit-warning">⚠️ Same team — allowed, but flagged</div>` : ''}
+      </div>
+    `;
+  },
+
+  renderEditByePool(draft) {
+    const chips = draft.byePool.map((p, idx) => `
+      <div class="bye-chip"
+           draggable="true"
+           ondragstart="EXPO_BRACKET.editDragStart(event,'bye',${idx})"
+           ondragover="EXPO_BRACKET.editDragOver(event)"
+           ondragleave="EXPO_BRACKET.editDragLeave(event)"
+           ondrop="EXPO_BRACKET.editDrop(event,'bye',${idx})">
+        <span class="player-name">${p.playerName}</span>
+        <span class="player-center">${p.centerName || ''}</span>
+      </div>
+    `).join('');
+
+    return `
+      <div class="edit-bye-pool"
+           ondragover="EXPO_BRACKET.editDragOver(event)"
+           ondragleave="EXPO_BRACKET.editDragLeave(event)"
+           ondrop="EXPO_BRACKET.editDrop(event,'bye',null)">
+        <h3 class="round-title">🎫 BYE Pool — ${draft.byePool.length} player${draft.byePool.length === 1 ? '' : 's'} (drag here to give a walkover Gold)</h3>
+        <div class="bye-pool-chips">
+          ${chips || '<div class="bye-pool-empty">Drag a player here to assign a bye</div>'}
+        </div>
+      </div>
+    `;
+  },
+
+  // Adds one extra fully-empty match slot after the last match so a
+  // BYE-pool player can be dragged back into a real match even when every
+  // existing match slot is already occupied. Purely a draft/UI addition —
+  // it isn't persisted unless a player actually gets dropped into it.
+  addEmptyEditMatch() {
+    const draft = this._editDraft;
+    if (!draft) return;
+    draft.extraEmptyMatches = (draft.extraEmptyMatches || 0) + 1;
+    this.renderEditBracket();
+  },
+
+  editDragStart(event, zone, index) {
+    event.dataTransfer.setData('editZone', zone);
+    event.dataTransfer.setData('editIndex', String(index));
+    event.dataTransfer.effectAllowed = 'move';
+  },
+
+  editDragOver(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.add('drag-over');
+  },
+
+  editDragLeave(event) {
+    event.currentTarget.classList.remove('drag-over');
+  },
+
+  // Swap-or-move: dropping onto an OCCUPIED slot swaps the two players in
+  // place (covers "swap two players" and "replace one player with
+  // another"); dropping onto an empty trailing match slot or the bye pool's
+  // open background moves the player there instead. Because every chip
+  // always has exactly one array "home" and moves/swaps never create or
+  // delete an entry, duplicate/missing players are structurally impossible
+  // from dragging alone.
+  editDrop(event, targetZone, targetIndex) {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.classList.remove('drag-over');
+
+    const draft = this._editDraft;
+    if (!draft) return;
+
+    const srcZone = event.dataTransfer.getData('editZone');
+    const srcIndexRaw = event.dataTransfer.getData('editIndex');
+    if (!srcZone || srcIndexRaw === '') return;
+    const srcIndex = parseInt(srcIndexRaw, 10);
+
+    const srcArr = srcZone === 'bye' ? draft.byePool : draft.activePlayers;
+    const dstArr = targetZone === 'bye' ? draft.byePool : draft.activePlayers;
+    if (isNaN(srcIndex) || srcIndex < 0 || srcIndex >= srcArr.length) return;
+    if (srcZone === targetZone && srcIndex === targetIndex) return;
+
+    const movedPlayer = srcArr[srcIndex];
+
+    if (targetIndex === null || targetIndex === undefined || targetIndex >= dstArr.length) {
+      // Empty trailing slot or open pool background — move, no swap.
+      srcArr.splice(srcIndex, 1);
+      dstArr.push(movedPlayer);
+    } else if (srcZone === targetZone) {
+      const targetPlayer = srcArr[targetIndex];
+      srcArr[srcIndex] = targetPlayer;
+      srcArr[targetIndex] = movedPlayer;
+    } else {
+      const targetPlayer = dstArr[targetIndex];
+      dstArr[targetIndex] = movedPlayer;
+      srcArr[srcIndex] = targetPlayer;
+    }
+
+    this.renderEditBracket();
+  },
+
+  async cancelEditBracket() {
+    const draft = this._editDraft;
+    if (draft) {
+      const originalMatches = this.currentBracket.matches || [];
+      const originalActiveIds = [];
+      originalMatches.forEach(m => {
+        if (m.player1) originalActiveIds.push(m.player1.id);
+        if (m.player2) originalActiveIds.push(m.player2.id);
+      });
+      const originalByeIds = (this.currentBracket.byes || []).map(p => p.id).sort();
+      const draftActiveIds = draft.activePlayers.map(p => p.id);
+      const draftByeIds = draft.byePool.map(p => p.id).sort();
+
+      const changed = JSON.stringify(originalActiveIds) !== JSON.stringify(draftActiveIds) ||
+        JSON.stringify(originalByeIds) !== JSON.stringify(draftByeIds);
+
+      if (changed) {
+        const confirmed = await MODAL.showConfirm('Discard unsaved bracket changes?');
+        if (!confirmed) return;
+      }
+    }
+
+    this.editMode = false;
+    this._editDraft = null;
+    this.renderBracket();
+  },
+
+  async saveEditBracket() {
+    const draft = this._editDraft;
+    if (!draft) return;
+
+    const category = this.categories[this.currentCategory];
+    const totalPlayers = draft.activePlayers.length + draft.byePool.length;
+
+    // ── VALIDATION ────────────────────────────────────────────────────
+    const allIds = [...draft.activePlayers.map(p => p.id), ...draft.byePool.map(p => p.id)];
+    const idSet = new Set(allIds);
+    if (idSet.size !== allIds.length) {
+      MODAL.warning('A player appears more than once in the bracket. Please fix before saving.');
+      return;
+    }
+    const missing = category.players.filter(p => !idSet.has(p.id));
+    if (missing.length > 0) {
+      MODAL.warning(`${missing.length} player(s) are missing from the bracket: ${missing.map(p => p.playerName).join(', ')}.`);
+      return;
+    }
+    if (totalPlayers !== category.players.length) {
+      MODAL.warning('The bracket player count does not match the category roster.');
+      return;
+    }
+    if (draft.activePlayers.length % 2 !== 0) {
+      MODAL.warning('An odd number of players are left in matches — move one more player to the BYE pool (or move one back out) before saving.');
+      return;
+    }
+    if (totalPlayers > 1 && draft.byePool.length >= totalPlayers) {
+      MODAL.warning('Every player cannot receive a bye — at least one real match is needed.');
+      return;
+    }
+
+    // ── WARN IF THIS DISCARDS RECORDED PROGRESS ─────────────────────────
+    if (draft.hadStartedMatches) {
+      const confirmed = await MODAL.showConfirm(
+        'This category already has match results recorded. Saving this edit will discard that progress and rebuild the matches from scratch. Continue?'
+      );
+      if (!confirmed) return;
+    }
+
+    // ── REBUILD MATCHES FROM THE DRAFT ──────────────────────────────────
+    const bracket = this.currentBracket;
+    const newMatches = [];
+    let matchCounter = 1;
+    for (let i = 0; i < draft.activePlayers.length; i += 2) {
+      newMatches.push({
+        matchId: `expo_m${matchCounter}`,
+        player1: draft.activePlayers[i],
+        player2: draft.activePlayers[i + 1],
+        status: 'pending',
+        winner: null,
+        courtNumber: null,
+        startTime: null,
+        endTime: null
+      });
+      matchCounter++;
+    }
+
+    bracket.matches = newMatches;
+    bracket.byes = draft.byePool;
+    bracket.playerCount = totalPlayers;
+    bracket.status = 'live';
+    bracket.manuallyEdited = true;
+    bracket.lastEditedAt = new Date().toISOString();
+    bracket.editedBy = (typeof auth !== 'undefined' && auth.currentUser && auth.currentUser.email) || 'unknown';
+
+    this.currentBracket = bracket;
+    this.editMode = false;
+    this._editDraft = null;
+
+    await this.saveBracket(this.currentCategory, this.currentBracket);
+    this.renderBracket();
+    MODAL.success('Bracket saved! This edited layout is now the official match list.');
   },
 
   // ── Medals / rankings ───────────────────────────────────────────────────
@@ -1257,7 +1889,114 @@ const EXPO_BRACKET = {
 
     const safeKey = this.currentCategory.replace(/[^a-zA-Z0-9]/g, '_');
     doc.save(`Expo_Fixture_${safeKey}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // BRACKET STATUS & COURT ASSIGNMENT — exclusive per-court locking
+  // Mirrors bracket.js's Official implementation exactly, using its own
+  // isolated node (bracketLocks/expo/{categoryKey}) so an Official and an
+  // Expo bracket that happen to share the same categoryKey string never
+  // collide with each other's lock. See bracket.js for the full design
+  // rationale (separate node so saveBracket()/archival need zero changes;
+  // admin/judge bypass; transaction-based claim to avoid a same-instant
+  // double-open race).
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Defense-in-depth court-assignment guard — mirrors bracket.js's
+  // _assertCategoryAssignedToMe() exactly (see there for the full
+  // rationale). Called before the lock claim in openCategory().
+  async _assertCategoryAssignedToMe(categoryKey) {
+    if (sessionStorage.getItem('userRole') !== 'referee') return true;
+    const myCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+    if (!myCourt) return true;
+
+    try {
+      const snap = await dbGet(dbRef(database, `bracketAssignments/expo/${categoryKey}`));
+      const assignment = snap.exists() ? snap.val() : null;
+      if (!assignment || String(assignment.courtNumber).trim() !== myCourt) {
+        const msg = 'This bracket is not assigned to your court.';
+        if (typeof MODAL !== 'undefined') MODAL.error(msg);
+        else alert(msg);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('⚠️ Could not verify Expo bracket assignment (blocking, fail-closed):', err.message);
+      const msg = 'Could not verify this bracket is assigned to you — please check your connection and try again.';
+      if (typeof MODAL !== 'undefined') MODAL.error(msg);
+      else alert(msg);
+      return false;
+    }
+  },
+
+  async _tryClaimCourtLock(categoryKey) {
+    // Gate on an ACTUAL referee session, not merely a non-empty courtNumber
+    // key — see bracket.js's _tryClaimCourtLock for the full explanation
+    // (a tab that was a referee earlier and then logged into admin/judge in
+    // the same tab without an explicit logout keeps its old courtNumber
+    // sitting in storage, since login pages only ever add keys and never
+    // sessionStorage.clear() first).
+    if (sessionStorage.getItem('userRole') !== 'referee') return true;
+    const assignedCourt = String(sessionStorage.getItem('courtNumber') || '').trim();
+    if (!assignedCourt) return true;
+
+    const lock = await this._acquireBracketLock(categoryKey, assignedCourt);
+    if (!lock.granted) {
+      const msg = `This bracket is currently being managed by Court ${lock.courtNumber}.`;
+      if (typeof MODAL !== 'undefined') MODAL.error(msg);
+      else alert(msg);
+      return false;
+    }
+    this._lockedCourtNumber = assignedCourt;
+    return true;
+  },
+
+  async _acquireBracketLock(categoryKey, courtNumber) {
+    if (typeof dbRunTransaction !== 'function') {
+      console.warn('⚠️ dbRunTransaction unavailable — Expo bracket lock not enforced this session.');
+      return { granted: true };
+    }
+    try {
+      const lockRef = dbRef(database, `bracketLocks/expo/${categoryKey}`);
+      const result = await dbRunTransaction(lockRef, (current) => {
+        if (current && current.courtNumber && current.courtNumber !== courtNumber) {
+          return current; // someone else already holds it — commit a no-op, don't overwrite
+        }
+        return { courtNumber, openedAt: Date.now() };
+      });
+      const finalVal = result.snapshot.val();
+      if (finalVal && finalVal.courtNumber && finalVal.courtNumber !== courtNumber) {
+        return { granted: false, courtNumber: finalVal.courtNumber };
+      }
+      try { await dbOnDisconnect(lockRef).remove(); } catch (_) { /* non-fatal */ }
+      return { granted: true };
+    } catch (err) {
+      console.warn('⚠️ Expo bracket lock check failed (non-fatal) — proceeding without it:', err.message);
+      return { granted: true };
+    }
+  },
+
+  async _releaseBracketLock(categoryKey, courtNumber) {
+    try {
+      const lockRef = dbRef(database, `bracketLocks/expo/${categoryKey}`);
+      const snap = await dbGet(lockRef);
+      if (snap.exists() && snap.val()?.courtNumber === courtNumber) {
+        await dbRemove(lockRef);
+      }
+    } catch (err) {
+      console.warn('⚠️ Could not release Expo bracket lock (non-fatal):', err.message);
+    }
+  },
+
+  _releaseLockSync() {
+    if (!this._lockedCourtNumber || !this.currentCategory) return;
+    try {
+      dbRemove(dbRef(database, `bracketLocks/expo/${this.currentCategory}`));
+    } catch (_) { /* onDisconnect will handle it */ }
   }
 };
 
 window.EXPO_BRACKET = EXPO_BRACKET;
+
+window.addEventListener('pagehide', () => EXPO_BRACKET._releaseLockSync());
+window.addEventListener('beforeunload', () => EXPO_BRACKET._releaseLockSync());

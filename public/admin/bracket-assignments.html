@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bracket Assignments — Taekwondo Championship</title>
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Assign brackets to courts/referees and track per-court progress.">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script defer src="/js/modal.js"></script>
+
+    <style>
+        .back-link {
+            display: inline-flex; align-items: center; gap: 8px;
+            color: var(--accent-cyan); text-decoration: none;
+            font-weight: 700; font-size: 1rem; letter-spacing: 0.5px;
+            text-shadow: 0 0 10px rgba(0, 229, 255, 0.3);
+        }
+        .back-link:hover { color: var(--border-gold); text-shadow: 0 0 10px rgba(255, 215, 0, 0.4); }
+
+        .ba-intro {
+            background: linear-gradient(135deg, rgba(22, 33, 62, 0.92) 0%, rgba(26, 26, 46, 0.92) 100%);
+            border: 1.5px solid rgba(0, 229, 255, 0.25);
+            border-radius: var(--border-radius);
+            padding: 14px 18px;
+            margin: 14px 0 30px;
+            color: var(--text-gray);
+            font-size: 0.92rem;
+            line-height: 1.55;
+        }
+
+        .ba-section-title {
+            display: flex; align-items: center; gap: 10px;
+            margin: 0 0 16px;
+            color: var(--border-gold);
+            font-size: 1.35rem;
+            text-shadow: 0 0 15px rgba(255, 215, 0, 0.35);
+        }
+        .ba-section-title::before {
+            content: '';
+            display: inline-block;
+            width: 5px; height: 22px;
+            background: linear-gradient(180deg, var(--accent-cyan), var(--border-gold));
+            border-radius: 3px;
+        }
+
+        /* ── Court summary ─────────────────────────────────── */
+        .ba-court-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 20px; margin: 0 0 36px;
+        }
+        .ba-court-card {
+            background: linear-gradient(145deg, rgba(26, 26, 46, 0.97) 0%, rgba(16, 21, 40, 0.97) 100%);
+            border: 2.5px solid var(--accent-cyan);
+            border-radius: var(--border-radius);
+            padding: 22px 24px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 16px rgba(0, 229, 255, 0.08);
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+        .ba-court-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 215, 0, 0.2);
+            border-color: var(--border-gold);
+        }
+        .ba-court-card.ba-court-done { border-color: var(--success-green); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 16px rgba(0, 255, 136, 0.15); }
+        .ba-court-card h3 {
+            margin: 0 0 14px; color: var(--border-gold); font-size: 1.3rem;
+            text-shadow: 0 0 12px rgba(255, 215, 0, 0.35);
+            padding-bottom: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .ba-stat-row { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text-gray); padding: 4px 0; }
+        .ba-stat-row b { color: var(--text-white); font-size: 0.95rem; }
+        .ba-waiting { color: var(--accent-cyan); font-weight: 700; font-size: 0.98rem; text-align: center; padding: 12px 0; }
+        .ba-empty {
+            color: var(--text-gray); padding: 26px; text-align: center;
+            background: linear-gradient(135deg, rgba(26, 26, 46, 0.9) 0%, rgba(22, 33, 62, 0.9) 100%);
+            border: 1.5px dashed rgba(255, 255, 255, 0.15);
+            border-radius: var(--border-radius);
+        }
+
+        /* ── Tabs ───────────────────────────────────────────── */
+        .ba-tabs {
+            display: inline-flex; gap: 6px;
+            background: linear-gradient(135deg, rgba(26, 26, 46, 0.96) 0%, rgba(16, 21, 40, 0.96) 100%);
+            border: 1.5px solid rgba(255, 215, 0, 0.25);
+            border-radius: 12px; padding: 6px; margin-bottom: 18px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+        }
+        .ba-tab-btn {
+            padding: 10px 26px; border: none; border-radius: 9px;
+            font-weight: 800; font-size: 0.9rem; cursor: pointer;
+            background: transparent; color: #9099ab;
+            transition: all 0.15s ease;
+        }
+        .ba-tab-btn:hover { color: var(--text-white); }
+        .ba-tab-btn.active {
+            background: linear-gradient(135deg, rgba(0, 229, 255, 0.28) 0%, rgba(0, 180, 220, 0.22) 100%);
+            color: var(--accent-cyan);
+            box-shadow: 0 0 12px rgba(0, 229, 255, 0.25);
+        }
+
+        /* ── Bulk assign bar ────────────────────────────────── */
+        .ba-bulk-bar {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+            background: linear-gradient(135deg, rgba(26, 26, 46, 0.95) 0%, rgba(22, 33, 62, 0.95) 100%);
+            border: 1.5px solid rgba(255, 215, 0, 0.35);
+            border-radius: 12px; padding: 14px 18px; margin-bottom: 18px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+        }
+        .ba-bulk-bar select, .ba-bulk-bar input {
+            padding: 9px 14px; border-radius: 8px; border: 1.5px solid rgba(0, 229, 255, 0.4);
+            background: rgba(8, 10, 20, 0.95); color: var(--text-white); font-size: 0.88rem;
+        }
+        .ba-bulk-bar select:focus, .ba-bulk-bar input:focus { outline: none; border-color: var(--accent-cyan); }
+
+        .ba-search {
+            width: 100%; box-sizing: border-box; padding: 12px 18px;
+            background: rgba(8, 10, 20, 0.95); border: 2px solid rgba(255, 215, 0, 0.3);
+            border-radius: 12px; color: #fff; font-size: 0.92rem; outline: none;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        .ba-search::placeholder { color: #8891a3; }
+        .ba-search:focus { border-color: #FFD700; box-shadow: 0 0 14px rgba(255, 215, 0, 0.25); }
+
+        .ba-wrap {
+            overflow-x: auto; border-radius: 14px;
+            border: 1.5px solid rgba(255, 215, 0, 0.2);
+            background: linear-gradient(135deg, rgba(26, 26, 46, 0.97) 0%, rgba(16, 21, 40, 0.97) 100%);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        }
+        .ba-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .ba-table thead tr { background: linear-gradient(90deg, rgba(255, 215, 0, 0.16), rgba(0, 229, 255, 0.12)); }
+        .ba-table th {
+            padding: 14px 16px; text-align: left; font-size: 0.74rem; text-transform: uppercase;
+            letter-spacing: 1px; color: var(--border-gold); font-weight: 800; white-space: nowrap;
+            border-bottom: 2px solid rgba(255, 215, 0, 0.3);
+        }
+        .ba-table td {
+            padding: 13px 16px; color: var(--text-gray);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+            vertical-align: middle;
+        }
+        .ba-table tbody tr { transition: background 0.15s ease; }
+        .ba-table tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
+        .ba-table tbody tr:hover { background: rgba(0, 229, 255, 0.08); }
+        .ba-table tbody tr:last-child td { border-bottom: none; }
+        .ba-name { color: var(--text-white); font-weight: 700; font-size: 0.95rem; }
+
+        .ba-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 13px; border-radius: 20px; font-size: 0.8rem; font-weight: 800;
+        }
+        .ba-badge-unassigned { background: rgba(120, 128, 145, 0.22); color: #b8bfcc; border: 1px solid rgba(184, 191, 204, 0.35); }
+        .ba-badge-assigned { background: rgba(0, 229, 255, 0.18); color: var(--accent-cyan); border: 1px solid rgba(0, 229, 255, 0.45); }
+        .ba-badge-live { background: rgba(255, 23, 68, 0.18); color: #ff7d97; border: 1px solid rgba(255, 23, 68, 0.5); }
+        .ba-badge-pending { background: rgba(255, 215, 0, 0.18); color: var(--border-gold); border: 1px solid rgba(255, 215, 0, 0.45); }
+        .ba-badge-completed { background: rgba(0, 255, 136, 0.18); color: var(--success-green); border: 1px solid rgba(0, 255, 136, 0.45); }
+
+        .ba-row-select { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .ba-row-select select {
+            padding: 7px 12px; border-radius: 7px; border: 1.5px solid rgba(0, 229, 255, 0.4);
+            background: rgba(8, 10, 20, 0.95); color: var(--text-white); font-size: 0.84rem;
+        }
+        .ba-row-select select:focus { outline: none; border-color: var(--accent-cyan); }
+        .ba-row-select .btn-secondary { white-space: nowrap; }
+    </style>
+</head>
+<body>
+
+    <div class="page-header">
+        <h1 class="page-title">🏟️ Bracket Assignments</h1>
+        <button class="btn-secondary" onclick="window.location.href='dashboard.html'">&#8592; Back to Dashboard</button>
+        <button class="btn-danger" onclick="UI.logout()">Logout</button>
+    </div>
+
+    <div class="container">
+        <a href="dashboard.html" class="back-link">&#8592; Back to Dashboard</a>
+
+        <p class="ba-intro">
+            Assign brackets to a court/referee. Referees only ever see the brackets assigned to their own court —
+            everything else stays hidden to them, enforced both here in the UI and by the database rules
+            (see firebase-rules.json's bracketAssignments rule).
+        </p>
+
+        <h2 class="ba-section-title">📊 Court Progress</h2>
+        <div id="courtSummaryGrid" class="ba-court-grid">
+            <div class="ba-empty">Loading…</div>
+        </div>
+
+        <h2 class="ba-section-title">🗂️ Bracket Categories</h2>
+        <div class="ba-tabs">
+            <button class="ba-tab-btn active" id="baTabOfficial" onclick="switchTab('official')">🏆 Official</button>
+            <button class="ba-tab-btn" id="baTabExpo" onclick="switchTab('expo')">🎯 Expo</button>
+        </div>
+
+        <div class="ba-bulk-bar">
+            <strong style="color:var(--border-gold);font-size:0.85rem;">Bulk Assign Selected:</strong>
+            <select id="bulkCourtSelect"><option value="">— Choose court —</option></select>
+            <button class="btn-primary" style="padding:8px 18px;font-size:0.85rem;" onclick="bulkAssign()">✅ Assign</button>
+            <button class="btn-secondary" style="padding:8px 18px;font-size:0.85rem;" onclick="bulkRemove()">🗑️ Remove Assignment</button>
+            <span id="baSelectedCount" style="color:#888;font-size:0.82rem;margin-left:auto;">0 selected</span>
+        </div>
+
+        <input type="text" class="ba-search" id="baSearch" placeholder="🔍 Search by gender, age category, or weight category…" oninput="renderTable()">
+
+        <div class="ba-wrap">
+            <table class="ba-table">
+                <thead>
+                    <tr>
+                        <th style="width:36px;"><input type="checkbox" id="baSelectAll" onchange="toggleSelectAll(this.checked)"></th>
+                        <th>Category</th>
+                        <th>Weight</th>
+                        <th>Players</th>
+                        <th>Status</th>
+                        <th>Assigned Court</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="baTableBody">
+                    <tr><td colspan="7" style="text-align:center;padding:40px;color:#666;">Loading…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="site-credit-footer">
+        <span class="credit-line">&#169; Karnataka Taekwondo Association &reg;</span>
+        <span class="credit-line credit-address"># 54/1, 13th 'E' Cross, 7th Main, Rajajinagar Industrial Town, A.D. Halli, Bangalore-560 079</span>
+        <span class="credit-line credit-owner">Built and Developed by Karnataka Taekwondo Association &reg;</span>
+    </div>
+
+    <!-- Firebase modules -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+
+    <script type="module">
+        // ── State ────────────────────────────────────────────────────────────
+        const _raw = {
+            players: null, expoPlayers: null, teams: null,
+            brackets: null, expoBrackets: null,
+            assignmentsOfficial: null, assignmentsExpo: null,
+            referees: null
+        };
+        let _listenersStarted = false;
+        let _computeTimer = null;
+        let _currentTab = 'official';
+        let _rowsOfficial = [];
+        let _rowsExpo = [];
+        const _selectedKeys = new Set(); // categoryKeys, scoped to whichever tab is active when selected
+
+        waitForModules();
+        function waitForModules() {
+            if (typeof UI !== 'undefined' && typeof database !== 'undefined' && typeof dbGet === 'function' && typeof dbOnValue === 'function') {
+                UI.initPageProtection(['admin']);
+                startListeners();
+            } else {
+                setTimeout(waitForModules, 80);
+            }
+        }
+
+        function startListeners() {
+            if (_listenersStarted) return;
+            _listenersStarted = true;
+            const paths = {
+                players: 'players',
+                expoPlayers: 'expoPlayers',
+                teams: 'teams',
+                brackets: 'brackets',
+                expoBrackets: 'expoBrackets',
+                assignmentsOfficial: 'bracketAssignments/official',
+                assignmentsExpo: 'bracketAssignments/expo',
+                referees: 'referees'
+            };
+            Object.entries(paths).forEach(([key, path]) => {
+                dbOnValue(dbRef(database, path), (snap) => {
+                    _raw[key] = snap.exists() ? snap.val() : null;
+                    scheduleCompute();
+                }, (err) => console.warn(`⚠️ bracket-assignments listener error on ${path} (non-fatal):`, err.message));
+            });
+        }
+
+        function scheduleCompute() {
+            clearTimeout(_computeTimer);
+            _computeTimer = setTimeout(computeAll, 200);
+        }
+
+        function computeAll() {
+            const teamsMap = {};
+            if (_raw.teams) {
+                Object.entries(_raw.teams).forEach(([id, v]) => { teamsMap[id] = (v && v.teamName) || 'Unnamed Team'; });
+            }
+            _rowsOfficial = buildRows(_raw.players, _raw.brackets, _raw.assignmentsOfficial);
+            _rowsExpo = buildRows(_raw.expoPlayers, _raw.expoBrackets, _raw.assignmentsExpo);
+
+            populateCourtDropdowns();
+            renderCourtSummary();
+            renderTable();
+        }
+
+        // Same gender-ageCategory-weightCategory grouping convention used by
+        // bracket.js/expoBracket.js's categorizePlayers() — deliberately
+        // re-derived here rather than imported, matching this app's existing
+        // pattern of small self-contained duplicated helpers per page.
+        function buildRows(playersNode, bracketsNode, assignmentsNode) {
+            const categories = {};
+            if (playersNode) {
+                Object.values(playersNode).forEach((v) => {
+                    if (!v.ageCategory || !v.gender || !v.weightCategory) return;
+                    const key = `${v.gender}-${v.ageCategory}-${v.weightCategory}`;
+                    if (!categories[key]) categories[key] = { gender: v.gender, ageCategory: v.ageCategory, weightCategory: v.weightCategory, count: 0 };
+                    categories[key].count++;
+                });
+            }
+            const assignments = assignmentsNode || {};
+            const brackets = bracketsNode || {};
+            return Object.entries(categories).map(([key, cat]) => {
+                const assignment = assignments[key] || null;
+                const bracketData = brackets[key] || null;
+                let status;
+                if (!assignment) status = 'Unassigned';
+                else if (!bracketData) status = 'Assigned';
+                else if (bracketData.status === 'complete') status = 'Completed';
+                else if (bracketData.status === 'live') status = 'Live';
+                else status = 'Pending';
+                return {
+                    key,
+                    gender: cat.gender,
+                    ageCategory: cat.ageCategory,
+                    weightCategory: cat.weightCategory,
+                    playerCount: cat.count,
+                    status,
+                    courtNumber: assignment ? assignment.courtNumber : null
+                };
+            }).sort((a, b) =>
+                a.gender.localeCompare(b.gender) ||
+                a.ageCategory.localeCompare(b.ageCategory) ||
+                a.weightCategory.localeCompare(b.weightCategory)
+            );
+        }
+
+        function getDistinctCourts() {
+            const set = new Set();
+            if (_raw.referees) {
+                Object.values(_raw.referees).forEach((r) => { if (r.courtNumber) set.add(String(r.courtNumber)); });
+            }
+            return [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        }
+
+        function populateCourtDropdowns() {
+            const courts = getDistinctCourts();
+            const options = '<option value="">— Choose court —</option>' + courts.map((c) => `<option value="${escHtml(c)}">Court ${escHtml(c)}</option>`).join('');
+            const bulkSel = document.getElementById('bulkCourtSelect');
+            if (bulkSel) {
+                const current = bulkSel.value;
+                bulkSel.innerHTML = options;
+                if (courts.includes(current)) bulkSel.value = current;
+            }
+        }
+
+        // ── Court progress summary (Official + Expo combined per court) ─────
+        function renderCourtSummary() {
+            const container = document.getElementById('courtSummaryGrid');
+            if (!container) return;
+            const courts = getDistinctCourts();
+            if (courts.length === 0) {
+                container.innerHTML = `<div class="ba-empty">No courts found yet — add a referee with a court number on the Manage Referees page first.</div>`;
+                return;
+            }
+            const allRows = [..._rowsOfficial, ..._rowsExpo];
+            container.innerHTML = courts.map((court) => {
+                const assigned = allRows.filter((r) => r.courtNumber === court);
+                const total = assigned.length;
+                const completed = assigned.filter((r) => r.status === 'Completed').length;
+                const live = assigned.filter((r) => r.status === 'Live').length;
+                const pending = assigned.filter((r) => r.status === 'Pending').length;
+                const notStarted = assigned.filter((r) => r.status === 'Assigned').length;
+                const remaining = total - completed;
+                const allDone = total > 0 && completed === total;
+
+                let body;
+                if (total === 0) {
+                    body = `<p class="ba-waiting">🟦 Waiting for Brackets to be Assigned</p>`;
+                } else if (allDone) {
+                    body = `<p class="ba-waiting">✅ All Assigned Brackets Completed<br><span style="font-size:.78rem;opacity:.8;">Waiting for Brackets to be Assigned</span></p>`;
+                } else {
+                    body = `
+                        <div class="ba-stat-row"><span>Total assigned</span><b>${total}</b></div>
+                        <div class="ba-stat-row"><span>✅ Completed</span><b>${completed}</b></div>
+                        <div class="ba-stat-row"><span>🔴 Live</span><b>${live}</b></div>
+                        <div class="ba-stat-row"><span>🟡 Pending</span><b>${pending}</b></div>
+                        <div class="ba-stat-row"><span>🔵 Assigned (not started)</span><b>${notStarted}</b></div>
+                        <div class="ba-stat-row" style="border-top:1px solid rgba(255,255,255,.1);margin-top:6px;padding-top:6px;"><span>Remaining</span><b>${remaining}</b></div>
+                    `;
+                }
+                return `<div class="ba-court-card ${allDone ? 'ba-court-done' : ''}"><h3>Court ${escHtml(court)}</h3>${body}</div>`;
+            }).join('');
+        }
+
+        // ── Tabs ─────────────────────────────────────────────────────────────
+        window.switchTab = function (tab) {
+            _currentTab = tab;
+            document.getElementById('baTabOfficial').classList.toggle('active', tab === 'official');
+            document.getElementById('baTabExpo').classList.toggle('active', tab === 'expo');
+            renderTable();
+        };
+
+        // ── Selection ────────────────────────────────────────────────────────
+        window.toggleSelect = function (key, checked) {
+            if (checked) _selectedKeys.add(key); else _selectedKeys.delete(key);
+            updateSelectedCount();
+        };
+        window.toggleSelectAll = function (checked) {
+            const rows = _currentTab === 'official' ? _rowsOfficial : _rowsExpo;
+            rows.forEach((r) => { if (checked) _selectedKeys.add(r.key); else _selectedKeys.delete(r.key); });
+            renderTable();
+        };
+        function updateSelectedCount() {
+            const el = document.getElementById('baSelectedCount');
+            if (el) el.textContent = `${_selectedKeys.size} selected`;
+        }
+
+        // ── Table render ─────────────────────────────────────────────────────
+        function renderTable() {
+            const tbody = document.getElementById('baTableBody');
+            if (!tbody) return;
+            const rows = _currentTab === 'official' ? _rowsOfficial : _rowsExpo;
+            const q = (document.getElementById('baSearch')?.value || '').trim().toLowerCase();
+            const filtered = q
+                ? rows.filter((r) => `${r.gender} ${r.ageCategory} ${r.weightCategory}`.toLowerCase().includes(q))
+                : rows;
+
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#666;">No ${_currentTab === 'official' ? 'Official' : 'Expo'} categories registered yet.</td></tr>`;
+                updateSelectedCount();
+                return;
+            }
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#666;">No categories match your search.</td></tr>`;
+                updateSelectedCount();
+                return;
+            }
+
+            const courts = getDistinctCourts();
+            tbody.innerHTML = filtered.map((r) => `
+                <tr>
+                    <td><input type="checkbox" data-key="${escAttr(r.key)}" onchange="toggleSelect('${escAttr(r.key)}', this.checked)" ${_selectedKeys.has(r.key) ? 'checked' : ''}></td>
+                    <td class="ba-name">${escHtml(r.gender)} ${escHtml(r.ageCategory)}</td>
+                    <td>${escHtml(r.weightCategory)}</td>
+                    <td>${r.playerCount}</td>
+                    <td>${statusBadge(r.status)}</td>
+                    <td>${r.courtNumber ? 'Court ' + escHtml(r.courtNumber) : '—'}</td>
+                    <td class="ba-row-select">
+                        <select onchange="assignSingle('${escAttr(r.key)}', this.value)">
+                            <option value="">— Assign —</option>
+                            ${courts.map((c) => `<option value="${escAttr(c)}" ${r.courtNumber === c ? 'selected' : ''}>Court ${escHtml(c)}</option>`).join('')}
+                        </select>
+                        ${r.courtNumber ? `<button class="btn-secondary" style="padding:5px 10px;font-size:0.76rem;margin-left:6px;" onclick="removeAssignment('${escAttr(r.key)}')">Remove</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+            updateSelectedCount();
+        }
+
+        function statusBadge(status) {
+            const map = {
+                Unassigned: ['ba-badge-unassigned', '⬜'],
+                Assigned: ['ba-badge-assigned', '🔵'],
+                Live: ['ba-badge-live', '🔴'],
+                Pending: ['ba-badge-pending', '🟡'],
+                Completed: ['ba-badge-completed', '✅']
+            };
+            const [cls, icon] = map[status] || ['ba-badge-unassigned', '⬜'];
+            return `<span class="ba-badge ${cls}">${icon} ${status}</span>`;
+        }
+
+        // ── Assignment writes ────────────────────────────────────────────────
+        function assignmentPath() {
+            return _currentTab === 'official' ? 'bracketAssignments/official' : 'bracketAssignments/expo';
+        }
+        function adminEmail() {
+            return (window.auth && window.auth.currentUser && window.auth.currentUser.email) || 'admin';
+        }
+
+        window.assignSingle = async function (categoryKey, courtNumber) {
+            if (!courtNumber) return;
+            try {
+                await dbSet(dbRef(database, `${assignmentPath()}/${categoryKey}`), {
+                    courtNumber: String(courtNumber),
+                    assignedBy: adminEmail(),
+                    assignedAt: new Date().toISOString()
+                });
+                if (typeof MODAL !== 'undefined') MODAL.showToast(`Assigned to Court ${courtNumber}`, 'success');
+            } catch (err) {
+                console.error('Failed to assign bracket:', err);
+                if (typeof MODAL !== 'undefined') MODAL.error('Failed to assign: ' + err.message);
+            }
+        };
+
+        window.removeAssignment = async function (categoryKey) {
+            try {
+                await dbRemove(dbRef(database, `${assignmentPath()}/${categoryKey}`));
+                if (typeof MODAL !== 'undefined') MODAL.showToast('Assignment removed', 'info');
+            } catch (err) {
+                console.error('Failed to remove assignment:', err);
+                if (typeof MODAL !== 'undefined') MODAL.error('Failed to remove: ' + err.message);
+            }
+        };
+
+        window.bulkAssign = async function () {
+            const court = document.getElementById('bulkCourtSelect')?.value;
+            if (!court) { if (typeof MODAL !== 'undefined') MODAL.warning('Choose a court first.'); return; }
+            if (_selectedKeys.size === 0) { if (typeof MODAL !== 'undefined') MODAL.warning('Select at least one bracket first.'); return; }
+            const path = assignmentPath();
+            const now = new Date().toISOString();
+            const email = adminEmail();
+            const updates = {};
+            _selectedKeys.forEach((key) => {
+                updates[`${path}/${key}`] = { courtNumber: String(court), assignedBy: email, assignedAt: now };
+            });
+            try {
+                await dbUpdate(dbRef(database), updates);
+                if (typeof MODAL !== 'undefined') MODAL.success(`${_selectedKeys.size} bracket(s) assigned to Court ${court}.`);
+                _selectedKeys.clear();
+            } catch (err) {
+                console.error('Bulk assign failed:', err);
+                if (typeof MODAL !== 'undefined') MODAL.error('Bulk assign failed: ' + err.message);
+            }
+        };
+
+        window.bulkRemove = async function () {
+            if (_selectedKeys.size === 0) { if (typeof MODAL !== 'undefined') MODAL.warning('Select at least one bracket first.'); return; }
+            const path = assignmentPath();
+            const updates = {};
+            _selectedKeys.forEach((key) => { updates[`${path}/${key}`] = null; });
+            try {
+                await dbUpdate(dbRef(database), updates);
+                if (typeof MODAL !== 'undefined') MODAL.showToast(`${_selectedKeys.size} assignment(s) removed.`, 'info');
+                _selectedKeys.clear();
+            } catch (err) {
+                console.error('Bulk remove failed:', err);
+                if (typeof MODAL !== 'undefined') MODAL.error('Bulk remove failed: ' + err.message);
+            }
+        };
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+        function escHtml(str) {
+            return String(str || '').replace(/[&<>"']/g, (ch) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[ch]));
+        }
+        function escAttr(str) {
+            return String(str || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+        }
+
+        window.renderTable = renderTable;
+        window.alert = function (m) { return MODAL.showAlert(m); };
+        window.confirm = function (m) { return MODAL.showConfirm(m); };
+    </script>
+</body>
+</html>

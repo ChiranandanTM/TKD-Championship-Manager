@@ -1064,8 +1064,12 @@
                 Counts</button>
             <button class="admin-nav-btn" id="navReferees" onclick="window.location.href='referees.html'">⚖️ Manage
                 Referees</button>
+            <button class="admin-nav-btn" id="navWeighChecks" onclick="window.location.href='weigh-checks.html'">⚖️ First
+                Weighing Checks</button>
             <button class="admin-nav-btn" id="navBracket" onclick="window.location.href='bracket.html'">🏆 Tournament
                 Bracket</button>
+            <button class="admin-nav-btn" id="navBracketAssignments" onclick="window.location.href='bracket-assignments.html'">🏟️ Bracket
+                Assignments</button>
             <button class="admin-nav-btn" id="navLeaderboard" onclick="window.open('/leaderboard.html','_blank')">🏆
                 Best Team Leaderboard</button>
             <button class="admin-nav-btn" id="navPreview" onclick="window.open('form-preview.html','_blank')">👁️
@@ -1096,16 +1100,30 @@
             <!-- Kyorugi Statistics -->
             <div id="kyorugiStatsBlock">
                 <div
-                    style="display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:16px">
-                    <button onclick="exportChampionshipStatisticsToExcel()" id="exportStatsBtn"
-                        style="padding:10px 20px;background:rgba(0,229,255,.08);border:2px solid rgba(0,229,255,.35);border-radius:10px;color:#00E5FF;font-weight:700;cursor:pointer;font-size:.88rem"
-                        onmouseover="this.style.background='rgba(0,229,255,.18)'"
-                        onmouseout="this.style.background='rgba(0,229,255,.08)'">📥 Export to Excel</button>
-                    <button onclick="loadStatistics()"
-                        style="padding:10px 20px;background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.3);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;font-size:.88rem"
-                        onmouseover="this.style.background='rgba(255,215,0,.16)'"
-                        onmouseout="this.style.background='rgba(255,215,0,.08)'">Refresh</button>
+                    style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px">
+                    <!-- Official / Expo sub-switcher -->
+                    <div style="display:inline-flex;gap:6px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:4px">
+                        <button id="kyorugiSubTabOfficial" onclick="setKyorugiSubView('official')"
+                            style="padding:7px 18px;border:none;border-radius:7px;font-weight:800;font-size:.82rem;cursor:pointer;background:rgba(0,229,255,.18);color:#00E5FF">🏆
+                            Official</button>
+                        <button id="kyorugiSubTabExpo" onclick="setKyorugiSubView('expo')"
+                            style="padding:7px 18px;border:none;border-radius:7px;font-weight:800;font-size:.82rem;cursor:pointer;background:transparent;color:#888">🎯
+                            Expo</button>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:10px">
+                        <button onclick="exportChampionshipStatisticsToExcel()" id="exportStatsBtn"
+                            style="padding:10px 20px;background:rgba(0,229,255,.08);border:2px solid rgba(0,229,255,.35);border-radius:10px;color:#00E5FF;font-weight:700;cursor:pointer;font-size:.88rem"
+                            onmouseover="this.style.background='rgba(0,229,255,.18)'"
+                            onmouseout="this.style.background='rgba(0,229,255,.08)'">📥 Export to Excel</button>
+                        <button onclick="loadStatistics()"
+                            style="padding:10px 20px;background:rgba(255,215,0,.08);border:2px solid rgba(255,215,0,.3);border-radius:10px;color:#FFD700;font-weight:700;cursor:pointer;font-size:.88rem"
+                            onmouseover="this.style.background='rgba(255,215,0,.16)'"
+                            onmouseout="this.style.background='rgba(255,215,0,.08)'">Refresh</button>
+                    </div>
                 </div>
+
+            <!-- Official Kyorugi Statistics (unchanged ids/behavior) -->
+            <div id="officialKyorugiStats">
 
             <!-- Vibrant stat cards -->
             <div class="st-cards">
@@ -1183,6 +1201,87 @@
                 <div id="recentPlayersList"></div>
             </div>
             </div>
+            <!-- /Official Kyorugi Statistics -->
+
+            <!-- Expo Kyorugi Statistics — same layout/metrics as Official, scoped to expoPlayers/expoBrackets/expoMatchHistory only -->
+            <div id="expoKyorugiStats" class="hidden">
+
+            <div class="st-cards">
+                <div class="st-card st-card-1">
+                    <span class="st-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="#00E5FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="9" cy="7" r="4"></circle>
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                        </svg>
+                    </span>
+                    <div class="st-val st-val-1" id="expoTotalPlayers">0</div>
+                    <div class="st-lbl">Total Expo Players</div>
+                </div>
+                <div class="st-card st-card-2">
+                    <span class="st-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="#00FF88" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 15l-3 3-2-2 3-3"></path>
+                            <path d="M19 19l-3-3 2-2 3 3"></path>
+                            <circle cx="12" cy="8" r="5"></circle>
+                        </svg>
+                    </span>
+                    <div class="st-val st-val-2" id="expoTotalTeams">0</div>
+                    <div class="st-lbl">Teams with Expo Players</div>
+                </div>
+                <div class="st-card st-card-3">
+                    <span class="st-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="#FFD700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14.5 17.5L3 6V3h3l11.5 11.5"></path>
+                            <path d="M13 19l6-6"></path>
+                            <path d="M16 16l4 4"></path>
+                            <path d="M19 21l2-2"></path>
+                            <path d="M14.5 6.5L18 3h3v3l-3.5 3.5"></path>
+                        </svg>
+                    </span>
+                    <div class="st-val st-val-3" id="expoCompletedMatches">0</div>
+                    <div class="st-lbl">Completed Matches</div>
+                </div>
+                <div class="st-card st-card-4">
+                    <span class="st-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="#FF9800" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                    </span>
+                    <div class="st-val st-val-4" id="expoCategoriesPending">0</div>
+                    <div class="st-lbl">Categories Pending</div>
+                </div>
+                <div class="st-card st-card-5">
+                    <span class="st-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none"
+                            stroke="#00C853" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                        </svg>
+                    </span>
+                    <div class="st-val st-val-5" id="expoCategoriesCompleted">0</div>
+                    <div class="st-lbl">Categories Completed</div>
+                </div>
+            </div>
+
+            <div class="st-hdr">
+                <h3>Registered Expo Players</h3>
+                <span class="st-pill" id="expoPlayerCountPill">0 players</span>
+            </div>
+            <input type="text" class="st-search" id="expoStatsPlayerSearch"
+                placeholder="🔍  Search by name, team, category…" oninput="filterStatsExpoTable(this.value)">
+            <div class="st-wrap">
+                <div id="expoRecentPlayersList"></div>
+            </div>
+            </div>
+            <!-- /Expo Kyorugi Statistics -->
+            </div>
             <!-- /Kyorugi Statistics -->
 
             <!-- Poomsae Statistics -->
@@ -1235,6 +1334,42 @@
                     <div>Total Expo: <span id="poomsaeTotalExpo" style="color:#FFD700">0</span></div>
                     <div>Overall Poomsae Registrations: <span id="poomsaeTotalOverall" style="color:#00FF88">0</span>
                     </div>
+                </div>
+
+                <!-- Detailed registered-player list, mirroring the Official/Expo
+                     Kyorugi statistics tables — one row per (player × Poomsae
+                     division) registration, so a player entered for both
+                     Official and Expo Poomsae shows as two separate rows
+                     instead of being combined into one. -->
+                <div class="st-hdr" style="margin-top:28px">
+                    <h3>Registered Poomsae Players</h3>
+                    <span class="st-pill" id="poomsaeDetailCountPill">0 registrations</span>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+                    <select id="poomsaeCompetitionTypeFilter" onchange="renderPoomsaeDetailTable()"
+                        style="width:auto;min-width:150px;padding:9px 14px;background:#0d1220;border:2px solid rgba(255,215,0,.25);border-radius:8px;color:#eee;font-size:.85rem">
+                        <option value="all">Official &amp; Expo</option>
+                        <option value="Official">Official Only</option>
+                        <option value="Expo">Expo Only</option>
+                    </select>
+                    <select id="poomsaeDivisionFilter" onchange="renderPoomsaeDetailTable()"
+                        style="width:auto;min-width:160px;padding:9px 14px;background:#0d1220;border:2px solid rgba(255,215,0,.25);border-radius:8px;color:#eee;font-size:.85rem">
+                        <option value="all">All Poomsae Types</option>
+                        <option value="Individual">Individual</option>
+                        <option value="Pair">Pair</option>
+                        <option value="Group">Group</option>
+                        <option value="Mixed Group">Mixed Group</option>
+                        <option value="Freestyle">Freestyle</option>
+                    </select>
+                    <select id="poomsaeStatusFilter" onchange="renderPoomsaeDetailTable()"
+                        style="width:auto;min-width:150px;padding:9px 14px;background:#0d1220;border:2px solid rgba(255,215,0,.25);border-radius:8px;color:#eee;font-size:.85rem">
+                        <option value="all">All Statuses</option>
+                        <option value="approved">Approved</option>
+                        <option value="pending">Pending</option>
+                    </select>
+                </div>
+                <div class="st-wrap">
+                    <div id="poomsaeDetailTableContainer"></div>
                 </div>
             </div>
         </div>
@@ -1680,6 +1815,19 @@
             if (pill) pill.textContent = `${visible} player${visible !== 1 ? 's' : ''}`;
         };
 
+        window.filterStatsExpoTable = function (q) {
+            q = (q || '').toLowerCase();
+            const rows = document.querySelectorAll('#expoStatsPlayerTable tbody tr');
+            let visible = 0;
+            rows.forEach(row => {
+                const match = !q || row.textContent.toLowerCase().includes(q);
+                row.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            const pill = document.getElementById('expoPlayerCountPill');
+            if (pill) pill.textContent = `${visible} player${visible !== 1 ? 's' : ''}`;
+        };
+
         // ── Real-time Championship Statistics ───────────────────────────────
         // Every number and the players table below stay live via onValue()
         // listeners on each source path instead of one-shot dbGet() calls — a
@@ -1698,7 +1846,8 @@
             teams: null,
             matchHistory: null,
             expoMatchHistory: null,
-            brackets: null
+            brackets: null,
+            expoBrackets: null
         };
         let _statsRenderTimer = null;
 
@@ -1711,7 +1860,7 @@
                 _statsRenderTimer = setTimeout(renderStatisticsFromCache, 200);
             };
 
-            ['players', 'expoPlayers', 'teams', 'matchHistory', 'expoMatchHistory', 'brackets'].forEach(path => {
+            ['players', 'expoPlayers', 'teams', 'matchHistory', 'expoMatchHistory', 'brackets', 'expoBrackets'].forEach(path => {
                 dbOnValue(dbRef(database, path), (snapshot) => {
                     _statsCache[path] = snapshot.exists() ? snapshot.val() : null;
                     scheduleRender();
@@ -1721,6 +1870,43 @@
                     console.warn(`⚠️ Statistics listener error on ${path} (non-fatal):`, error.message);
                 });
             });
+        }
+
+        // Shared table-row builder for both the Official and Expo player
+        // tables below — identical columns/formatting, just fed a different
+        // player list, so this factors out the ~30 lines that would
+        // otherwise be duplicated verbatim for the Expo table.
+        function buildStatsPlayersTableHtml(list, teamsMap, tableId) {
+            let html = `<table class="st-table" id="${tableId}">`;
+            html += '<thead><tr>';
+            html += '<th style="width:52px;text-align:center">#</th>';
+            html += '<th>Name</th><th>Team</th><th>Gender</th><th>Category</th><th>Weight</th><th>Event</th><th>Submitted</th>';
+            html += '</tr></thead><tbody>';
+
+            list.forEach((player, index) => {
+                const teamName = teamsMap[player.teamId] || 'N/A';
+                const playerName = player.playerName || '(Unknown)';
+                const gender = player.gender || 'N/A';
+                const genderClass = gender === 'Male' ? 'st-gender-m' : gender === 'Female' ? 'st-gender-f' : '';
+                const categories = player.categories ? player.categories.map(c => `<span class="st-cat">${c}</span>`).join(' ') : 'N/A';
+                const weightCategory = player.weightCategory || 'N/A';
+                const submittedTime = UI.formatTimestamp(player.submittedAt) || 'N/A';
+                const competitionCategory = player.competitionCategory || 'Official';
+
+                html += `<tr>`;
+                html += `<td class="st-num">${index + 1})</td>`;
+                html += `<td class="st-name">${playerName}</td>`;
+                html += `<td><span class="st-team">${teamName}</span></td>`;
+                html += `<td>${genderClass ? `<span class="${genderClass}">${gender}</span>` : gender}</td>`;
+                html += `<td>${categories}</td>`;
+                html += `<td class="st-wt">${weightCategory}</td>`;
+                html += `<td>${competitionCategory}</td>`;
+                html += `<td class="st-time">${submittedTime}</td>`;
+                html += `</tr>`;
+            });
+
+            html += '</tbody></table>';
+            return html;
         }
 
         function renderStatisticsFromCache() {
@@ -1817,36 +2003,8 @@
 
                     if (pill) pill.textContent = `${players.length} player${players.length !== 1 ? 's' : ''}`;
 
-                    let html = '<table class="st-table" id="statsPlayerTable">';
-                    html += '<thead><tr>';
-                    html += '<th style="width:52px;text-align:center">#</th>';
-                    html += '<th>Name</th><th>Team</th><th>Gender</th><th>Category</th><th>Weight</th><th>Event</th><th>Submitted</th>';
-                    html += '</tr></thead><tbody>';
-
-                    players.forEach((player, index) => {
-                        const teamName = teamsMap[player.teamId] || 'N/A';
-                        const playerName = player.playerName || '(Unknown)';
-                        const gender = player.gender || 'N/A';
-                        const genderClass = gender === 'Male' ? 'st-gender-m' : gender === 'Female' ? 'st-gender-f' : '';
-                        const categories = player.categories ? player.categories.map(c => `<span class="st-cat">${c}</span>`).join(' ') : 'N/A';
-                        const weightCategory = player.weightCategory || 'N/A';
-                        const submittedTime = UI.formatTimestamp(player.submittedAt) || 'N/A';
-                        const competitionCategory = player.competitionCategory || 'Official';
-
-                        html += `<tr>`;
-                        html += `<td class="st-num">${index + 1})</td>`;
-                        html += `<td class="st-name">${playerName}</td>`;
-                        html += `<td><span class="st-team">${teamName}</span></td>`;
-                        html += `<td>${genderClass ? `<span class="${genderClass}">${gender}</span>` : gender}</td>`;
-                        html += `<td>${categories}</td>`;
-                        html += `<td class="st-wt">${weightCategory}</td>`;
-                        html += `<td>${competitionCategory}</td>`;
-                        html += `<td class="st-time">${submittedTime}</td>`;
-                        html += `</tr>`;
-                    });
-
-                    html += '</tbody></table>';
-                    document.getElementById('recentPlayersList').innerHTML = html;
+                    document.getElementById('recentPlayersList').innerHTML =
+                        buildStatsPlayersTableHtml(players, teamsMap, 'statsPlayerTable');
 
                     // Re-apply any in-progress search so a live update doesn't
                     // silently clear it out from under the admin.
@@ -1855,6 +2013,78 @@
                 } else {
                     if (pill) pill.textContent = '0 players';
                     document.getElementById('recentPlayersList').innerHTML = '<div class="st-empty"><div class="st-empty-icon">🥋</div><div style="font-size:1rem;font-weight:700;color:#555">No players registered yet</div></div>';
+                }
+
+                // ── Expo Kyorugi Statistics — same shape as Official above,
+                // scoped entirely to expoPlayers/expoBrackets/expoMatchHistory.
+                // Includes every expoPlayers/ entrant (including "Official &
+                // Expo" cross-registrants, since they DO compete in the Expo
+                // bracket too) rather than the deduped `players` list above,
+                // which intentionally excludes them once already counted for
+                // Official.
+                const expoPlayers = _statsCache.expoPlayers
+                    ? Object.entries(_statsCache.expoPlayers).map(([id, val]) => ({ id, ...val }))
+                    : [];
+
+                document.getElementById('expoTotalPlayers').textContent = expoPlayers.length;
+
+                const expoTeamIds = new Set();
+                expoPlayers.forEach(p => { if (p.teamId) expoTeamIds.add(p.teamId); });
+                document.getElementById('expoTotalTeams').textContent = expoTeamIds.size;
+
+                let expoMatchCount = 0;
+                if (_statsCache.expoMatchHistory) {
+                    Object.keys(_statsCache.expoMatchHistory).forEach(categoryKey => {
+                        if (_statsCache.expoMatchHistory[categoryKey]) {
+                            expoMatchCount += Object.keys(_statsCache.expoMatchHistory[categoryKey]).length;
+                        }
+                    });
+                }
+                document.getElementById('expoCompletedMatches').textContent = expoMatchCount;
+
+                // Category key mirrors expoBracket.js's own categorizePlayers()
+                // exactly (gender-ageCategory-weightCategory over expoPlayers/),
+                // and expoBrackets/{key}.status === 'complete' is the same
+                // status field expoBracket.js's closeCategory() sets — same
+                // convention as the Official Pending/Completed cards above.
+                const expoCategoryKeySet = new Set();
+                expoPlayers.forEach(p => {
+                    const ageCategory = p.ageCategory || (p.categories && p.categories[0]);
+                    if (!ageCategory || !p.gender || !p.weightCategory) return;
+                    expoCategoryKeySet.add(`${p.gender}-${ageCategory}-${p.weightCategory}`);
+                });
+
+                const expoBracketsData = _statsCache.expoBrackets || {};
+                let expoCategoriesCompleted = 0;
+                expoCategoryKeySet.forEach(key => {
+                    if (expoBracketsData[key] && expoBracketsData[key].status === 'complete') expoCategoriesCompleted++;
+                });
+                const expoCategoriesPending = expoCategoryKeySet.size - expoCategoriesCompleted;
+
+                document.getElementById('expoCategoriesPending').textContent = expoCategoriesPending;
+                document.getElementById('expoCategoriesCompleted').textContent = expoCategoriesCompleted;
+
+                const expoPill = document.getElementById('expoPlayerCountPill');
+                if (expoPlayers.length > 0) {
+                    expoPlayers.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+                    const teamsMap = {};
+                    if (_statsCache.teams) {
+                        Object.entries(_statsCache.teams).forEach(([id, val]) => {
+                            teamsMap[id] = val.teamName;
+                        });
+                    }
+
+                    if (expoPill) expoPill.textContent = `${expoPlayers.length} player${expoPlayers.length !== 1 ? 's' : ''}`;
+
+                    document.getElementById('expoRecentPlayersList').innerHTML =
+                        buildStatsPlayersTableHtml(expoPlayers, teamsMap, 'expoStatsPlayerTable');
+
+                    const expoSearchBox = document.getElementById('expoStatsPlayerSearch');
+                    if (expoSearchBox && expoSearchBox.value) window.filterStatsExpoTable(expoSearchBox.value);
+                } else {
+                    if (expoPill) expoPill.textContent = '0 players';
+                    document.getElementById('expoRecentPlayersList').innerHTML = '<div class="st-empty"><div class="st-empty-icon">🎯</div><div style="font-size:1rem;font-weight:700;color:#555">No Expo players registered yet</div></div>';
                 }
 
             } catch (error) {
@@ -2288,10 +2518,112 @@
             if (officialEl) officialEl.textContent = totalOfficial;
             if (expoEl) expoEl.textContent = totalExpo;
             if (overallEl) overallEl.textContent = totalOverall;
+
+            // Keep the detailed registration table (below) in sync with the
+            // same Team/Gender/Age Category/Search filters used for the tiles
+            // above — its own Official-Expo/Type/Status filters are read
+            // independently inside renderPoomsaeDetailTable() itself.
+            renderPoomsaeDetailTable();
+        }
+
+        // ── Detailed Poomsae registration table — same design/layout as the
+        // Official/Expo Kyorugi statistics tables (buildStatsPlayersTableHtml),
+        // adapted for Poomsae: one row per (player × Poomsae division)
+        // registration rather than one row per player, so a player entered
+        // for both Official and Expo Poomsae appears as two separate rows
+        // instead of being combined into one. Built entirely from
+        // _poomsaePlayersCache — the same registration data already loaded
+        // for the tiles above, no separate fetch or duplicate data structure.
+        function renderPoomsaeDetailTable() {
+            const container = document.getElementById('poomsaeDetailTableContainer');
+            const pill = document.getElementById('poomsaeDetailCountPill');
+            if (!container) return;
+
+            const teamFilter = document.getElementById('poomsaeTeamFilter')?.value || 'all';
+            const genderFilter = document.getElementById('poomsaeGenderFilter')?.value || 'all';
+            const ageFilter = document.getElementById('poomsaeAgeCategoryFilter')?.value || 'all';
+            const typeFilter = document.getElementById('poomsaeCompetitionTypeFilter')?.value || 'all';
+            const divisionFilter = document.getElementById('poomsaeDivisionFilter')?.value || 'all';
+            const statusFilter = document.getElementById('poomsaeStatusFilter')?.value || 'all';
+            const searchQuery = (document.getElementById('poomsaeStatsSearch')?.value || '').trim().toLowerCase();
+
+            // Expand each player's poomsaeCategories array (e.g. ['Official
+            // Individual', 'Expo Pair']) into one registration row per entry,
+            // reusing the same splitPoomsaeCategory() helper the Excel export
+            // already relies on, so "division"/"competitionType" terminology
+            // stays consistent across the table and the export.
+            const registrations = [];
+            _poomsaePlayersCache.forEach(player => {
+                (player.poomsaeCategories || []).forEach(category => {
+                    const parsed = splitPoomsaeCategory(category);
+                    if (!parsed) return;
+                    registrations.push({ player, competitionType: parsed.competitionType, division: parsed.division });
+                });
+            });
+
+            const filtered = registrations.filter(({ player, competitionType, division }) => {
+                const teamMatch = teamFilter === 'all' || player._teamName === teamFilter;
+                const genderMatch = genderFilter === 'all' || player.gender === genderFilter;
+                const ageMatch = ageFilter === 'all' || player.ageCategory === ageFilter;
+                const typeMatch = typeFilter === 'all' || competitionType === typeFilter;
+                const divisionMatch = divisionFilter === 'all' || division === divisionFilter;
+                const isApproved = player.status === 'approved';
+                const statusMatch = statusFilter === 'all' || (statusFilter === 'approved' ? isApproved : !isApproved);
+                const searchMatch = !searchQuery || [
+                    player.playerName, player._teamName, player.gender, player.ageCategory, division, competitionType
+                ].some(v => (v || '').toLowerCase().includes(searchQuery));
+                return teamMatch && genderMatch && ageMatch && typeMatch && divisionMatch && statusMatch && searchMatch;
+            });
+
+            if (pill) pill.textContent = `${filtered.length} registration${filtered.length !== 1 ? 's' : ''}`;
+
+            if (registrations.length === 0) {
+                container.innerHTML = '<div class="st-empty"><div class="st-empty-icon">🥋</div><div style="font-size:1rem;font-weight:700;color:#555">No Poomsae registrations yet</div></div>';
+                return;
+            }
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="st-empty"><div class="st-empty-icon">🔍</div><div style="font-size:1rem;font-weight:700;color:#555">No registrations match your filters</div></div>';
+                return;
+            }
+
+            filtered.sort((a, b) => (a.player.playerName || '').localeCompare(b.player.playerName || ''));
+
+            let html = '<table class="st-table" id="poomsaeDetailTable">';
+            html += '<thead><tr>';
+            html += '<th style="width:52px;text-align:center">#</th>';
+            html += '<th>Name</th><th>Team</th><th>Gender</th><th>Date of Birth</th><th>Age Category</th><th>Category</th><th>Poomsae Type</th><th>Official/Expo</th><th>Status</th><th>Submitted</th>';
+            html += '</tr></thead><tbody>';
+
+            filtered.forEach(({ player, competitionType, division }, index) => {
+                const gender = player.gender || 'N/A';
+                const genderClass = gender === 'Male' ? 'st-gender-m' : gender === 'Female' ? 'st-gender-f' : '';
+                const categories = player.categories ? player.categories.map(c => `<span class="st-cat">${c}</span>`).join(' ') : 'N/A';
+                const submittedTime = UI.formatTimestamp(player.submittedAt) || 'N/A';
+                const statusLabel = player.status === 'approved' ? 'Approved' : 'Pending';
+                const typeColor = competitionType === 'Official' ? '#00E5FF' : '#FFD700';
+
+                html += `<tr>`;
+                html += `<td class="st-num">${index + 1})</td>`;
+                html += `<td class="st-name">${player.playerName || '(Unknown)'}</td>`;
+                html += `<td><span class="st-team">${player._teamName}</span></td>`;
+                html += `<td>${genderClass ? `<span class="${genderClass}">${gender}</span>` : gender}</td>`;
+                html += `<td class="st-wt">${player.dob || 'N/A'}</td>`;
+                html += `<td>${player.ageCategory || 'N/A'}</td>`;
+                html += `<td>${categories}</td>`;
+                html += `<td>${division}</td>`;
+                html += `<td><span style="color:${typeColor};font-weight:800">${competitionType}</span></td>`;
+                html += `<td>${statusLabel}</td>`;
+                html += `<td class="st-time">${submittedTime}</td>`;
+                html += `</tr>`;
+            });
+
+            html += '</tbody></table>';
+            container.innerHTML = html;
         }
 
         window.loadPoomsaeStatistics = loadPoomsaeStatistics;
         window.renderPoomsaeStatistics = renderPoomsaeStatistics;
+        window.renderPoomsaeDetailTable = renderPoomsaeDetailTable;
 
         // ── Team Player Counts (Official / Expo / Poomsae per team) ──
         // Same players/ + expoPlayers/ dedup-by-id source used throughout this
@@ -2486,6 +2818,26 @@
             poomsaeTab.style.color = showPoomsae ? '#FFD700' : '#888';
         }
         window.setStatsView = setStatsView;
+
+        // Official / Expo sub-switcher within the Kyorugi Statistics block —
+        // mirrors setStatsView's toggle pattern above.
+        function setKyorugiSubView(view) {
+            const officialBlock = document.getElementById('officialKyorugiStats');
+            const expoBlock = document.getElementById('expoKyorugiStats');
+            const officialTab = document.getElementById('kyorugiSubTabOfficial');
+            const expoTab = document.getElementById('kyorugiSubTabExpo');
+            if (!officialBlock || !expoBlock || !officialTab || !expoTab) return;
+
+            const showExpo = view === 'expo';
+            officialBlock.classList.toggle('hidden', showExpo);
+            expoBlock.classList.toggle('hidden', !showExpo);
+
+            officialTab.style.background = showExpo ? 'transparent' : 'rgba(0,229,255,.18)';
+            officialTab.style.color = showExpo ? '#888' : '#00E5FF';
+            expoTab.style.background = showExpo ? 'rgba(255,215,0,.18)' : 'transparent';
+            expoTab.style.color = showExpo ? '#FFD700' : '#888';
+        }
+        window.setKyorugiSubView = setKyorugiSubView;
 
         async function loadAllChampionships() {
             const listEl = document.getElementById('overallChampionshipsList');
