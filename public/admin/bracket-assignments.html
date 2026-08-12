@@ -199,6 +199,32 @@
             <button class="ba-tab-btn" id="baTabExpo" onclick="switchTab('expo')">🎯 Expo</button>
         </div>
 
+        <div class="ba-bulk-bar" id="baFilterBar">
+            <strong style="color:var(--border-gold);font-size:0.85rem;">Filters:</strong>
+            <select id="filterGender" onchange="setFilter('gender', this.value)">
+                <option value="all">All Genders</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+            </select>
+            <select id="filterAgeCategory" onchange="setFilter('ageCategory', this.value)">
+                <option value="all">All Age Categories</option>
+            </select>
+            <select id="filterStatus" onchange="setFilter('status', this.value)">
+                <option value="all">All Statuses</option>
+                <option value="Unassigned">⬜ Unassigned</option>
+                <option value="Assigned">🔵 Assigned</option>
+                <option value="Pending">🟡 Pending</option>
+                <option value="Live">🔴 Live</option>
+                <option value="Completed">✅ Completed</option>
+            </select>
+            <select id="filterCourt" onchange="setFilter('court', this.value)">
+                <option value="all">All Courts</option>
+                <option value="__unassigned__">— No Court Assigned —</option>
+            </select>
+            <button class="btn-secondary" style="padding:8px 14px;font-size:0.85rem;" onclick="clearFilters()">✖ Clear Filters</button>
+            <span id="baFilteredCount" style="color:#888;font-size:0.82rem;margin-left:auto;"></span>
+        </div>
+
         <div class="ba-bulk-bar">
             <strong style="color:var(--border-gold);font-size:0.85rem;">Bulk Assign Selected:</strong>
             <select id="bulkCourtSelect"><option value="">— Choose court —</option></select>
@@ -207,7 +233,7 @@
             <span id="baSelectedCount" style="color:#888;font-size:0.82rem;margin-left:auto;">0 selected</span>
         </div>
 
-        <input type="text" class="ba-search" id="baSearch" placeholder="🔍 Search by gender, age category, or weight category…" oninput="renderTable()">
+        <input type="text" class="ba-search" id="baSearch" placeholder="🔍 Search by weight category (or any free text)…" oninput="renderTable()">
 
         <div class="ba-wrap">
             <table class="ba-table">
@@ -255,6 +281,14 @@
         let _rowsOfficial = [];
         let _rowsExpo = [];
         const _selectedKeys = new Set(); // categoryKeys, scoped to whichever tab is active when selected
+        let _lastRenderedKeys = []; // keys currently visible after filters+search — what "select all" scopes to
+
+        // Filter state — persists across tab switches so e.g. "Male + Cadet + Unassigned"
+        // stays applied when flipping between Official and Expo.
+        let _filterGender = 'all';
+        let _filterAgeCategory = 'all';
+        let _filterStatus = 'all';
+        let _filterCourt = 'all'; // 'all' | '__unassigned__' | a court number string
 
         waitForModules();
         function waitForModules() {
@@ -301,6 +335,7 @@
             _rowsExpo = buildRows(_raw.expoPlayers, _raw.expoBrackets, _raw.assignmentsExpo);
 
             populateCourtDropdowns();
+            populateFilterOptions();
             renderCourtSummary();
             renderTable();
         }
@@ -365,6 +400,58 @@
             }
         }
 
+        // Builds the Age Category and Court filter dropdown options from whatever
+        // categories/courts actually exist right now, across both tabs — same
+        // "derive options from live data" approach as populateCourtDropdowns().
+        function populateFilterOptions() {
+            const ageCategoryOrder = ['Mini', 'Sub-Junior', 'Cadet', 'Junior', 'Senior'];
+            const allRows = [..._rowsOfficial, ..._rowsExpo];
+            const presentAgeCategories = [...new Set(allRows.map((r) => r.ageCategory))].sort((a, b) => {
+                const rankA = ageCategoryOrder.indexOf(a);
+                const rankB = ageCategoryOrder.indexOf(b);
+                return (rankA === -1 ? 99 : rankA) - (rankB === -1 ? 99 : rankB) || a.localeCompare(b);
+            });
+            const ageSel = document.getElementById('filterAgeCategory');
+            if (ageSel) {
+                const current = ageSel.value;
+                ageSel.innerHTML = '<option value="all">All Age Categories</option>' +
+                    presentAgeCategories.map((c) => `<option value="${escAttr(c)}">${escHtml(c)}</option>`).join('');
+                if (current === 'all' || presentAgeCategories.includes(current)) ageSel.value = current;
+                else { ageSel.value = 'all'; _filterAgeCategory = 'all'; }
+            }
+
+            const courts = getDistinctCourts();
+            const courtSel = document.getElementById('filterCourt');
+            if (courtSel) {
+                const current = courtSel.value;
+                courtSel.innerHTML = '<option value="all">All Courts</option><option value="__unassigned__">— No Court Assigned —</option>' +
+                    courts.map((c) => `<option value="${escAttr(c)}">Court ${escHtml(c)}</option>`).join('');
+                if (current === 'all' || current === '__unassigned__' || courts.includes(current)) courtSel.value = current;
+                else { courtSel.value = 'all'; _filterCourt = 'all'; }
+            }
+        }
+
+        window.setFilter = function (type, value) {
+            if (type === 'gender') _filterGender = value;
+            else if (type === 'ageCategory') _filterAgeCategory = value;
+            else if (type === 'status') _filterStatus = value;
+            else if (type === 'court') _filterCourt = value;
+            renderTable();
+        };
+
+        window.clearFilters = function () {
+            _filterGender = 'all';
+            _filterAgeCategory = 'all';
+            _filterStatus = 'all';
+            _filterCourt = 'all';
+            const genderSel = document.getElementById('filterGender'); if (genderSel) genderSel.value = 'all';
+            const ageSel = document.getElementById('filterAgeCategory'); if (ageSel) ageSel.value = 'all';
+            const statusSel = document.getElementById('filterStatus'); if (statusSel) statusSel.value = 'all';
+            const courtSel = document.getElementById('filterCourt'); if (courtSel) courtSel.value = 'all';
+            const searchInput = document.getElementById('baSearch'); if (searchInput) searchInput.value = '';
+            renderTable();
+        };
+
         // ── Court progress summary (Official + Expo combined per court) ─────
         function renderCourtSummary() {
             const container = document.getElementById('courtSummaryGrid');
@@ -416,15 +503,26 @@
         window.toggleSelect = function (key, checked) {
             if (checked) _selectedKeys.add(key); else _selectedKeys.delete(key);
             updateSelectedCount();
+            updateSelectAllCheckboxState();
         };
         window.toggleSelectAll = function (checked) {
-            const rows = _currentTab === 'official' ? _rowsOfficial : _rowsExpo;
-            rows.forEach((r) => { if (checked) _selectedKeys.add(r.key); else _selectedKeys.delete(r.key); });
+            // Scoped to whatever is currently visible under the active filters/search,
+            // not every row in the tab — so "select all" matches what the admin can see.
+            _lastRenderedKeys.forEach((key) => { if (checked) _selectedKeys.add(key); else _selectedKeys.delete(key); });
             renderTable();
         };
         function updateSelectedCount() {
             const el = document.getElementById('baSelectedCount');
             if (el) el.textContent = `${_selectedKeys.size} selected`;
+        }
+        function updateSelectAllCheckboxState() {
+            const el = document.getElementById('baSelectAll');
+            if (!el) return;
+            const visible = _lastRenderedKeys;
+            if (visible.length === 0) { el.checked = false; el.indeterminate = false; return; }
+            const selectedVisible = visible.filter((k) => _selectedKeys.has(k)).length;
+            el.checked = selectedVisible === visible.length;
+            el.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
         }
 
         // ── Table render ─────────────────────────────────────────────────────
@@ -433,18 +531,31 @@
             if (!tbody) return;
             const rows = _currentTab === 'official' ? _rowsOfficial : _rowsExpo;
             const q = (document.getElementById('baSearch')?.value || '').trim().toLowerCase();
-            const filtered = q
-                ? rows.filter((r) => `${r.gender} ${r.ageCategory} ${r.weightCategory}`.toLowerCase().includes(q))
-                : rows;
+
+            const filtered = rows.filter((r) => {
+                if (_filterGender !== 'all' && r.gender !== _filterGender) return false;
+                if (_filterAgeCategory !== 'all' && r.ageCategory !== _filterAgeCategory) return false;
+                if (_filterStatus !== 'all' && r.status !== _filterStatus) return false;
+                if (_filterCourt === '__unassigned__') { if (r.courtNumber) return false; }
+                else if (_filterCourt !== 'all' && r.courtNumber !== _filterCourt) return false;
+                if (q && !`${r.gender} ${r.ageCategory} ${r.weightCategory}`.toLowerCase().includes(q)) return false;
+                return true;
+            });
+
+            _lastRenderedKeys = filtered.map((r) => r.key);
+            const countEl = document.getElementById('baFilteredCount');
+            if (countEl) countEl.textContent = `Showing ${filtered.length} of ${rows.length}`;
 
             if (rows.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#666;">No ${_currentTab === 'official' ? 'Official' : 'Expo'} categories registered yet.</td></tr>`;
                 updateSelectedCount();
+                updateSelectAllCheckboxState();
                 return;
             }
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#666;">No categories match your search.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#666;">No categories match your filters.</td></tr>`;
                 updateSelectedCount();
+                updateSelectAllCheckboxState();
                 return;
             }
 
@@ -467,6 +578,7 @@
                 </tr>
             `).join('');
             updateSelectedCount();
+            updateSelectAllCheckboxState();
         }
 
         function statusBadge(status) {

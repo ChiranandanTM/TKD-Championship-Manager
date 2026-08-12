@@ -734,6 +734,63 @@
             color: #fff
         }
 
+        /* Medal summary / category breakdown panel */
+        .medal-summary-panel {
+            margin: -6px 0 20px;
+            padding: 16px 20px;
+            background: rgba(255, 215, 0, .05);
+            border: 1.5px solid rgba(255, 215, 0, .25);
+            border-radius: 14px;
+            animation: tdFadeUp .3s ease
+        }
+
+        .medal-summary-header {
+            font-size: .95rem;
+            font-weight: 900;
+            letter-spacing: .5px;
+            color: #FFD700;
+            margin-bottom: 12px
+        }
+
+        .medal-summary-empty {
+            font-size: .85rem;
+            color: #aaa;
+            font-weight: 600
+        }
+
+        .medal-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: .85rem
+        }
+
+        .medal-summary-table th,
+        .medal-summary-table td {
+            padding: 7px 10px;
+            text-align: left
+        }
+
+        .medal-summary-table thead th {
+            color: #00E5FF;
+            font-size: .72rem;
+            text-transform: uppercase;
+            letter-spacing: .6px;
+            border-bottom: 1.5px solid rgba(0, 229, 255, .2)
+        }
+
+        .medal-summary-table tbody td {
+            color: #eee;
+            font-weight: 700;
+            border-bottom: 1px solid rgba(255, 255, 255, .06)
+        }
+
+        .medal-summary-table tfoot td {
+            color: #FFD700;
+            font-weight: 900;
+            padding-top: 10px;
+            border-top: 1.5px solid rgba(255, 215, 0, .3)
+        }
+
         /* Action buttons on card */
         .td-card-actions {
             display: flex;
@@ -1033,6 +1090,9 @@
                 </select>
             </div>
 
+            <!-- Medal summary: total + category-wise breakdown for the selected medal filter -->
+            <div id="medalSummaryPanel" class="medal-summary-panel" style="display:none"></div>
+
             <div id="playersList" class="player-grid">
                 <div class="td-skeleton" style="min-height:300px"></div>
                 <div class="td-skeleton" style="min-height:300px"></div>
@@ -1298,6 +1358,62 @@
             return sortOrder[category] || 50;
         }
 
+        // Category-wise breakdown of the currently selected medal filter, scoped to this team.
+        // Uses the same officialMedalType/expoMedalType fields (and the same Official/Expo
+        // distinction) that drive the player-card filter above, so counts never double up
+        // across Official and Expo results.
+        function computeMedalBreakdown() {
+            const medalField = currentMatchTypeFilter === 'Expo' ? 'expoMedalType' : 'officialMedalType';
+            const counts = {};
+            let total = 0;
+            teamPlayers.forEach(player => {
+                if (player[medalField] === currentMedalFilter) {
+                    const category = getPlayerAgeCategory(player);
+                    counts[category] = (counts[category] || 0) + 1;
+                    total++;
+                }
+            });
+            return { total, counts };
+        }
+
+        function renderMedalSummary() {
+            const panel = document.getElementById('medalSummaryPanel');
+            if (!panel) return;
+
+            if (currentMedalFilter === 'all') {
+                panel.style.display = 'none';
+                panel.innerHTML = '';
+                return;
+            }
+
+            const { total, counts } = computeMedalBreakdown();
+            const medalEmoji = currentMedalFilter === 'Gold' ? '🥇' : currentMedalFilter === 'Silver' ? '🥈' : '🥉';
+            const matchTypeLabel = currentMatchTypeFilter === 'Expo' ? 'Expo' : 'Official';
+
+            const rows = Object.keys(counts)
+                .sort((a, b) => {
+                    const rankA = getAgeCategorySortRank(a);
+                    const rankB = getAgeCategorySortRank(b);
+                    if (rankA !== rankB) return rankA - rankB;
+                    return a.localeCompare(b);
+                })
+                .map(category => `<tr><td>${category}</td><td style="text-align:right">${counts[category]}</td></tr>`)
+                .join('');
+
+            panel.style.display = 'block';
+            panel.innerHTML = `
+                <div class="medal-summary-header">${medalEmoji} ${currentMedalFilter.toUpperCase()} MEDALS (${matchTypeLabel}) — TOTAL: ${total}</div>
+                ${total === 0
+                    ? `<div class="medal-summary-empty">No players in this team have won this medal yet.</div>`
+                    : `<div style="overflow-x:auto"><table class="medal-summary-table">
+                        <thead><tr><th>Category</th><th style="text-align:right">${currentMedalFilter}</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                        <tfoot><tr><td>Total</td><td style="text-align:right">${total}</td></tr></tfoot>
+                    </table></div>`
+                }
+            `;
+        }
+
         function populateAgeCategoryFilterOptions() {
             const filterSelect = document.getElementById('ageCategoryFilter');
             if (!filterSelect) return;
@@ -1346,6 +1462,8 @@
             // Update count pill
             const pill = document.getElementById('playerCountPill');
             if (pill) pill.textContent = `${filteredPlayers.length} player${filteredPlayers.length !== 1 ? 's' : ''}`;
+
+            renderMedalSummary();
 
             if (filteredPlayers.length === 0) {
                 if (teamPlayers.length === 0) {
