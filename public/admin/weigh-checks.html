@@ -69,6 +69,34 @@
         .wc-search:focus { border-color: var(--border-gold); box-shadow: 0 0 0 3px rgba(255,215,0,0.15); }
         .wc-search::placeholder { color: #8891a3; }
 
+        /* ── Filters ───────────────────────────────────────── */
+        .wc-filters-bar {
+            display: flex; flex-wrap: wrap; gap: 10px;
+            margin-bottom: 12px; align-items: center;
+        }
+        .wc-filter-select {
+            flex: 1 1 160px; min-width: 140px;
+            padding: 10px 12px;
+            background: rgba(8, 10, 20, 0.95);
+            border: 1.5px solid rgba(0,229,255,0.4);
+            border-radius: 10px;
+            color: var(--text-white);
+            font-size: 0.85rem; outline: none;
+            transition: border-color 0.2s;
+        }
+        .wc-filter-select:focus { border-color: var(--accent-cyan); }
+        .wc-clear-btn {
+            flex: 0 0 auto;
+            background: linear-gradient(135deg, rgba(255,23,68,0.22) 0%, rgba(255,23,68,0.14) 100%);
+            border: 1.5px solid rgba(255,23,68,0.5);
+            color: #ff9d90;
+            padding: 10px 16px; border-radius: 10px;
+            font-size: 0.85rem; font-weight: 700; cursor: pointer;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .wc-clear-btn:hover { background: rgba(255,23,68,0.32); }
+        .wc-filter-status { font-size: 0.85rem; color: var(--text-gray); margin: 0 0 14px 4px; }
+
         .wc-wrap {
             overflow-x: auto; border-radius: 14px;
             border: 1.5px solid rgba(255,215,0,0.2);
@@ -154,7 +182,46 @@
             <h3>⚖️ Player Roster</h3>
             <span class="wc-pill" id="wcCountPill">0 / 0 locked</span>
         </div>
-        <input type="text" class="wc-search" id="wcSearchInput" placeholder="&#x1F50D; Search by player or team name…" oninput="renderWeighChecksTable(this.value)">
+
+        <input type="text" class="wc-search" id="wcSearchInput"
+            placeholder="&#x1F50D; Search by player name, team, or player ID…" oninput="applyWeighChecksFilters()">
+
+        <div class="wc-filters-bar">
+            <select id="wcFilterTeam" class="wc-filter-select" onchange="applyWeighChecksFilters()">
+                <option value="all">All Teams</option>
+            </select>
+            <select id="wcFilterGender" class="wc-filter-select" onchange="applyWeighChecksFilters()">
+                <option value="all">All Genders</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+            </select>
+            <select id="wcFilterAge" class="wc-filter-select" onchange="applyWeighChecksFilters()">
+                <option value="all">All Age Categories</option>
+            </select>
+            <select id="wcFilterWeight" class="wc-filter-select" onchange="applyWeighChecksFilters()">
+                <option value="all">All Weight Categories</option>
+            </select>
+            <select id="wcFilterEvent" class="wc-filter-select" onchange="applyWeighChecksFilters()">
+                <option value="all">All Events</option>
+            </select>
+            <select id="wcFilterCompType" class="wc-filter-select" onchange="applyWeighChecksFilters()">
+                <option value="all">All Official/Expo</option>
+                <option value="Official">Official</option>
+                <option value="Expo">Expo</option>
+            </select>
+            <select id="wcFilterRegStatus" class="wc-filter-select" onchange="applyWeighChecksFilters()">
+                <option value="all">All Registration Status</option>
+                <option value="approved">Approved</option>
+                <option value="pending">Pending</option>
+            </select>
+            <select id="wcFilterWeighStatus" class="wc-filter-select" onchange="applyWeighChecksFilters()">
+                <option value="all">All Weighing Status</option>
+                <option value="locked">Locked</option>
+                <option value="pending">Not Yet Weighed</option>
+            </select>
+            <button type="button" class="wc-clear-btn" onclick="clearWeighChecksFilters()">&#x2716; Clear Filters</button>
+        </div>
+        <div id="wcFilterStatus" class="wc-filter-status"></div>
 
         <div class="wc-wrap">
             <div id="wcTableContainer">
@@ -425,7 +492,29 @@
             _rows = Object.entries(merged).map(([id, { val, source }]) => {
                 const divisionBits = [];
                 if (val.competitionCategory) divisionBits.push(val.competitionCategory);
-                if (Array.isArray(val.poomsaeCategories) && val.poomsaeCategories.length > 0) divisionBits.push('Poomsae');
+                const poomsaeCategories = Array.isArray(val.poomsaeCategories) ? val.poomsaeCategories : [];
+                const hasPoomsae = poomsaeCategories.length > 0;
+                if (hasPoomsae) divisionBits.push('Poomsae');
+
+                // Event = which discipline(s) the player is entered in; a player
+                // can be in both. Kept separate from Official/Expo below so the
+                // two can be filtered independently, per the required filter set.
+                const events = [];
+                if (val.competitionCategory) events.push('Kyorugi');
+                if (hasPoomsae) events.push('Poomsae');
+
+                // Official/Expo across BOTH Kyorugi and Poomsae — same
+                // isOfficial/isExpo convention as the Team Player Counts panel
+                // above, extended to also count a Poomsae-only "Official …"/
+                // "Expo …" category selection (Poomsae tracks Official/Expo per
+                // division, independently of the Kyorugi competitionCategory).
+                const kyorugiIsExpo = val.competitionCategory === 'Expo' || val.competitionCategory === 'Official & Expo';
+                const kyorugiIsOfficial = val.competitionCategory === 'Official' || val.competitionCategory === 'Official & Expo' || (!val.competitionCategory && !hasPoomsae);
+                const poomsaeIsOfficial = poomsaeCategories.some(c => typeof c === 'string' && c.startsWith('Official '));
+                const poomsaeIsExpo = poomsaeCategories.some(c => typeof c === 'string' && c.startsWith('Expo '));
+
+                const wc = weighChecks[id] || null;
+
                 return {
                     id,
                     source,
@@ -436,43 +525,131 @@
                     registeredWeight: (val.weight !== undefined && val.weight !== null && val.weight !== '') ? val.weight : null,
                     weightCategory: val.weightCategory || '',
                     division: divisionBits.join(' + ') || '—',
-                    weighCheck: weighChecks[id] || null
+                    events,
+                    isOfficial: kyorugiIsOfficial || poomsaeIsOfficial,
+                    isExpo: kyorugiIsExpo || poomsaeIsExpo,
+                    registrationStatus: val.status === 'approved' ? 'approved' : 'pending',
+                    weighCheck: wc,
+                    isLocked: !!(wc && wc.locked)
                 };
             }).sort((a, b) => a.playerName.localeCompare(b.playerName));
 
-            renderWeighChecksTable();
+            populateWeighChecksFilterOptions();
+            applyWeighChecksFilters();
         }
 
+        // ── Filters ──────────────────────────────────────────────────────────
+        // Team/Age/Weight Category options are derived from whatever's actually
+        // in the current roster (never hardcoded), so a category that doesn't
+        // exist in this championship simply doesn't appear as an option —
+        // mirrors the same pattern used on the Referee First Check page and the
+        // Poomsae Statistics filters elsewhere in this dashboard.
+        function rebuildWcSelect(sel, defaultLabel, values) {
+            if (!sel) return;
+            const current = sel.value; // capture before rebuilding so a live-data refresh doesn't reset the admin's selection
+            sel.innerHTML = `<option value="all">${escHtml(defaultLabel)}</option>` +
+                values.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+            sel.value = values.includes(current) ? current : 'all';
+        }
+
+        function populateWeighChecksFilterOptions() {
+            rebuildWcSelect(document.getElementById('wcFilterTeam'), 'All Teams',
+                [...new Set(_rows.map(r => r.teamName))].sort((a, b) => a.localeCompare(b)));
+            rebuildWcSelect(document.getElementById('wcFilterAge'), 'All Age Categories',
+                [...new Set(_rows.map(r => r.ageCategory).filter(Boolean))].sort());
+            rebuildWcSelect(document.getElementById('wcFilterWeight'), 'All Weight Categories',
+                [...new Set(_rows.map(r => r.weightCategory).filter(Boolean))].sort());
+
+            const eventOptions = [];
+            if (_rows.some(r => r.events.includes('Kyorugi'))) eventOptions.push('Kyorugi');
+            if (_rows.some(r => r.events.includes('Poomsae'))) eventOptions.push('Poomsae');
+            rebuildWcSelect(document.getElementById('wcFilterEvent'), 'All Events', eventOptions);
+        }
+
+        // All filters combine with AND, and with the free-text search — matching
+        // every currently-selected filter plus the search query at once.
+        function getFilteredWeighChecksRows() {
+            const q = (document.getElementById('wcSearchInput')?.value || '').trim().toLowerCase();
+            const team = document.getElementById('wcFilterTeam')?.value || 'all';
+            const gender = document.getElementById('wcFilterGender')?.value || 'all';
+            const age = document.getElementById('wcFilterAge')?.value || 'all';
+            const weightCat = document.getElementById('wcFilterWeight')?.value || 'all';
+            const event = document.getElementById('wcFilterEvent')?.value || 'all';
+            const compType = document.getElementById('wcFilterCompType')?.value || 'all';
+            const regStatus = document.getElementById('wcFilterRegStatus')?.value || 'all';
+            const weighStatus = document.getElementById('wcFilterWeighStatus')?.value || 'all';
+
+            return _rows.filter(r => {
+                if (team !== 'all' && r.teamName !== team) return false;
+                if (gender !== 'all' && r.gender !== gender) return false;
+                if (age !== 'all' && r.ageCategory !== age) return false;
+                if (weightCat !== 'all' && r.weightCategory !== weightCat) return false;
+                if (event !== 'all' && !r.events.includes(event)) return false;
+                if (compType === 'Official' && !r.isOfficial) return false;
+                if (compType === 'Expo' && !r.isExpo) return false;
+                if (regStatus !== 'all' && r.registrationStatus !== regStatus) return false;
+                if (weighStatus === 'locked' && !r.isLocked) return false;
+                if (weighStatus === 'pending' && r.isLocked) return false;
+                if (q && !(r.playerName.toLowerCase().includes(q) || r.teamName.toLowerCase().includes(q) || r.id.toLowerCase().includes(q))) return false;
+                return true;
+            });
+        }
+
+        function applyWeighChecksFilters() {
+            renderWeighChecksTable(getFilteredWeighChecksRows());
+        }
+        window.applyWeighChecksFilters = applyWeighChecksFilters;
+
+        function clearWeighChecksFilters() {
+            const searchInput = document.getElementById('wcSearchInput');
+            if (searchInput) searchInput.value = '';
+            ['wcFilterTeam', 'wcFilterGender', 'wcFilterAge', 'wcFilterWeight', 'wcFilterEvent', 'wcFilterCompType', 'wcFilterRegStatus', 'wcFilterWeighStatus']
+                .forEach(id => { const el = document.getElementById(id); if (el) el.value = 'all'; });
+            applyWeighChecksFilters();
+        }
+        window.clearWeighChecksFilters = clearWeighChecksFilters;
+
         // ── Render ───────────────────────────────────────────────────────────
-        function renderWeighChecksTable(filterQuery) {
+        // Pure render: takes the already-filtered rows and draws the table —
+        // no filtering logic lives here, so this never has to reload/reset
+        // anything beyond the table body itself.
+        function renderWeighChecksTable(rowsData) {
             const container = document.getElementById('wcTableContainer');
             const pill = document.getElementById('wcCountPill');
+            const filterStatus = document.getElementById('wcFilterStatus');
             if (!container) return;
 
-            const q = (filterQuery !== undefined ? filterQuery : (document.getElementById('wcSearchInput')?.value || '')).trim().toLowerCase();
-            const rowsData = q
-                ? _rows.filter(r => r.playerName.toLowerCase().includes(q) || r.teamName.toLowerCase().includes(q))
-                : _rows;
-
-            const lockedCount = _rows.filter(r => r.weighCheck && r.weighCheck.locked).length;
+            // The roster count/lock pill always reflects EVERY registered player,
+            // never the filtered subset — filters only change what's displayed,
+            // never what's counted as registered (required: show all players by
+            // default, never hide anyone from the underlying data).
+            const lockedCount = _rows.filter(r => r.isLocked).length;
             if (pill) pill.textContent = `${lockedCount} / ${_rows.length} locked`;
 
             if (_rows.length === 0) {
+                if (filterStatus) filterStatus.textContent = '';
                 container.innerHTML = `<div class="wc-empty"><div class="wc-empty-icon">&#x2696;&#xFE0F;</div><p>No players registered yet.</p></div>`;
                 return;
             }
+
+            if (filterStatus) {
+                filterStatus.textContent = rowsData.length === _rows.length
+                    ? `Showing all ${_rows.length} player${_rows.length !== 1 ? 's' : ''}`
+                    : `Showing ${rowsData.length} of ${_rows.length} player${_rows.length !== 1 ? 's' : ''}`;
+            }
+
             if (rowsData.length === 0) {
-                container.innerHTML = `<div class="wc-empty"><div class="wc-empty-icon">&#x1F50D;</div><p>No players match your search.</p></div>`;
+                container.innerHTML = `<div class="wc-empty"><div class="wc-empty-icon">&#x1F50D;</div><p>No players match your search/filters.</p></div>`;
                 return;
             }
 
             let html = `<table class="wc-table"><thead><tr>
-                <th style="width:48px;text-align:center">#</th><th>Player</th><th>Team</th><th>Registered</th><th>First Check</th><th>Status</th><th style="text-align:center">Actions</th>
+                <th style="width:48px;text-align:center">#</th><th>Player</th><th>Team</th><th>Gender / Age</th><th>Division</th><th>Registered</th><th>First Check</th><th>Status</th><th style="text-align:center">Actions</th>
             </tr></thead><tbody>`;
 
             rowsData.forEach((r, idx) => {
                 const wc = r.weighCheck;
-                const isLocked = !!(wc && wc.locked);
+                const isLocked = r.isLocked;
                 const statusChip = isLocked
                     ? `<span class="wc-chip-locked" title="Submitted by ${escHtml(wc.submittedBy || '')} at ${formatTime(wc.submittedAt)}">&#x1F512; Locked</span>`
                     : `<span class="wc-chip-open">&#x2B1C; Not yet</span>`;
@@ -492,6 +669,8 @@
                     <td class="st-num" style="text-align:center;color:var(--border-gold);font-weight:800">${idx + 1})</td>
                     <td class="wc-name">${escHtml(r.playerName)}</td>
                     <td>${escHtml(r.teamName)}</td>
+                    <td style="font-size:0.85rem;color:#999">${escHtml([r.gender, r.ageCategory].filter(Boolean).join(' · ') || '—')}</td>
+                    <td style="font-size:0.85rem;color:#999">${escHtml(r.division)}</td>
                     <td style="font-size:0.85rem;color:#999">${r.registeredWeight !== null ? r.registeredWeight + ' kg' : '—'}${r.weightCategory ? ' · ' + escHtml(r.weightCategory) : ''}</td>
                     <td style="font-weight:700;color:var(--text-white)">${weightCell}</td>
                     <td>${statusChip}</td>

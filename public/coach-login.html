@@ -215,7 +215,7 @@
     <!-- Firebase SDK v11 -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
-        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+        import { getAuth, setPersistence, browserSessionPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
         import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
 
@@ -241,6 +241,14 @@
         const auth = getAuth(app);
         const database = getDatabase(app);
         const storage = getStorage(app);
+
+        // ── Tab-scoped auth session (multi-tab fix) ───────────────────────
+        // See public/js/firebase.js for the full rationale: this keeps this
+        // tab's login from bleeding into (or being overwritten by) any other
+        // open tab logged in under a different role.
+        const authReady = setPersistence(auth, browserSessionPersistence).catch((err) => {
+          console.error('⚠️ Failed to set tab-scoped auth persistence:', err);
+        });
 
         // Export for global use
         window.firebaseApp = app;

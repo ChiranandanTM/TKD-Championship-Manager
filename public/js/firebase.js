@@ -1,6 +1,6 @@
 // FIREBASE v11 - Modular SDK with persistence + performance optimizations
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, onIdTokenChanged, createUserWithEmailAndPassword, signInAnonymously, EmailAuthProvider, reauthenticateWithCredential } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+import { getAuth, setPersistence, browserSessionPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged, onIdTokenChanged, createUserWithEmailAndPassword, signInAnonymously, EmailAuthProvider, reauthenticateWithCredential } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
 import { getDatabase, ref, set, get, update, remove, onValue, onChildAdded, onChildChanged, onChildRemoved, push, query, orderByChild, equalTo, child, goOnline, goOffline, connectDatabaseEmulator, onDisconnect, runTransaction } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
 import { getFirestore, collection, addDoc, doc, setDoc, getDoc, updateDoc, deleteDoc, query as fsQuery, where, orderBy, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
@@ -20,6 +20,20 @@ const auth = getAuth(app);
 const database = getDatabase(app);
 const storage = getStorage(app);
 const firestore = getFirestore(app);
+
+// ── Tab-scoped auth session (multi-tab fix) ───────────────────────────────
+// Firebase Auth's default persistence (IndexedDB) is shared across every tab
+// of this origin, so signing in as a different role in one tab silently
+// swaps auth.currentUser — and therefore the role read out of this tab's
+// sessionStorage — in every OTHER open tab too, which is what produced the
+// false "Access Denied" when Admin/Coach/Referee were logged in side by
+// side. browserSessionPersistence ties the auth session to this tab's own
+// sessionStorage instead, which the SDK does not propagate to other tabs,
+// so each tab's login stays independent while still surviving that tab's
+// own refreshes and duplicated tabs (sessionStorage travels with those).
+const authReady = setPersistence(auth, browserSessionPersistence).catch((err) => {
+  console.error('⚠️ Failed to set tab-scoped auth persistence:', err);
+});
 
 // ── Keep connection alive on visibility change ────────────────────────────────
 // When tab becomes hidden, Firebase drops the WebSocket. When the user returns,
@@ -140,6 +154,7 @@ function withAuthRetry(fn) {
 // ── Export everything globally ────────────────────────────────────────────────
 window.firebaseApp = app;
 window.auth = auth;
+window.authReady = authReady;
 window.database = database;
 window.storage = storage;
 window.dbRef = ref;

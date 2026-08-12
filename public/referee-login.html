@@ -215,7 +215,7 @@
     <!-- Firebase SDK v11 -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js';
-        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
+        import { getAuth, setPersistence, browserSessionPersistence, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword, signInAnonymously } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js';
         import { getDatabase, ref, set, get, update, remove, onValue, push, query, orderByChild, equalTo, child } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-database.js';
         import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-storage.js';
         import { getFirestore, doc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js';
@@ -243,6 +243,14 @@
         const database = getDatabase(app);
         const storage = getStorage(app);
         const firestore = getFirestore(app);
+
+        // ── Tab-scoped auth session (multi-tab fix) ───────────────────────
+        // See public/js/firebase.js for the full rationale: this keeps this
+        // tab's anonymous referee sign-in from bleeding into (or being
+        // overwritten by) any other open tab logged in under a different role.
+        const authReady = setPersistence(auth, browserSessionPersistence).catch((err) => {
+          console.error('⚠️ Failed to set tab-scoped auth persistence:', err);
+        });
 
         // Export for global use
         window.firebaseApp = app;
@@ -475,6 +483,7 @@
                 // Sign in anonymously to Firebase Auth so RTDB/Firestore security
                 // rules can identify this referee. The anonymous UID is stable per browser.
                 try {
+                    await authReady;
                     const anonResult = await signInAnonymously(auth);
                     const anonUid = anonResult.user.uid;
                     sessionStorage.setItem('firebaseUid', anonUid);

@@ -2289,6 +2289,33 @@
             return null;
         }
 
+        // ── Poomsae export sort order ──────────────────────────────────────
+        // Required hierarchy: Division (Individual → Pair → Group → Mixed
+        // Group → Freestyle → any other division the system adds later) →
+        // Official before Expo → Team (A–Z) → Player name (A–Z) — so every
+        // team's participants stay together and no section mixes divisions,
+        // Official/Expo, or teams.
+        const POOMSAE_DIVISION_ORDER = ['Individual', 'Pair', 'Group', 'Mixed Group', 'Freestyle'];
+
+        function comparePoomsaeEntries(a, b) {
+            const rankA = POOMSAE_DIVISION_ORDER.indexOf(a.division);
+            const rankB = POOMSAE_DIVISION_ORDER.indexOf(b.division);
+            const divRankA = rankA === -1 ? POOMSAE_DIVISION_ORDER.length : rankA;
+            const divRankB = rankB === -1 ? POOMSAE_DIVISION_ORDER.length : rankB;
+            if (divRankA !== divRankB) return divRankA - divRankB;
+            // Unrecognized divisions (not in the list above) fall after all
+            // known ones and sort alphabetically among themselves.
+            if (divRankA === POOMSAE_DIVISION_ORDER.length && a.division !== b.division) {
+                return a.division.localeCompare(b.division);
+            }
+            if (a.competitionType !== b.competitionType) {
+                return a.competitionType === 'Official' ? -1 : 1;
+            }
+            const teamCompare = a.teamName.localeCompare(b.teamName);
+            if (teamCompare !== 0) return teamCompare;
+            return a.playerName.localeCompare(b.playerName);
+        }
+
         async function exportPoomsaeStatisticsToExcel() {
             const btn = document.getElementById('exportPoomsaeBtn');
             const originalText = btn ? btn.textContent : '';
@@ -2336,8 +2363,14 @@
                 }
 
                 const headers = ['Player Name', 'Gender', 'Age Category', 'Weight (kg)', 'Team', 'State', 'Coach', 'Phone', 'Poomsae Division', 'Competition Type'];
-                const rows = [headers];
 
+                // Expand each player's poomsaeCategories into one entry per
+                // registration (same expansion as before), keeping the raw
+                // division/team/player-name alongside the formatted row so
+                // the whole set can be sorted into the required Division →
+                // Official/Expo → Team → Player hierarchy before it's
+                // flattened into the sheet below.
+                const entries = [];
                 players.forEach(player => {
                     if (!Array.isArray(player.poomsaeCategories) || player.poomsaeCategories.length === 0) return;
                     const teamName = teamsMap[player.teamId] || player.centerName || player.teamName || 'Unassigned Team';
@@ -2346,25 +2379,34 @@
                         const parsed = splitPoomsaeCategory(category);
                         if (!parsed) return;
 
-                        rows.push([
-                            player.playerName || 'N/A',
-                            player.gender || 'N/A',
-                            player.ageCategory || 'N/A',
-                            (player.weight !== undefined && player.weight !== null && player.weight !== '') ? player.weight : 'N/A',
+                        entries.push({
+                            division: parsed.division,
+                            competitionType: parsed.competitionType,
                             teamName,
-                            player.state || 'N/A',
-                            player.coach || player.coachName || 'N/A',
-                            player.phoneNumber || 'N/A',
-                            parsed.division,
-                            parsed.competitionType
-                        ]);
+                            playerName: player.playerName || 'N/A',
+                            row: [
+                                player.playerName || 'N/A',
+                                player.gender || 'N/A',
+                                player.ageCategory || 'N/A',
+                                (player.weight !== undefined && player.weight !== null && player.weight !== '') ? player.weight : 'N/A',
+                                teamName,
+                                player.state || 'N/A',
+                                player.coach || player.coachName || 'N/A',
+                                player.phoneNumber || 'N/A',
+                                parsed.division,
+                                parsed.competitionType
+                            ]
+                        });
                     });
                 });
 
-                if (rows.length === 1) {
+                if (entries.length === 0) {
                     MODAL.error('No players registered for Poomsae yet.');
                     return;
                 }
+
+                entries.sort(comparePoomsaeEntries);
+                const rows = [headers, ...entries.map(entry => entry.row)];
 
                 const ws = XLSX.utils.aoa_to_sheet(rows);
 

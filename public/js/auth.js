@@ -84,7 +84,12 @@ const AUTH_MANAGER = {
   currentRole: null,
   currentTeamId: null,
 
-  init() {
+  async init() {
+    // Wait for tab-scoped auth persistence (set in firebase.js) to be in effect
+    // before wiring up the listener below, so it never observes a stale
+    // cross-tab identity from the SDK's default (shared) persistence.
+    if (window.authReady) await window.authReady;
+
     // ── Proactive token refresh every 45 min ─────────────────────────────────
     // Firebase Auth tokens expire after 60 minutes. Browser background
     // throttling can delay the SDK's own refresh timer, so we do it manually
@@ -129,6 +134,19 @@ const AUTH_MANAGER = {
         // Referee sessions are also DB-auth (not Firebase Auth)
         if (existingRole === 'referee') {
           this.currentRole = 'referee';
+          this.redirectBasedOnRole();
+          return;
+        }
+
+        // Defense in depth: with tab-scoped persistence this listener should
+        // now only ever fire for THIS tab's own sign-in/sign-out events, but
+        // guard admin/judge the same way team/referee are guarded above —
+        // if a different uid than the one already active in this tab's
+        // session comes through, restore the existing session instead of
+        // looking up (and overwriting with) the unrelated uid's role.
+        const existingUid = sessionStorage.getItem('userId');
+        if ((existingRole === 'admin' || existingRole === 'judge') && existingUid && existingUid !== user.uid) {
+          this.currentRole = existingRole;
           this.redirectBasedOnRole();
           return;
         }
@@ -226,6 +244,7 @@ const AUTH_MANAGER = {
 
   async loginAdmin(email, password) {
     try {
+      if (window.authReady) await window.authReady;
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const role = await this.loadUserRole(userCredential.user.uid);
 
@@ -316,6 +335,7 @@ const AUTH_MANAGER = {
       
       // Try to sign in with Firebase Auth, but don't fail if email doesn't exist
       try {
+        if (window.authReady) await window.authReady;
         const userCredential = await signInWithEmailAndPassword(auth, teamData.email, trimmedPassword);
         console.log("✅ Firebase Auth sign-in successful");
         // If successful, proceed normally
