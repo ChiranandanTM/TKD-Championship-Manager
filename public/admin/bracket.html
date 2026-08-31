@@ -400,11 +400,27 @@
 
 
             <div class="category-filter-row">
-                <label class="category-filter-label" for="categoryFilterSelect">Category Filter</label>
-                <select id="categoryFilterSelect" class="category-filter-select"
-                    onchange="BRACKET.filterByCategory(this.value)">
+                <label class="category-filter-label" for="genderFilterSelect">Gender</label>
+                <select id="genderFilterSelect" class="category-filter-select" style="flex:0 0 150px;min-width:130px;"
+                    onchange="BRACKET.filterByGender(this.value)">
+                    <option value="all">All</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                </select>
+
+                <label class="category-filter-label" for="ageCategoryFilterSelect">Category</label>
+                <select id="ageCategoryFilterSelect" class="category-filter-select" style="flex:0 0 180px;min-width:160px;"
+                    onchange="BRACKET.filterByAgeCategory(this.value)">
                     <option value="all">All Categories</option>
                 </select>
+
+                <label class="category-filter-label" for="weightFilterSelect">Weight / Division</label>
+                <select id="weightFilterSelect" class="category-filter-select"
+                    onchange="BRACKET.filterByWeight(this.value)">
+                    <option value="all">All Weights</option>
+                </select>
+
+                <button type="button" class="status-tab" style="white-space:nowrap;" onclick="BRACKET.clearAllFilters()">✖ Clear Filters</button>
             </div>
 
             <!-- Categories List -->
@@ -450,11 +466,27 @@
             </div>
 
             <div class="category-filter-row">
-                <label class="category-filter-label" for="expoCategoryFilterSelect">Category Filter</label>
-                <select id="expoCategoryFilterSelect" class="category-filter-select"
-                    onchange="EXPO_BRACKET.filterByCategory(this.value)">
+                <label class="category-filter-label" for="expoGenderFilterSelect">Gender</label>
+                <select id="expoGenderFilterSelect" class="category-filter-select" style="flex:0 0 150px;min-width:130px;"
+                    onchange="EXPO_BRACKET.filterByGender(this.value)">
+                    <option value="all">All</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                </select>
+
+                <label class="category-filter-label" for="expoAgeCategoryFilterSelect">Category</label>
+                <select id="expoAgeCategoryFilterSelect" class="category-filter-select" style="flex:0 0 180px;min-width:160px;"
+                    onchange="EXPO_BRACKET.filterByAgeCategory(this.value)">
                     <option value="all">All Categories</option>
                 </select>
+
+                <label class="category-filter-label" for="expoWeightFilterSelect">Weight / Division</label>
+                <select id="expoWeightFilterSelect" class="category-filter-select"
+                    onchange="EXPO_BRACKET.filterByWeight(this.value)">
+                    <option value="all">All Weights</option>
+                </select>
+
+                <button type="button" class="status-tab" style="white-space:nowrap;" onclick="EXPO_BRACKET.clearAllFilters()">✖ Clear Filters</button>
             </div>
 
             <div id="expoCategoriesList">

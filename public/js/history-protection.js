@@ -10,9 +10,11 @@ const HISTORY_PROTECTION = {
     '/admin-login.html',
     '/coach-login.html',
     '/referee-login.html',
+    '/organizer-login.html',
     '/admin/dashboard.html',
     '/team/dashboard.html',
     '/referee/dashboard.html',
+    '/organizer/dashboard.html',
     '/register.html',
     '/'
   ],

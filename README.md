@@ -779,8 +779,8 @@ Tab-level bulk button (status filter row, next to All/Live/Pending/Completed):
 
 | Button | Output | Library |
 | --- | --- | --- |
-| Download All Results → Excel | `All_Category_Results_<date>.xlsx` — one sheet, every completed category stacked with a heading row + medal table (Player/Medal/Team/Remark) | SheetJS/XLSX (CDN) |
-| Download All Results → PDF | `All_Category_Results_<date>.pdf` | jsPDF (CDN) |
+| Download All Results → Excel | `All_Category_Results_<date>.xlsx` — one flat, filterable table (Match Type/Event/Gender/Category/Weight-Division/Player/Medal/Team/Remark columns, AutoFilter enabled) covering every completed category, sorted Gender → Age Category (Mini→Sub-Junior→Cadet→Junior→Senior) → Weight (ascending) → bracket order | SheetJS/XLSX (CDN) |
+| Download All Results → PDF | `All_Category_Results_<date>.pdf` — one bordered table per category, same sort order, each headed "Official • Kyorugi • Gender • Category • Weight" | jsPDF (CDN) |
 
 > The old standalone "Download Fixture (Excel)" button (visual bracket-tree export) was removed in Jul 2026; "Download Player List (Excel)" is a plain roster export, not a replacement for the bracket-tree layout.
 
@@ -799,8 +799,8 @@ Tab-level bulk button:
 
 | Button | Output | Library |
 | --- | --- | --- |
-| Download All Results → Excel | `All_Expo_Category_Results_<date>.xlsx` | SheetJS/XLSX (CDN) |
-| Download All Results → PDF | `All_Expo_Category_Results_<date>.pdf` | jsPDF (CDN) |
+| Download All Results → Excel | `All_Expo_Category_Results_<date>.xlsx` — same flat, filterable format as the Official export above, Match Type column reads "Expo" | SheetJS/XLSX (CDN) |
+| Download All Results → PDF | `All_Expo_Category_Results_<date>.pdf` — same grouped-table format as the Official export above, headings read "Expo • Kyorugi • …" | jsPDF (CDN) |
 
 ### Team Dashboard exports (from `/team/dashboard.html`)
 
@@ -951,6 +951,8 @@ The script outputs `TKD_Bracket_Template.xlsx` in the current directory (landsca
 
 - ✅ New tab-level **Download All Results** button (Excel/PDF submenu) on both the Official and Expo bracket status-filter rows — combines every completed category into a single file (`All_Category_Results_<date>.xlsx/.pdf`, `All_Expo_Category_Results_<date>.xlsx/.pdf`) instead of downloading category-by-category
 - ✅ Official bracket's old standalone "Download Fixture (Excel)" visual bracket-tree export was removed (per request); a new **Download Player List (Excel)** button was added to both Official and Expo category views — a plain name/club/team roster export, not a bracket-tree replacement (see [Section 19](#19-bracket-export-tools))
+- ✅ **Result-sheet ordering fixed**: both "Download All Results" exports were sorting categories by a plain alphabetical string (so e.g. "Female" sorted before "Male" and "Cadet" before "Mini"), which mixed categories/genders/weights in no useful order. They now sort Gender (Male → Female) → Age Category (Mini → Sub-Junior → Cadet → Junior → Senior) → Weight/Division (ascending, resolved against the admin's actual configured weight ranges) → bracket order, added shared as `CATEGORY_LOGIC.genderSortIndex/ageCategorySortIndex/weightCategorySortKey()` in `category-logic.js` so Official (`bracket.js`) and Expo (`expoBracket.js`) sort identically. The Excel export was also rebuilt from merged-cell category blocks (which broke AutoFilter/sort) into one flat table with a Match Type/Event/Gender/Category/Weight column per row plus AutoFilter enabled; the PDF export's per-category heading now spells out `Official/Expo • Kyorugi • Gender • Category • Weight` instead of a terse concatenated label. Medal/ranking calculation itself is untouched — presentation/ordering only.
+- ✅ **Gender → Category → Weight bracket filters**, consistent across Admin/Referee and Official/Expo (all four share the same `admin/bracket.html` page and `bracket.js`/`expoBracket.js` filter logic): a Gender dropdown (All/Male/Female), a Category dropdown (dynamic age categories, narrowed to the selected Gender), and a Weight/Division dropdown (dynamic, narrowed to the selected Gender + Category, sorted ascending) replace the old single "Category Filter" combo-box. A "✖ Clear Filters" button resets all three. These previously had partially-built but never-mounted plumbing (`currentAgeCategoryFilter`/`syncAgeCategoryFilter()` targeted a container div, `#ageCategoryFilter`/`#expoAgeCategoryFilter`, that didn't exist in either HTML page) — this wires it up properly and adds the missing Gender/Weight tiers. **"Download All Results" now respects whichever of these three filters are active** — e.g. with Gender=Male, Category=Cadet, Weight=-45kg selected, the PDF/Excel download contains only that bracket's results, tagged in both the filename and the on-page heading; with no filters active (the default), the download is unchanged — every completed category, exactly as before. Referee sessions keep their existing court-assignment gating (only their assigned brackets are ever visible/downloadable) — these filters narrow within that set, they don't widen it. No bracket generation, match/result calculation, medal logic, or permissions were touched.
 
 ### Live Matches Page Is Now a Public Spectator Board
 

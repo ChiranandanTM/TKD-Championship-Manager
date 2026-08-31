@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Organizers — Taekwondo Championship</title>
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Admin panel to create, edit and delete organizers for Taekwondo Championship.">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script defer src="/js/modal.js"></script>
+
+    <style>
+        .org-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
+            margin-top: 28px;
+        }
+
+        .org-card {
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            border: 2px solid var(--border-gold);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            position: relative;
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.5s ease;
+        }
+
+        .org-card:hover {
+            border-color: #ffe033;
+            box-shadow: 0 8px 28px rgba(255, 215, 0, 0.25);
+            transform: translateY(-3px);
+        }
+
+        .org-card.disabled-card {
+            opacity: 0.6;
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .org-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .org-id {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: var(--border-gold);
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+            letter-spacing: 1px;
+        }
+
+        .org-name {
+            font-size: 1rem;
+            color: var(--text-gray);
+            margin-top: 4px;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            font-weight: 800;
+            font-size: 0.85rem;
+            padding: 5px 12px;
+            border-radius: 20px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+
+        .status-badge.enabled {
+            background: linear-gradient(135deg, var(--success-green) 0%, #00cc6a 100%);
+            color: #000;
+        }
+
+        .status-badge.disabled {
+            background: linear-gradient(135deg, #666 0%, #444 100%);
+            color: #ccc;
+        }
+
+        .org-meta {
+            font-size: 0.9rem;
+            color: var(--text-gray);
+            margin-bottom: 16px;
+            opacity: 0.7;
+        }
+
+        .org-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .org-actions button {
+            flex: 1;
+            min-width: 80px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+
+        .btn-info {
+            background: rgba(0, 229, 255, 0.15);
+            border-color: rgba(0, 229, 255, 0.4) !important;
+            color: var(--accent-cyan);
+        }
+        .btn-info:hover { background: rgba(0, 229, 255, 0.3); }
+
+        .btn-success {
+            background: rgba(0, 255, 136, 0.15);
+            border-color: rgba(0, 255, 136, 0.4) !important;
+            color: var(--success-green);
+        }
+        .btn-success:hover { background: rgba(0, 255, 136, 0.3); }
+
+        .btn-warning {
+            background: rgba(255, 149, 0, 0.15);
+            border-color: rgba(255, 149, 0, 0.4) !important;
+            color: var(--warning-orange);
+        }
+        .btn-warning:hover { background: rgba(255, 149, 0, 0.3); }
+
+        .btn-danger {
+            background: rgba(255, 23, 68, 0.15);
+            border-color: rgba(255, 23, 68, 0.4) !important;
+            color: var(--accent-red);
+        }
+        .btn-danger:hover { background: rgba(255, 23, 68, 0.3); }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #FFD700, #FFC107);
+            border: none !important;
+            color: #000;
+        }
+        .btn-primary:hover { background: linear-gradient(135deg, #ffe033, #ffd000); }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-gray);
+        }
+        .btn-secondary:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+
+        /* ── Modal ─────────────────────────────────────────── */
+        .org-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 5000;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .org-modal-overlay.active {
+            display: flex;
+        }
+
+        .org-modal {
+            background: linear-gradient(145deg, #16213e, #0a0a14);
+            border: 2px solid var(--border-gold);
+            border-radius: 18px;
+            padding: 32px;
+            width: 100%;
+            max-width: 440px;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+            animation: fadeInUp 0.3s ease;
+        }
+
+        .org-modal h3 {
+            color: var(--border-gold);
+            font-size: 1.3rem;
+            font-weight: 800;
+            margin-bottom: 24px;
+            letter-spacing: 1px;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px 14px;
+            background: #0f1629;
+            border: 2px solid rgba(255, 215, 0, 0.3);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--border-gold);
+            box-shadow: 0 0 12px rgba(255, 215, 0, 0.25);
+        }
+
+        .modal-btns {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .modal-btns button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        /* ── Page Header ───────────────────────────────────── */
+        .page-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 8px;
+        }
+
+        .page-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--border-gold);
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        }
+
+        .add-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #FFD700, #FFC107);
+            border: none;
+            border-radius: 12px;
+            color: #000;
+            font-size: 1rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 16px rgba(255, 215, 0, 0.35);
+        }
+
+        .add-btn:hover {
+            transform: translateY(-2px);
+            background: linear-gradient(135deg, #ffe033, #ffd000);
+            box-shadow: 0 8px 24px rgba(255, 215, 0, 0.5);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-gray);
+            text-decoration: none;
+            font-size: 0.9rem;
+            margin-bottom: 20px;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: #c084fc;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        .empty-state .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div style="max-width: 1200px; margin: 0 auto; padding: 24px;">
+        <a href="/admin/dashboard.html" class="back-link">← Back to Dashboard</a>
+
+        <div class="page-header">
+            <h1 class="page-title">🏅 Manage Organizers</h1>
+            <button class="add-btn" onclick="openCreateModal()">➕ Add New Organizer</button>
+        </div>
+        <p style="color: var(--text-gray); margin-bottom: 16px; font-size: 0.9rem;">
+            Create and manage organizer accounts for medal distribution during the championship.
+        </p>
+
+        <div class="org-grid" id="orgGrid">
+            <div class="empty-state" style="grid-column: 1/-1">
+                <div class="empty-icon">⏳</div>
+                <p>Loading organizers...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Modal -->
+    <div id="orgFormModal" class="org-modal-overlay">
+        <div class="org-modal">
+            <h3 id="orgModalTitle">Add Organizer</h3>
+
+            <div class="form-group">
+                <label for="orgIdInput">Organizer ID <span style="color:var(--accent-red)">*</span></label>
+                <input type="text" id="orgIdInput" placeholder="e.g. ORG001" maxlength="30">
+            </div>
+
+            <div class="form-group">
+                <label for="orgNameInput">Organizer Name <span style="color:var(--accent-red)">*</span></label>
+                <input type="text" id="orgNameInput" placeholder="e.g. Ravi Kumar" maxlength="60">
+            </div>
+
+            <div class="form-group">
+                <label for="orgPasswordInput">Password <span style="color:var(--accent-red)">*</span></label>
+                <div style="position: relative; display: flex; align-items: center;">
+                    <input type="password" id="orgPasswordInput" placeholder="Set login password" style="padding-right: 44px;">
+                    <button type="button" onclick="UI.togglePasswordVisibility('orgPasswordInput','orgPasswordToggleIcon','orgPasswordToggleBtn')" id="orgPasswordToggleBtn" aria-label="Show password" style="position: absolute; right: 8px; background: transparent; border: none; color: #ffffff; cursor: pointer; padding: 6px; display: flex; align-items: center; justify-content: center;">
+                        <svg id="orgPasswordToggleIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                </div>
+                <small id="orgPasswordHint" style="color:#888;font-size:0.82rem;margin-top:4px;display:none;">
+                    Showing current password. Edit to change it.
+                </small>
+            </div>
+
+            <div class="modal-btns">
+                <button class="btn-primary" id="orgFormSubmitBtn" onclick="submitOrgForm()">&#x2705; Save</button>
+                <button class="btn-secondary" onclick="closeOrgModal()">&#x2716; Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase modules -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+
+    <script type="module">
+        // ── PASSWORD HASHING ──────────────────────────────────────────────────
+        async function hashPassword(plain) {
+            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('TKDCM:' + plain));
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // ── ORGANIZER MANAGER (inlined to avoid cross-module timing issues) ──
+        const OM = {
+            _requireAdmin: function() {
+                var role = sessionStorage.getItem('userRole');
+                if (role !== 'admin') throw new Error('Access denied: Admin only');
+            },
+
+            createOrganizer: async function(orgId, name, password) {
+                this._requireAdmin();
+                if (!orgId || !name || !password) throw new Error('All fields are required');
+                var tid = orgId.trim();
+                var existing = await dbGet(dbRef(database, 'organizers/' + tid));
+                if (existing.exists()) throw new Error('Organizer ID "' + tid + '" already exists');
+                var now = new Date().toISOString();
+                await dbSet(dbRef(database, 'organizers/' + tid), {
+                    orgId: tid,
+                    name: name.trim(),
+                    password: await hashPassword(password.trim()),
+                    enabled: true,
+                    createdAt: now,
+                    updatedAt: now
+                });
+                localStorage.setItem('pw_org_' + tid, password.trim());
+                await dbSet(dbRef(database, 'users/' + tid), {
+                    role: 'organizer',
+                    orgId: tid,
+                    name: name.trim(),
+                    createdAt: now
+                });
+                return tid;
+            },
+
+            getAllOrganizers: async function() {
+                this._requireAdmin();
+                var snap = await dbGet(dbRef(database, 'organizers'));
+                if (!snap.exists()) return [];
+                return Object.entries(snap.val()).map(function(e) {
+                    return Object.assign({}, e[1], { _key: e[0] });
+                });
+            },
+
+            getOrganizer: async function(orgId) {
+                var snap = await dbGet(dbRef(database, 'organizers/' + orgId));
+                if (!snap.exists()) throw new Error('Organizer "' + orgId + '" not found');
+                return snap.val();
+            },
+
+            updateOrganizer: async function(orgId, opts) {
+                this._requireAdmin();
+                opts = opts || {};
+                var updates = { updatedAt: new Date().toISOString() };
+                if (opts.name && opts.name.trim()) {
+                    updates.name = opts.name.trim();
+                    await dbUpdate(dbRef(database, 'users/' + orgId), { name: updates.name });
+                }
+                if (opts.password && opts.password.trim()) {
+                    updates.password = await hashPassword(opts.password.trim());
+                    localStorage.setItem('pw_org_' + orgId, opts.password.trim());
+                }
+                if (opts.enabled !== undefined) {
+                    updates.enabled = !!opts.enabled;
+                }
+                await dbUpdate(dbRef(database, 'organizers/' + orgId), updates);
+            },
+
+            deleteOrganizer: async function(orgId) {
+                this._requireAdmin();
+                await dbRemove(dbRef(database, 'organizers/' + orgId));
+                await dbRemove(dbRef(database, 'users/' + orgId));
+            }
+        };
+
+        // ── State ──────────────────────────────────────────────────────────
+        var editingOrgId = null;
+
+        // ── Boot ───────────────────────────────────────────────────────────
+        waitForModules();
+
+        function waitForModules() {
+            if (
+                typeof UI !== 'undefined' &&
+                typeof database !== 'undefined' &&
+                typeof dbGet === 'function' &&
+                typeof dbRef === 'function' &&
+                typeof dbSet === 'function'
+            ) {
+                UI.initPageProtection(['admin']);
+                loadOrganizers();
+            } else {
+                setTimeout(waitForModules, 80);
+            }
+        }
+
+        // ── Load & render ───────────────────────────────────────────────────
+        async function loadOrganizers() {
+            try {
+                var orgs = await OM.getAllOrganizers();
+                renderGrid(orgs);
+            } catch (err) {
+                console.error('loadOrganizers error:', err);
+                document.getElementById('orgGrid').innerHTML =
+                    '<div class="empty-state"><div class="empty-icon">&#x26A0;&#xFE0F;</div>' +
+                    '<p style="color:var(--accent-red)">Error: ' + escHtml(err.message) + '</p></div>';
+            }
+        }
+
+        function renderGrid(orgs) {
+            var grid = document.getElementById('orgGrid');
+            if (!orgs || orgs.length === 0) {
+                grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">' +
+                    '<div class="empty-icon">🏅</div>' +
+                    '<p>No organizers added yet. Click <strong>Add New Organizer</strong> to get started.</p>' +
+                    '</div>';
+                return;
+            }
+
+            grid.innerHTML = orgs.map(function(o) {
+                var createdDate = o.createdAt
+                    ? new Date(o.createdAt).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })
+                    : '';
+                var isEnabled = o.enabled !== false;
+                var toggleLabel = isEnabled ? '🔒 Disable' : '🔓 Enable';
+                var toggleBtnClass = isEnabled ? 'btn-warning' : 'btn-success';
+
+                return '<div class="org-card' + (isEnabled ? '' : ' disabled-card') + '" id="card-' + escHtml(o.orgId) + '">' +
+                    '<div class="org-card-header">' +
+                        '<div>' +
+                            '<div class="org-id">🏅 ' + escHtml(o.orgId) + '</div>' +
+                            '<div class="org-name">' + escHtml(o.name || '') + '</div>' +
+                            (createdDate ? '<div class="org-meta">Created: ' + createdDate + '</div>' : '') +
+                        '</div>' +
+                        '<span class="status-badge ' + (isEnabled ? 'enabled' : 'disabled') + '">' +
+                            (isEnabled ? '✅ Active' : '❌ Disabled') +
+                        '</span>' +
+                    '</div>' +
+                    '<div style="margin-bottom:12px;padding:8px 12px;background:rgba(0,0,0,0.3);border-radius:6px;border-left:3px solid #c084fc;">' +
+                        '<span style="font-size:0.8rem;color:var(--text-gray);text-transform:uppercase;letter-spacing:1px;">Password</span>' +
+                        '<div style="font-family:monospace;color:#c084fc;font-weight:700;font-size:1rem;margin-top:2px;">' + escHtml(localStorage.getItem('pw_org_' + o.orgId) || '—') + '</div>' +
+                    '</div>' +
+                    '<div class="org-actions">' +
+                        '<button class="btn-info" onclick="openEditModal(\'' + escAttr(o.orgId) + '\')">✏️ Edit</button>' +
+                        '<button class="' + toggleBtnClass + '" onclick="toggleEnabled(\'' + escAttr(o.orgId) + '\',' + isEnabled + ')">' + toggleLabel + '</button>' +
+                        '<button class="btn-danger" onclick="confirmDelete(\'' + escAttr(o.orgId) + '\')">🗑️ Delete</button>' +
+                    '</div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+        function escAttr(s) {
+            return String(s || '').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
+        }
+
+        // ── Create modal ────────────────────────────────────────────────────
+        window.openCreateModal = function() {
+            editingOrgId = null;
+            document.getElementById('orgModalTitle').textContent = 'Add Organizer';
+            document.getElementById('orgIdInput').value = '';
+            document.getElementById('orgIdInput').disabled = false;
+            document.getElementById('orgNameInput').value = '';
+            document.getElementById('orgPasswordInput').value = '';
+            document.getElementById('orgPasswordHint').style.display = 'none';
+            document.getElementById('orgFormModal').classList.add('active');
+            document.getElementById('orgIdInput').focus();
+        };
+
+        // ── Edit modal ──────────────────────────────────────────────────────
+        window.openEditModal = async function(orgId) {
+            try {
+                var org = await OM.getOrganizer(orgId);
+                editingOrgId = orgId;
+                document.getElementById('orgModalTitle').textContent = 'Edit — ' + orgId;
+                document.getElementById('orgIdInput').value = orgId;
+                document.getElementById('orgIdInput').disabled = true;
+                document.getElementById('orgNameInput').value = org.name || '';
+                document.getElementById('orgPasswordInput').value = localStorage.getItem('pw_org_' + orgId) || '';
+                document.getElementById('orgPasswordHint').style.display = 'block';
+                document.getElementById('orgFormModal').classList.add('active');
+                document.getElementById('orgNameInput').focus();
+            } catch (err) {
+                MODAL.error('Failed to load organizer: ' + err.message);
+            }
+        };
+
+        window.closeOrgModal = function() {
+            document.getElementById('orgFormModal').classList.remove('active');
+            editingOrgId = null;
+        };
+
+        // ── Submit ──────────────────────────────────────────────────────────
+        window.submitOrgForm = async function() {
+            var orgId    = document.getElementById('orgIdInput').value.trim();
+            var name     = document.getElementById('orgNameInput').value.trim();
+            var password = document.getElementById('orgPasswordInput').value.trim();
+            var btn      = document.getElementById('orgFormSubmitBtn');
+
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+            try {
+                if (editingOrgId) {
+                    if (!name) throw new Error('Name is required');
+                    await OM.updateOrganizer(editingOrgId, { name: name, password: password || undefined });
+                    MODAL.success('Organizer "' + editingOrgId + '" updated!');
+                } else {
+                    if (!orgId || !name || !password) throw new Error('All fields are required');
+                    await OM.createOrganizer(orgId, name, password);
+                    MODAL.success('Organizer "' + orgId + '" created!\n\nShare the ID + Password with the organizer.\nLogin URL: /organizer-login.html');
+                }
+                closeOrgModal();
+                loadOrganizers();
+            } catch (err) {
+                MODAL.error(err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '✅ Save';
+            }
+        };
+
+        // ── Toggle Enable/Disable ───────────────────────────────────────────
+        window.toggleEnabled = async function(orgId, currentlyEnabled) {
+            var action = currentlyEnabled ? 'disable' : 'enable';
+            var yes = await MODAL.showConfirm(
+                (currentlyEnabled ? '🔒 Disable' : '🔓 Enable') + ' organizer "' + orgId + '"?\n\n' +
+                (currentlyEnabled ? 'They will not be able to log in until re-enabled.' : 'They will be able to log in again.')
+            );
+            if (!yes) return;
+            try {
+                UI.showLoading(currentlyEnabled ? 'Disabling...' : 'Enabling...');
+                await OM.updateOrganizer(orgId, { enabled: !currentlyEnabled });
+                UI.hideLoading();
+                MODAL.success('Organizer "' + orgId + '" ' + (currentlyEnabled ? 'disabled' : 'enabled') + '.');
+                loadOrganizers();
+            } catch (err) {
+                UI.hideLoading();
+                MODAL.error(err.message);
+            }
+        };
+
+        // ── Delete ──────────────────────────────────────────────────────────
+        window.confirmDelete = async function(orgId) {
+            var yes = await MODAL.showConfirm('Delete organizer "' + orgId + '"?\n\nThis will permanently remove their account.');
+            if (!yes) return;
+            try {
+                UI.showLoading('Deleting...');
+                await OM.deleteOrganizer(orgId);
+                UI.hideLoading();
+                MODAL.success('Organizer "' + orgId + '" deleted.');
+                loadOrganizers();
+            } catch (err) {
+                UI.hideLoading();
+                MODAL.error(err.message);
+            }
+        };
+
+        // ── Backdrop close ──────────────────────────────────────────────────
+        document.getElementById('orgFormModal').addEventListener('click', function(e) {
+            if (e.target === document.getElementById('orgFormModal')) closeOrgModal();
+        });
+
+        window.alert   = function(msg) { return MODAL.showAlert(msg); };
+        window.confirm = function(msg) { return MODAL.showConfirm(msg); };
+        window.loadOrganizers = loadOrganizers;
+    </script>
+
+</body>
+</html>

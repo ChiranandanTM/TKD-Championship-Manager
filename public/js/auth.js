@@ -138,6 +138,13 @@ const AUTH_MANAGER = {
           return;
         }
 
+        // Organizer sessions are also DB-auth (not Firebase Auth)
+        if (existingRole === 'organizer') {
+          this.currentRole = 'organizer';
+          this.redirectBasedOnRole();
+          return;
+        }
+
         // Defense in depth: with tab-scoped persistence this listener should
         // now only ever fire for THIS tab's own sign-in/sign-out events, but
         // guard admin/judge the same way team/referee are guarded above —
@@ -178,8 +185,8 @@ const AUTH_MANAGER = {
         // Do NOT wipe the team session — team users authenticated via DB, not Firebase Auth.
         // Firebase Auth fires with null for team users; clearing currentRole here would
         // cause getCurrentUser to return an inconsistent state vs sessionStorage.
-        if (sessionRole !== 'team' && sessionRole !== 'referee') {
-          // Only clear if it's NOT a team/referee session (i.e., admin/judge who genuinely signed out)
+        if (sessionRole !== 'team' && sessionRole !== 'referee' && sessionRole !== 'organizer') {
+          // Only clear if it's NOT a team/referee/organizer session (i.e., admin/judge who genuinely signed out)
           this.currentRole = null;
           this.currentTeamId = null;
         }
@@ -191,6 +198,10 @@ const AUTH_MANAGER = {
         // If it IS a referee session, keep currentRole in sync
         if (sessionRole === 'referee') {
           this.currentRole = 'referee';
+        }
+        // If it IS an organizer session, keep currentRole in sync
+        if (sessionRole === 'organizer') {
+          this.currentRole = 'organizer';
         }
       }
     });
@@ -217,7 +228,7 @@ const AUTH_MANAGER = {
         }
 
         // Only write valid, known roles to sessionStorage
-        if (role === 'admin' || role === 'judge' || role === 'team' || role === 'referee') {
+        if (role === 'admin' || role === 'judge' || role === 'team' || role === 'referee' || role === 'organizer') {
           this.currentRole = role;
           this.currentTeamId = userData.teamId || null;
           sessionStorage.setItem('userRole', role);
@@ -416,6 +427,8 @@ const AUTH_MANAGER = {
         window.location.href = window.location.origin + '/team/dashboard.html';
       } else if (this.currentRole === 'referee') {
         window.location.href = window.location.origin + '/referee/dashboard.html';
+      } else if (this.currentRole === 'organizer') {
+        window.location.href = window.location.origin + '/organizer/dashboard.html';
       }
     }
   },

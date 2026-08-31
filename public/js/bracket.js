@@ -26,11 +26,13 @@ const BRACKET = {
   historyListener: null,
   categoriesListener: null,
   currentFilter: 'all',
-  currentCategoryFilter: 'all',
+  currentGenderFilter: 'all',
   currentAgeCategoryFilter: 'all',
+  currentWeightFilter: 'all',
   categoryStatuses: {},
   categoriesRenderRequestId: 0,
   _teamNameCache: null,  // { teamId → teamName } lookup built once per session
+  _weightCategoriesConfigCache: null, // admin's weightCategories config, cached once per session (see _getWeightCategoriesConfig)
   editingSlot: null,     // { matchId, slot } when inline edit form is open
   _liveCourtNumber: null, // court this session registered live presence under, if any
   _lockedCourtNumber: null, // court that currently holds this session's exclusive bracketLocks/official claim, if any
@@ -73,6 +75,17 @@ const BRACKET = {
       this._teamNameCache = {};
     }
     return this._teamNameCache;
+  },
+
+  // Weight-category ranges (admin-configurable, rarely change mid-tournament)
+  // used only to sort the Weight filter dropdown and the result-sheet
+  // export — cached once per session like _buildTeamNameCache() above,
+  // instead of re-reading Firebase on every renderCategories() call (which
+  // fires on every filter change and every live players/ update).
+  async _getWeightCategoriesConfig() {
+    if (this._weightCategoriesConfigCache) return this._weightCategoriesConfigCache;
+    this._weightCategoriesConfigCache = await CATEGORY_LOGIC.loadWeightCategories();
+    return this._weightCategoriesConfigCache;
   },
 
   // Normalize a single player's centerName/teamName using the authoritative
@@ -221,9 +234,48 @@ const BRACKET = {
     await this.renderCategories();
   },
 
-  // Filter brackets by category key
-  async filterByCategory(categoryKey) {
-    this.currentCategoryFilter = categoryKey || 'all';
+  // ── Gender / Category / Weight filters ────────────────────────────────
+  // Three independent, combinable (AND'd) filters — Gender → Category →
+  // Weight — applied both to the on-screen category list (renderCategories()
+  // below) and to the "Download All Results" export
+  // (_collectAllCategoryMedalGroups() in the export section further down),
+  // so a filtered download always matches exactly what's on screen. Category
+  // and Weight each cascade off the filter(s) to their left: picking a
+  // Gender narrows which Categories are offered, picking a Category narrows
+  // which Weights are offered — mirrors the "Gender → Category → Weight"
+  // selection order described in the feature request.
+  //
+  // Single source of truth for "does this category pass the active
+  // Gender/Category/Weight filters" — shared by renderCategories() (screen)
+  // and _collectAllCategoryMedalGroups() (download) so the two can never
+  // drift apart. Does NOT consider the status tab (All/Live/Pending/
+  // Completed) — that's a separate filter axis callers apply themselves.
+  _categoryMatchesActiveFilters(cat) {
+    const matchesGender = this.currentGenderFilter === 'all' || cat.gender === this.currentGenderFilter;
+    const matchesAge = this.currentAgeCategoryFilter === 'all' || cat.ageCategory === this.currentAgeCategoryFilter;
+    const matchesWeight = this.currentWeightFilter === 'all' || cat.weightCategory === this.currentWeightFilter;
+    return matchesGender && matchesAge && matchesWeight;
+  },
+
+  // Short "Male • Cadet • -45kg"-style label of whichever Gender/Category/
+  // Weight filters are currently active (skipping any left at 'all'), used
+  // to tag the filtered download's filename/heading so it's obvious which
+  // slice of the results it contains. Empty string when no filters are
+  // active — callers must leave the filename/heading untouched in that case
+  // so the unfiltered "Download All Results" output is byte-for-byte the
+  // same as before this feature existed.
+  _activeFilterSummary() {
+    const parts = [];
+    if (this.currentGenderFilter !== 'all') parts.push(this.currentGenderFilter);
+    if (this.currentAgeCategoryFilter !== 'all') parts.push(this.currentAgeCategoryFilter);
+    if (this.currentWeightFilter !== 'all') parts.push(this.currentWeightFilter);
+    return parts.join(' • ');
+  },
+
+  async filterByGender(gender) {
+    this.currentGenderFilter = gender || 'all';
+    // Age category / weight selections may no longer exist under the new
+    // gender — sync functions below reset them to 'all' if so.
     await this.renderCategories();
   },
 
@@ -233,46 +285,85 @@ const BRACKET = {
     await this.renderCategories();
   },
 
-  // Keep category filter options in sync with available categories
-  syncCategoryFilterControl() {
-    const select = document.getElementById('categoryFilterSelect');
-    if (!select) return;
-
-    const categoryOptions = Object.keys(this.categories)
-      .map(key => {
-        const cat = this.categories[key];
-        return {
-          key,
-          label: `${cat.gender} ${cat.ageCategory} - ${cat.weightCategory}`
-        };
-      })
-      .sort((a, b) => a.label.localeCompare(b.label));
-
-    let optionsHtml = '<option value="all">All Categories</option>';
-    categoryOptions.forEach(option => {
-      optionsHtml += `<option value="${option.key}">${option.label}</option>`;
-    });
-
-    select.innerHTML = optionsHtml;
-
-    if (this.currentCategoryFilter !== 'all' && !this.categories[this.currentCategoryFilter]) {
-      this.currentCategoryFilter = 'all';
-    }
-
-    select.value = this.currentCategoryFilter;
+  async filterByWeight(weight) {
+    this.currentWeightFilter = weight || 'all';
+    await this.renderCategories();
   },
 
-  // Build age category filter tabs dynamically from available categories
-  syncAgeCategoryFilter() {
-    const container = document.getElementById('ageCategoryFilter');
-    if (!container) return;
-    const ages = [...new Set(Object.values(this.categories).map(c => c.ageCategory))].sort();
-    let html = `<button class="status-tab${this.currentAgeCategoryFilter === 'all' ? ' active' : ''}" onclick="BRACKET.filterByAgeCategory('all')">All</button>`;
-    ages.forEach(age => {
-      const active = this.currentAgeCategoryFilter === age ? ' active' : '';
-      html += `<button class="status-tab${active}" onclick="BRACKET.filterByAgeCategory('${age}')">${age}</button>`;
+  // "All / Clear Filters" — resets Gender/Category/Weight only; the
+  // separate status tabs (All/Live/Pending/Completed) are left as-is since
+  // they're a different, already-has-an-"All"-tab filter axis.
+  async clearAllFilters() {
+    this.currentGenderFilter = 'all';
+    this.currentAgeCategoryFilter = 'all';
+    this.currentWeightFilter = 'all';
+    await this.renderCategories();
+  },
+
+  // Gender options are the fixed Male/Female pair (per spec) rather than
+  // derived from registered players, so the filter is available even before
+  // both genders have any players yet. Just keeps the <select> in sync with
+  // state (e.g. after Clear Filters).
+  syncGenderFilterControl() {
+    const select = document.getElementById('genderFilterSelect');
+    if (!select) return;
+    select.value = this.currentGenderFilter;
+  },
+
+  // Category options are the age categories actually present among
+  // registered players, narrowed to the currently selected Gender (or all
+  // genders if Gender = All) — dynamic, never hard-coded.
+  syncAgeCategoryFilterControl() {
+    const select = document.getElementById('ageCategoryFilterSelect');
+    if (!select) return;
+
+    const relevant = Object.values(this.categories)
+      .filter(c => this.currentGenderFilter === 'all' || c.gender === this.currentGenderFilter);
+    const ages = [...new Set(relevant.map(c => c.ageCategory))]
+      .sort((a, b) => CATEGORY_LOGIC.ageCategorySortIndex(a) - CATEGORY_LOGIC.ageCategorySortIndex(b));
+
+    if (this.currentAgeCategoryFilter !== 'all' && !ages.includes(this.currentAgeCategoryFilter)) {
+      this.currentAgeCategoryFilter = 'all';
+    }
+
+    let html = '<option value="all">All Categories</option>';
+    ages.forEach(age => { html += `<option value="${age}">${age}</option>`; });
+    select.innerHTML = html;
+    select.value = this.currentAgeCategoryFilter;
+  },
+
+  // Weight options are narrowed to the currently selected Gender AND
+  // Category (age category) — only weight divisions that actually apply to
+  // that combination are ever shown, per spec. Sorted ascending using the
+  // same admin-configured ranges the result-sheet export sorts by, so the
+  // dropdown reads lightest-to-heaviest instead of alphabetically.
+  async syncWeightFilterControl() {
+    const select = document.getElementById('weightFilterSelect');
+    if (!select) return;
+
+    const relevant = Object.values(this.categories).filter(c =>
+      (this.currentGenderFilter === 'all' || c.gender === this.currentGenderFilter) &&
+      (this.currentAgeCategoryFilter === 'all' || c.ageCategory === this.currentAgeCategoryFilter));
+    const weightCategoriesConfig = await this._getWeightCategoriesConfig();
+    const weights = [...new Set(relevant.map(c => c.weightCategory))].sort((a, b) => {
+      // Each remaining category in `relevant` may span more than one
+      // gender/age combo (e.g. Gender=All), so resolve each weight label's
+      // sort key against whichever combo it actually belongs to.
+      const ca = relevant.find(c => c.weightCategory === a);
+      const cb = relevant.find(c => c.weightCategory === b);
+      const ka = CATEGORY_LOGIC.weightCategorySortKey(ca.gender, ca.ageCategory, a, weightCategoriesConfig);
+      const kb = CATEGORY_LOGIC.weightCategorySortKey(cb.gender, cb.ageCategory, b, weightCategoriesConfig);
+      return ka !== kb ? ka - kb : a.localeCompare(b);
     });
-    container.innerHTML = html;
+
+    if (this.currentWeightFilter !== 'all' && !weights.includes(this.currentWeightFilter)) {
+      this.currentWeightFilter = 'all';
+    }
+
+    let html = '<option value="all">All Weights</option>';
+    weights.forEach(w => { html += `<option value="${w}">${w}</option>`; });
+    select.innerHTML = html;
+    select.value = this.currentWeightFilter;
   },
 
   // Render category list
@@ -280,8 +371,9 @@ const BRACKET = {
     const container = document.getElementById('categoriesList');
     if (!container) return;
 
-    this.syncCategoryFilterControl();
-    this.syncAgeCategoryFilter();
+    this.syncGenderFilterControl();
+    this.syncAgeCategoryFilterControl();
+    await this.syncWeightFilterControl();
 
     const renderRequestId = ++this.categoriesRenderRequestId;
 
@@ -360,10 +452,8 @@ const BRACKET = {
         // Check if category should be displayed based on active filters
         const statusLower = status.toLowerCase();
         const matchesStatus = this.currentFilter === 'all' || this.currentFilter === statusLower;
-        const matchesCategory = this.currentCategoryFilter === 'all' || this.currentCategoryFilter === key;
-        const matchesAge = this.currentAgeCategoryFilter === 'all' || cat.ageCategory === this.currentAgeCategoryFilter;
 
-        if (!matchesStatus || !matchesCategory || !matchesAge) {
+        if (!matchesStatus || !this._categoryMatchesActiveFilters(cat)) {
           return null;
         }
 
@@ -2936,20 +3026,37 @@ const BRACKET = {
     return { ...bracketData, rounds };
   },
 
-  // Returns [{ category, rows: [{ playerName, medal, teamName }] }] — one
-  // group per COMPLETED category, in category-name order. teamName falls
-  // back to centerName the same way the rest of the app already does
-  // (_normalizePlayerTeam keeps the two in sync, but older records may only
-  // have one or the other set).
+  // Returns [{ category, gender, ageCategory, weightCategory,
+  // rows: [{ playerName, medal, teamName }] }] — one group per COMPLETED
+  // category (= one bracket) that also passes the active Gender/Category/
+  // Weight filters (see _categoryMatchesActiveFilters() — the exact same
+  // check the on-screen category list uses, so a filtered download always
+  // matches exactly what's currently visible), ordered Gender → Age
+  // Category → Weight (ascending) so the result sheet reads sequentially
+  // instead of plain alphabetically (see CATEGORY_LOGIC's *SortIndex/
+  // *SortKey helpers in category-logic.js). With no filters active (all
+  // 'all'), every completed category is included — unchanged from before.
+  // teamName falls back to centerName the same way the rest of the app
+  // already does (_normalizePlayerTeam keeps the two in sync, but older
+  // records may only have one or the other set).
   async _collectAllCategoryMedalGroups() {
     const bracketsSnap = await dbGet(dbRef(database, 'brackets'));
     const allBrackets = bracketsSnap.exists() ? bracketsSnap.val() : {};
+    const weightCategoriesConfig = await this._getWeightCategoriesConfig();
 
-    const categoryKeys = Object.keys(this.categories).sort((a, b) => {
-      const ca = this.categories[a], cb = this.categories[b];
-      return `${ca.gender} ${ca.ageCategory} ${ca.weightCategory}`
-        .localeCompare(`${cb.gender} ${cb.ageCategory} ${cb.weightCategory}`);
-    });
+    const categoryKeys = Object.keys(this.categories)
+      .filter(key => this._categoryMatchesActiveFilters(this.categories[key]))
+      .sort((a, b) => {
+        const ca = this.categories[a], cb = this.categories[b];
+        const genderDiff = CATEGORY_LOGIC.genderSortIndex(ca.gender) - CATEGORY_LOGIC.genderSortIndex(cb.gender);
+        if (genderDiff !== 0) return genderDiff;
+        const ageDiff = CATEGORY_LOGIC.ageCategorySortIndex(ca.ageCategory) - CATEGORY_LOGIC.ageCategorySortIndex(cb.ageCategory);
+        if (ageDiff !== 0) return ageDiff;
+        const weightDiff = CATEGORY_LOGIC.weightCategorySortKey(ca.gender, ca.ageCategory, ca.weightCategory, weightCategoriesConfig)
+          - CATEGORY_LOGIC.weightCategorySortKey(cb.gender, cb.ageCategory, cb.weightCategory, weightCategoriesConfig);
+        if (weightDiff !== 0) return weightDiff;
+        return ca.weightCategory.localeCompare(cb.weightCategory); // stable tie-break for unmatched labels
+      });
 
     const groups = [];
     categoryKeys.forEach(key => {
@@ -2967,7 +3074,15 @@ const BRACKET = {
           teamName: r.player.teamName || r.player.centerName || '',
         }));
 
-      if (medalRows.length > 0) groups.push({ category: categoryLabel, rows: medalRows });
+      if (medalRows.length > 0) {
+        groups.push({
+          category: categoryLabel,
+          gender: cat.gender,
+          ageCategory: cat.ageCategory,
+          weightCategory: cat.weightCategory,
+          rows: medalRows,
+        });
+      }
     });
 
     return groups;
@@ -2994,60 +3109,80 @@ const BRACKET = {
       return;
     }
 
+    const filterSummary = this._activeFilterSummary();
+
     if (groups.length === 0) {
-      MODAL.warning('No completed categories with medal results yet.');
+      MODAL.warning(filterSummary
+        ? `No completed categories match the selected filters (${filterSummary}).`
+        : 'No completed categories with medal results yet.');
       return;
     }
 
     const champTitle = document.title.replace(' - Bracket Management', '').trim() || 'Tournament';
     const dateStr = new Date().toISOString().slice(0, 10);
+    // Only tag the filename/heading when a filter is actually active, so the
+    // unfiltered "download everything" output is unchanged from before.
+    const filterFileTag = filterSummary ? `_${filterSummary.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')}` : '';
+    const filterHeadingTag = filterSummary ? ` — ${filterSummary}` : '';
 
     if (format === 'excel') {
-      this._writeAllResultsWorkbook(groups, `All_Category_Results_${dateStr}.xlsx`, 'All Results');
+      this._writeAllResultsWorkbook(groups, `All_Category_Results${filterFileTag}_${dateStr}.xlsx`, 'Official Results', 'Official');
       return;
     }
 
-    this._writeAllResultsPDF(groups, champTitle, `All_Category_Results_${dateStr}.pdf`, 'All Category Results');
+    this._writeAllResultsPDF(groups, champTitle, `All_Category_Results${filterFileTag}_${dateStr}.pdf`, `Official Kyorugi Results${filterHeadingTag}`, 'Official');
   },
 
-  // Excel: one sheet, categories stacked top-to-bottom — a bold category
-  // heading row, a table header (Player Name / Medal / Team Name / Remark),
-  // then one row per medal winner, then a blank spacer before the next
-  // category. Remark is left empty for the tournament desk to fill in by
-  // hand. EXPO_BRACKET keeps its own copy in expoBracket.js — the two
-  // systems are intentionally independent.
-  _writeAllResultsWorkbook(groups, fileName, sheetName) {
-    const NAVY = '17305E', WHITE = 'FFFFFF', LTGRAY = 'E8ECF0';
+  // Excel: ONE flat, filterable table (Match Type / Event / Gender /
+  // Category / Weight-Division / Player Name / Medal / Team Name / Remark)
+  // — every row repeats its group columns instead of merged category-
+  // heading rows, so Excel's built-in AutoFilter/sort actually works
+  // (merged cells + blank spacer rows break both). Rows stay in the exact
+  // Match Type → Event → Gender → Category → Weight → bracket order
+  // _collectAllCategoryMedalGroups() already sorted groups into; light
+  // alternating shading bands each category group so it still reads as
+  // "one category block after another" at a glance. Remark is left empty
+  // for the tournament desk to fill in by hand. EXPO_BRACKET keeps its own
+  // copy in expoBracket.js — the two systems are intentionally independent.
+  _writeAllResultsWorkbook(groups, fileName, sheetName, matchTypeLabel) {
+    const WHITE = 'FFFFFF', LTGRAY = 'EDEFF2', BAND = 'DCE6F5';
     const fgFill = (hex) => ({ patternType: 'solid', fgColor: { rgb: hex } });
-    const catStyle = { font: { bold: true, sz: 12, color: { rgb: WHITE } }, fill: fgFill(NAVY), alignment: { vertical: 'center' } };
     const hdrStyle = { font: { bold: true, sz: 9, color: { rgb: WHITE } }, fill: fgFill('2C4A7C'), alignment: { horizontal: 'center', vertical: 'center' } };
-    const cellStyle = { font: { sz: 9 }, fill: fgFill(LTGRAY), alignment: { vertical: 'center' } };
+    const cellStyle = (band) => ({ font: { sz: 9 }, fill: fgFill(band ? BAND : LTGRAY), alignment: { vertical: 'center' } });
 
     const ws = {};
-    const COLS = 4; // Player Name, Medal, Team Name, Remark
+    const HEADERS = ['Match Type', 'Event', 'Gender', 'Category', 'Weight / Division', 'Player Name', 'Medal', 'Team Name', 'Remark'];
+    const COLS = HEADERS.length;
     let r = 0;
     const enc = (row, col) => XLSX.utils.encode_cell({ r: row, c: col });
     const setCell = (row, col, v, s) => { ws[enc(row, col)] = { v: v ?? '', t: typeof v === 'number' ? 'n' : 's', s: s || {} }; };
-    ws['!merges'] = [];
 
-    groups.forEach(group => {
-      ws['!merges'].push({ s: { r, c: 0 }, e: { r, c: COLS - 1 } });
-      setCell(r, 0, group.category, catStyle);
-      r++;
-      ['Player Name', 'Medal', 'Team Name', 'Remark'].forEach((h, c) => setCell(r, c, h, hdrStyle));
-      r++;
+    HEADERS.forEach((h, c) => setCell(r, c, h, hdrStyle));
+    r++;
+    const dataStartRow = r;
+
+    groups.forEach((group, gi) => {
+      const band = gi % 2 === 1;
       group.rows.forEach(row => {
-        setCell(r, 0, row.playerName, cellStyle);
-        setCell(r, 1, row.medal, cellStyle);
-        setCell(r, 2, row.teamName, cellStyle);
-        setCell(r, 3, '', cellStyle); // Remark — left blank
+        setCell(r, 0, matchTypeLabel, cellStyle(band));
+        setCell(r, 1, 'Kyorugi', cellStyle(band));
+        setCell(r, 2, group.gender, cellStyle(band));
+        setCell(r, 3, group.ageCategory, cellStyle(band));
+        setCell(r, 4, group.weightCategory, cellStyle(band));
+        setCell(r, 5, row.playerName, cellStyle(band));
+        setCell(r, 6, row.medal, cellStyle(band));
+        setCell(r, 7, row.teamName, cellStyle(band));
+        setCell(r, 8, '', cellStyle(band)); // Remark — left blank
         r++;
       });
-      r++; // spacer row between categories
     });
 
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(r - 1, 0), c: COLS - 1 } });
-    ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 30 }, { wch: 24 }];
+    const lastRow = Math.max(r - 1, 0);
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: COLS - 1 } });
+    ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 9 }, { wch: 14 }, { wch: 20 }, { wch: 28 }, { wch: 12 }, { wch: 28 }, { wch: 22 }];
+    if (lastRow >= dataStartRow) {
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: COLS - 1 } }) };
+    }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -3057,11 +3192,14 @@ const BRACKET = {
   // PDF: one bordered table per category (Player Name / Medal / Team Name /
   // Remark), stacked one after another; a category whose table won't fit in
   // the remaining page space starts on a fresh page instead of splitting.
-  // Long titles and long names/team names WRAP within their own width
-  // (title within the page, each cell within its column) rather than
-  // running off the page or overlapping the next column — text is never
-  // shrunk or truncated, rows just grow taller to fit.
-  _writeAllResultsPDF(groups, champTitle, fileName, headingSuffix) {
+  // Each table's heading spells out Match Type • Event • Gender • Category •
+  // Weight/Division so a category can never be mistaken for an adjacent one
+  // while scanning the PDF. Long titles and long names/team names WRAP
+  // within their own width (title within the page, each cell within its
+  // column) rather than running off the page or overlapping the next
+  // column — text is never shrunk or truncated, rows just grow taller to
+  // fit.
+  _writeAllResultsPDF(groups, champTitle, fileName, headingSuffix, matchTypeLabel) {
     const { jsPDF: JsPDFCtor } = window.jspdf || window;
     const doc = new JsPDFCtor({ orientation: 'portrait', unit: 'pt', format: 'a4' });
     const ML = 40, MR = 40, PAGE_W = 595, BOTTOM = 800;
@@ -3078,7 +3216,8 @@ const BRACKET = {
     doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, ML, y);
     y += 26;
 
-    const drawTable = (categoryLabel, rows) => {
+    const drawTable = (group, rows) => {
+      const categoryLabel = `${matchTypeLabel} • Kyorugi • ${group.gender} • ${group.ageCategory} • ${group.weightCategory}`;
       // Pre-wrap every cell within its own column width so each row's
       // height (and the table's total height, needed for the page-break
       // check below) is known before anything is drawn.
@@ -3090,13 +3229,14 @@ const BRACKET = {
         return { cellLines, rowH };
       });
       const tableH = HEADER_H + wrapped.reduce((sum, w) => sum + w.rowH, 0);
-      const neededH = 20 + tableH; // category heading + table
+      const headingLines = doc.splitTextToSize(categoryLabel, contentW);
+      const neededH = headingLines.length * 15 + 6 + tableH; // category heading + table
       if (y + neededH > BOTTOM && y > 44) { doc.addPage(); y = 44; }
 
       doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
-      doc.text(categoryLabel, ML, y);
-      y += 16;
+      headingLines.forEach(line => { doc.text(line, ML, y); y += 15; });
+      y += 1;
       const tableTop = y;
 
       // Header row
@@ -3138,7 +3278,7 @@ const BRACKET = {
       y += 24; // gap before next category
     };
 
-    groups.forEach(group => drawTable(group.category, group.rows));
+    groups.forEach(group => drawTable(group, group.rows));
 
     doc.save(fileName);
   },

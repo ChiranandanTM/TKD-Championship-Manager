@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organizer Login - Taekwondo Championship</title>
+    <!-- Favicon - Multiple sizes for better visibility -->
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Organizer login for the Taekwondo Championship Manager — Manage medal distribution and ceremony tracking.">
+    <!-- Resource hints for faster CDN loading -->
+    <link rel="preconnect" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preconnect" href="https://firebase.googleapis.com">
+    <link rel="dns-prefetch" href="https://taekowndo-championship-default-rtdb.asia-southeast1.firebasedatabase.app">
+    <!-- Preload critical resources -->
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/js/history-protection.js"></script>
+    <style>
+        body {
+            background-image: url('/assets/images/tkd-background_3_optimized_500.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+        }
+
+        .pw-wrap {
+            position: relative
+        }
+
+        .pw-wrap input {
+            padding-right: 44px
+        }
+
+        .pw-toggle {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #ffffff;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            transition: color .2s
+        }
+
+        .pw-toggle:hover {
+            color: #FFD700
+        }
+
+        /* ── Toast Notification ─────────────────────────────── */
+        .login-toast-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            display: flex;
+            justify-content: center;
+            z-index: 10000;
+            padding: 20px 16px 0;
+            pointer-events: none;
+        }
+        .login-toast {
+            pointer-events: auto;
+            min-width: 320px;
+            max-width: 440px;
+            width: 100%;
+            padding: 16px 18px;
+            border-radius: 16px;
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.05) inset;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            color: #fff;
+            transform: translateY(-120%);
+            opacity: 0;
+            transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .login-toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .login-toast.error {
+            background: linear-gradient(135deg, rgba(220, 38, 38, 0.92), rgba(153, 27, 27, 0.88));
+            border: 1px solid rgba(252, 165, 165, 0.25);
+        }
+        .login-toast.warning {
+            background: linear-gradient(135deg, rgba(217, 119, 6, 0.92), rgba(180, 83, 9, 0.88));
+            border: 1px solid rgba(253, 230, 138, 0.25);
+        }
+        .login-toast.info {
+            background: linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(29, 78, 216, 0.88));
+            border: 1px solid rgba(147, 197, 253, 0.25);
+        }
+        .login-toast-icon {
+            font-size: 1.4rem;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .login-toast-content {
+            flex: 1;
+        }
+        .login-toast-title {
+            font-weight: 700;
+            font-size: 0.95rem;
+            margin-bottom: 2px;
+        }
+        .login-toast-msg {
+            font-size: 0.88rem;
+            opacity: 0.92;
+            line-height: 1.4;
+        }
+        .login-toast-close {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: #fff;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-size: 1rem;
+            cursor: pointer;
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .login-toast-close:hover {
+            background: rgba(255,255,255,0.25);
+        }
+        .login-toast-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: rgba(255,255,255,0.35);
+            border-radius: 0 0 16px 16px;
+            animation: toastProgress 5s linear forwards;
+        }
+        @keyframes toastProgress {
+            from { width: 100%; }
+            to   { width: 0%; }
+        }
+
+        /* Organizer badge styling */
+        .organizer-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(0, 229, 255, 0.1));
+            border: 1px solid var(--border-gold);
+            border-radius: 20px;
+            padding: 6px 16px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--border-gold);
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+
+        .login-card {
+            background: linear-gradient(145deg, #16213e, #1a1a2e);
+            border: 2px solid var(--border-gold);
+            border-radius: 20px;
+            padding: 40px 36px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6), 0 0 30px rgba(255, 215, 0, 0.15);
+            animation: fadeInUp 0.6s ease;
+        }
+
+        .login-card:hover {
+            border-color: #ffe033;
+            box-shadow: 0 28px 72px rgba(0, 0, 0, 0.7), 0 0 40px rgba(255, 215, 0, 0.25);
+        }
+
+        .login-card h2 {
+            text-align: center;
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: var(--border-gold);
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+            margin-bottom: 8px;
+        }
+
+        .login-card .subtitle {
+            text-align: center;
+            color: var(--text-gray);
+            font-size: 0.9rem;
+            margin-bottom: 28px;
+            opacity: 0.85;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.92rem;
+            font-weight: 700;
+            color: var(--accent-cyan);
+            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0f1629;
+            border: 2px solid rgba(255, 215, 0, 0.3);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--border-gold);
+            box-shadow: 0 0 16px rgba(255, 215, 0, 0.3);
+        }
+
+        .form-group input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #FFD700, #FFC107);
+            border: none;
+            border-radius: 12px;
+            color: #000;
+            font-size: 1.1rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.3s;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            box-shadow: 0 4px 20px rgba(255, 215, 0, 0.35);
+            margin-top: 8px;
+        }
+
+        .login-btn:hover {
+            background: linear-gradient(135deg, #ffe033, #ffd000);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 28px rgba(255, 215, 0, 0.5);
+        }
+
+        .login-btn:active {
+            transform: translateY(0);
+        }
+
+        .login-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Toast container -->
+    <div class="login-toast-overlay" id="toastOverlay">
+        <div class="login-toast" id="loginToast">
+            <span class="login-toast-icon" id="toastIcon">⚠️</span>
+            <div class="login-toast-content">
+                <div class="login-toast-title" id="toastTitle">Error</div>
+                <div class="login-toast-msg" id="toastMsg">Something went wrong</div>
+            </div>
+            <button class="login-toast-close" onclick="hideToast()">✕</button>
+            <div class="login-toast-progress" id="toastProgress"></div>
+        </div>
+    </div>
+
+    <div class="login-container">
+        <div class="login-card">
+            <div style="text-align: center;">
+                <span class="organizer-badge">🏅 Organizer Portal</span>
+            </div>
+            <h2>Organizer Login</h2>
+            <p class="subtitle">Medal Distribution & Ceremony Management</p>
+
+            <div class="form-group">
+                <label for="orgIdInput">Organizer ID</label>
+                <input type="text" id="orgIdInput" placeholder="Enter your Organizer ID" autocomplete="username" maxlength="30">
+            </div>
+
+            <div class="form-group">
+                <label for="orgPasswordInput">Password</label>
+                <div class="pw-wrap">
+                    <input type="password" id="orgPasswordInput" placeholder="Enter your password" autocomplete="current-password">
+                    <button type="button" class="pw-toggle" id="pwToggleBtn" onclick="togglePw('orgPasswordInput', this)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                    </button>
+                </div>
+            </div>
+
+            <button class="login-btn" id="loginBtn" onclick="handleLogin()">
+                🔐 Sign In
+            </button>
+        </div>
+    </div>
+
+    <!-- Firebase modules -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/organizer-manager.js"></script>
+
+    <script type="module">
+        // ── Wait for modules ─────────────────────────────────────────────
+        function waitForModules() {
+            if (
+                typeof database !== 'undefined' &&
+                typeof dbGet === 'function' &&
+                typeof dbRef === 'function' &&
+                typeof ORGANIZER_MANAGER !== 'undefined'
+            ) {
+                // Check if already logged in as organizer
+                const role = sessionStorage.getItem('userRole');
+                if (role === 'organizer') {
+                    window.location.href = window.location.origin + '/organizer/dashboard.html';
+                    return;
+                }
+                console.log('✅ Organizer login page ready');
+            } else {
+                setTimeout(waitForModules, 80);
+            }
+        }
+        waitForModules();
+
+        // ── Login handler ────────────────────────────────────────────────
+        window.handleLogin = async function() {
+            const orgId = document.getElementById('orgIdInput').value.trim();
+            const password = document.getElementById('orgPasswordInput').value.trim();
+            const btn = document.getElementById('loginBtn');
+
+            if (!orgId || !password) {
+                showToast('error', 'Missing Fields', 'Please enter both Organizer ID and Password.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Signing in...';
+
+            try {
+                const result = await ORGANIZER_MANAGER.loginOrganizer(orgId, password);
+                showToast('info', 'Welcome!', 'Redirecting to dashboard...');
+                setTimeout(() => {
+                    window.location.href = window.location.origin + '/organizer/dashboard.html';
+                }, 600);
+            } catch (err) {
+                showToast('error', 'Login Failed', err.message);
+                btn.disabled = false;
+                btn.textContent = '🔐 Sign In';
+            }
+        };
+
+        // ── Enter key support ────────────────────────────────────────────
+        document.getElementById('orgPasswordInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') handleLogin();
+        });
+        document.getElementById('orgIdInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') document.getElementById('orgPasswordInput').focus();
+        });
+
+        // ── Password toggle ─────────────────────────────────────────────
+        window.togglePw = function(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const isHidden = input.type === 'password';
+            input.type = isHidden ? 'text' : 'password';
+            const eyeOpen = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+            const eyeClosed = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+            btn.innerHTML = isHidden ? eyeClosed : eyeOpen;
+        };
+
+        // ── Toast system ─────────────────────────────────────────────────
+        let toastTimer = null;
+        window.showToast = function(type, title, msg) {
+            const toast = document.getElementById('loginToast');
+            const icons = { error: '❌', warning: '⚠️', info: 'ℹ️' };
+            document.getElementById('toastIcon').textContent = icons[type] || '⚠️';
+            document.getElementById('toastTitle').textContent = title;
+            document.getElementById('toastMsg').textContent = msg;
+            toast.className = 'login-toast ' + type;
+            // Reset progress
+            const prog = document.getElementById('toastProgress');
+            prog.style.animation = 'none';
+            void prog.offsetHeight;
+            prog.style.animation = 'toastProgress 5s linear forwards';
+            // Show
+            requestAnimationFrame(() => toast.classList.add('show'));
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(hideToast, 5000);
+        };
+        window.hideToast = function() {
+            document.getElementById('loginToast').classList.remove('show');
+            clearTimeout(toastTimer);
+        };
+    </script>
+</body>
+
+</html>

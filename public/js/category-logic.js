@@ -122,6 +122,42 @@ const CATEGORY_LOGIC = {
     return 'Unknown';
   },
 
+  // ── RESULT-SHEET SORT ORDER ───────────────────────────────────────────
+  // Canonical ordering used ONLY by the "Download All Results" exports
+  // (BRACKET / EXPO_BRACKET's _collectAllCategoryMedalGroups() in
+  // bracket.js / expoBracket.js) so PDF/Excel result sheets always read
+  // Male-before-Female, youngest-age-category-before-oldest, and
+  // lightest-weight-before-heaviest — instead of the plain alphabetical
+  // sort those exports used to do. Never used by age/weight *calculation*,
+  // so it can't affect any existing bracket/medal logic.
+  GENDER_ORDER: ['Male', 'Female'],
+  AGE_CATEGORY_ORDER: ['Mini', 'Sub-Junior', 'Cadet', 'Junior', 'Senior'],
+
+  genderSortIndex(gender) {
+    const i = this.GENDER_ORDER.indexOf(gender);
+    return i === -1 ? this.GENDER_ORDER.length : i; // unknown genders sort last, stably
+  },
+
+  ageCategorySortIndex(ageCategory) {
+    const i = this.AGE_CATEGORY_ORDER.indexOf(ageCategory);
+    return i === -1 ? this.AGE_CATEGORY_ORDER.length : i; // unknown categories sort last
+  },
+
+  // Ascending numeric sort key for a weight-category label (e.g. "45-50kg",
+  // "Fin Weight (Under 54kg)"), resolved against the admin's configured (or
+  // default) weight-category ranges for this gender/age combo — so custom
+  // relabeled ranges still sort correctly instead of relying on parsing the
+  // label text. Falls back to a value that sorts after every matched
+  // category if the label can't be found (e.g. stale/removed range).
+  weightCategorySortKey(gender, ageCategory, weightCategoryLabel, weightCategoriesConfig) {
+    const ranges = (weightCategoriesConfig || this.defaultWeightCategories)[`${gender}-${ageCategory}`];
+    if (Array.isArray(ranges)) {
+      const match = ranges.find(r => r.label === weightCategoryLabel);
+      if (match) return match.min;
+    }
+    return Number.MAX_SAFE_INTEGER;
+  },
+
   // Get weight category based on gender, age category, and weight
   async getWeightCategory(gender, ageCategories, weight) {
     try {

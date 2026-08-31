@@ -27,11 +27,11 @@
       ],
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('teams').child($uid).exists() || root.child('referees').child($uid).exists()",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin') || root.child('teams').child($uid).exists() || root.child('referees').child($uid).exists() || root.child('organizers').child($uid).exists()",
         ".validate": "newData.hasChildren(['role']) && newData.child('role').isString()",
         "role": {
           ".write": "(auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin') || (auth != null && auth.uid === $uid && !data.exists())",
-          ".validate": "newData.val() === 'admin' || newData.val() === 'judge' || newData.val() === 'referee' || newData.val() === 'team'"
+          ".validate": "newData.val() === 'admin' || newData.val() === 'judge' || newData.val() === 'referee' || newData.val() === 'team' || newData.val() === 'organizer'"
         }
       }
     },
@@ -55,6 +55,41 @@
         "updatedAt": {
           ".read": true,
           ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        }
+      }
+    },
+    "organizers": {
+      ".read": true,
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".indexOn": [
+        "createdAt",
+        "enabled"
+      ],
+      "$orgId": {
+        ".read": true,
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      }
+    },
+    "medalDistribution": {
+      ".read": true,
+      "official": {
+        ".read": true,
+        "$categoryKey": {
+          ".read": true,
+          "$medalType": {
+            ".read": true,
+            ".write": "auth != null || root.child('organizers').child(newData.child('updatedBy').val()).exists()"
+          }
+        }
+      },
+      "expo": {
+        ".read": true,
+        "$categoryKey": {
+          ".read": true,
+          "$medalType": {
+            ".read": true,
+            ".write": "auth != null || root.child('organizers').child(newData.child('updatedBy').val()).exists()"
+          }
         }
       }
     },

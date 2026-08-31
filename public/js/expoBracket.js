@@ -16,8 +16,9 @@ const EXPO_BRACKET = {
   currentCategory: null,
   currentBracket: null,
   currentFilter: 'all',
-  currentCategoryFilter: 'all',
+  currentGenderFilter: 'all',
   currentAgeCategoryFilter: 'all',
+  currentWeightFilter: 'all',
   currentSearchTerm: '',
   categoryStatuses: {},
   categoriesRenderRequestId: 0,
@@ -26,6 +27,7 @@ const EXPO_BRACKET = {
   _lockedCourtNumber: null, // court that currently holds this session's exclusive bracketLocks/expo claim, if any
   bracketListener: null,
   categoriesListener: null,
+  _weightCategoriesConfigCache: null, // admin's weightCategories config, cached once per session (see _getWeightCategoriesConfig)
   editMode: false,        // true while the Bracket Editor is open for currentCategory
   _editDraft: null,       // { activePlayers, byePool, hadStartedMatches } — edit-mode working copy
   _editPwModalDiv: null,  // DOM node for the edit-mode password prompt, if open
@@ -188,6 +190,18 @@ const EXPO_BRACKET = {
     return this.finalizePositionsForPairing(distributed);
   },
 
+  // Weight-category ranges (admin-configurable, rarely change mid-tournament)
+  // used only to sort the Weight filter dropdown and the result-sheet
+  // export — cached once per session instead of re-reading Firebase on
+  // every renderCategories() call (which fires on every filter change and
+  // every live players/ update). Mirrors BRACKET's identical helper in
+  // bracket.js.
+  async _getWeightCategoriesConfig() {
+    if (this._weightCategoriesConfigCache) return this._weightCategoriesConfigCache;
+    this._weightCategoriesConfigCache = await CATEGORY_LOGIC.loadWeightCategories();
+    return this._weightCategoriesConfigCache;
+  },
+
   // ── Filters ────────────────────────────────────────────────────────────
   async filterByStatus(status) {
     this.currentFilter = status;
@@ -197,8 +211,33 @@ const EXPO_BRACKET = {
     await this.renderCategories();
   },
 
-  async filterByCategory(categoryKey) {
-    this.currentCategoryFilter = categoryKey || 'all';
+  async filterBySearch(term) {
+    this.currentSearchTerm = (term || '').trim().toLowerCase();
+    await this.renderCategories();
+  },
+
+  // ── Gender / Category / Weight filters ────────────────────────────────
+  // Mirrors BRACKET's identical trio in bracket.js (see its comments for the
+  // full rationale) — Gender → Category → Weight, combinable (AND'd),
+  // applied to both the on-screen list and the "Download All Results"
+  // export so a filtered download always matches what's on screen.
+  _categoryMatchesActiveFilters(cat) {
+    const matchesGender = this.currentGenderFilter === 'all' || cat.gender === this.currentGenderFilter;
+    const matchesAge = this.currentAgeCategoryFilter === 'all' || cat.ageCategory === this.currentAgeCategoryFilter;
+    const matchesWeight = this.currentWeightFilter === 'all' || cat.weightCategory === this.currentWeightFilter;
+    return matchesGender && matchesAge && matchesWeight;
+  },
+
+  _activeFilterSummary() {
+    const parts = [];
+    if (this.currentGenderFilter !== 'all') parts.push(this.currentGenderFilter);
+    if (this.currentAgeCategoryFilter !== 'all') parts.push(this.currentAgeCategoryFilter);
+    if (this.currentWeightFilter !== 'all') parts.push(this.currentWeightFilter);
+    return parts.join(' • ');
+  },
+
+  async filterByGender(gender) {
+    this.currentGenderFilter = gender || 'all';
     await this.renderCategories();
   },
 
@@ -207,36 +246,67 @@ const EXPO_BRACKET = {
     await this.renderCategories();
   },
 
-  async filterBySearch(term) {
-    this.currentSearchTerm = (term || '').trim().toLowerCase();
+  async filterByWeight(weight) {
+    this.currentWeightFilter = weight || 'all';
     await this.renderCategories();
   },
 
-  syncCategoryFilterControl() {
-    const select = document.getElementById('expoCategoryFilterSelect');
-    if (!select) return;
-    const options = Object.keys(this.categories)
-      .map(key => ({ key, label: `${this.categories[key].gender} ${this.categories[key].ageCategory} - ${this.categories[key].weightCategory}` }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-    let html = '<option value="all">All Categories</option>';
-    options.forEach(o => { html += `<option value="${o.key}">${o.label}</option>`; });
-    select.innerHTML = html;
-    if (this.currentCategoryFilter !== 'all' && !this.categories[this.currentCategoryFilter]) {
-      this.currentCategoryFilter = 'all';
-    }
-    select.value = this.currentCategoryFilter;
+  async clearAllFilters() {
+    this.currentGenderFilter = 'all';
+    this.currentAgeCategoryFilter = 'all';
+    this.currentWeightFilter = 'all';
+    await this.renderCategories();
   },
 
-  syncAgeCategoryFilter() {
-    const container = document.getElementById('expoAgeCategoryFilter');
-    if (!container) return;
-    const ages = [...new Set(Object.values(this.categories).map(c => c.ageCategory))].sort();
-    let html = `<button class="status-tab${this.currentAgeCategoryFilter === 'all' ? ' active' : ''}" onclick="EXPO_BRACKET.filterByAgeCategory('all')">All</button>`;
-    ages.forEach(age => {
-      const active = this.currentAgeCategoryFilter === age ? ' active' : '';
-      html += `<button class="status-tab${active}" onclick="EXPO_BRACKET.filterByAgeCategory('${age}')">${age}</button>`;
+  syncGenderFilterControl() {
+    const select = document.getElementById('expoGenderFilterSelect');
+    if (!select) return;
+    select.value = this.currentGenderFilter;
+  },
+
+  syncAgeCategoryFilterControl() {
+    const select = document.getElementById('expoAgeCategoryFilterSelect');
+    if (!select) return;
+
+    const relevant = Object.values(this.categories)
+      .filter(c => this.currentGenderFilter === 'all' || c.gender === this.currentGenderFilter);
+    const ages = [...new Set(relevant.map(c => c.ageCategory))]
+      .sort((a, b) => CATEGORY_LOGIC.ageCategorySortIndex(a) - CATEGORY_LOGIC.ageCategorySortIndex(b));
+
+    if (this.currentAgeCategoryFilter !== 'all' && !ages.includes(this.currentAgeCategoryFilter)) {
+      this.currentAgeCategoryFilter = 'all';
+    }
+
+    let html = '<option value="all">All Categories</option>';
+    ages.forEach(age => { html += `<option value="${age}">${age}</option>`; });
+    select.innerHTML = html;
+    select.value = this.currentAgeCategoryFilter;
+  },
+
+  async syncWeightFilterControl() {
+    const select = document.getElementById('expoWeightFilterSelect');
+    if (!select) return;
+
+    const relevant = Object.values(this.categories).filter(c =>
+      (this.currentGenderFilter === 'all' || c.gender === this.currentGenderFilter) &&
+      (this.currentAgeCategoryFilter === 'all' || c.ageCategory === this.currentAgeCategoryFilter));
+    const weightCategoriesConfig = await this._getWeightCategoriesConfig();
+    const weights = [...new Set(relevant.map(c => c.weightCategory))].sort((a, b) => {
+      const ca = relevant.find(c => c.weightCategory === a);
+      const cb = relevant.find(c => c.weightCategory === b);
+      const ka = CATEGORY_LOGIC.weightCategorySortKey(ca.gender, ca.ageCategory, a, weightCategoriesConfig);
+      const kb = CATEGORY_LOGIC.weightCategorySortKey(cb.gender, cb.ageCategory, b, weightCategoriesConfig);
+      return ka !== kb ? ka - kb : a.localeCompare(b);
     });
-    container.innerHTML = html;
+
+    if (this.currentWeightFilter !== 'all' && !weights.includes(this.currentWeightFilter)) {
+      this.currentWeightFilter = 'all';
+    }
+
+    let html = '<option value="all">All Weights</option>';
+    weights.forEach(w => { html += `<option value="${w}">${w}</option>`; });
+    select.innerHTML = html;
+    select.value = this.currentWeightFilter;
   },
 
   // ── Category list rendering ────────────────────────────────────────────
@@ -244,8 +314,9 @@ const EXPO_BRACKET = {
     const container = document.getElementById('expoCategoriesList');
     if (!container) return;
 
-    this.syncCategoryFilterControl();
-    this.syncAgeCategoryFilter();
+    this.syncGenderFilterControl();
+    this.syncAgeCategoryFilterControl();
+    await this.syncWeightFilterControl();
 
     const renderRequestId = ++this.categoriesRenderRequestId;
 
@@ -308,15 +379,13 @@ const EXPO_BRACKET = {
 
         const statusLower = status.toLowerCase();
         const matchesStatus = this.currentFilter === 'all' || this.currentFilter === statusLower;
-        const matchesCategory = this.currentCategoryFilter === 'all' || this.currentCategoryFilter === key;
-        const matchesAge = this.currentAgeCategoryFilter === 'all' || cat.ageCategory === this.currentAgeCategoryFilter;
         const matchesSearch = !this.currentSearchTerm ||
           cat.gender.toLowerCase().includes(this.currentSearchTerm) ||
           cat.ageCategory.toLowerCase().includes(this.currentSearchTerm) ||
           cat.weightCategory.toLowerCase().includes(this.currentSearchTerm) ||
           cat.players.some(p => (p.playerName || '').toLowerCase().includes(this.currentSearchTerm));
 
-        if (!matchesStatus || !matchesCategory || !matchesAge || !matchesSearch) return null;
+        if (!matchesStatus || !this._categoryMatchesActiveFilters(cat) || !matchesSearch) return null;
 
         let statusColor = 'var(--text-gray)';
         if (status === 'Completed') statusColor = 'var(--success-green)';
@@ -1411,18 +1480,36 @@ const EXPO_BRACKET = {
   // from Firebase in one shot (mirrors BRACKET's equivalent in bracket.js
   // for the Official system) rather than relying on this.currentBracket,
   // which only ever holds the ONE category currently open.
-  // Returns [{ category, rows: [{ playerName, medal, teamName }] }] — one
-  // group per COMPLETED Expo category, in category-name order. teamName
+  // Returns [{ category, gender, ageCategory, weightCategory,
+  // rows: [{ playerName, medal, teamName }] }] — one group per COMPLETED
+  // Expo category (= one bracket) that also passes the active Gender/
+  // Category/Weight filters (see _categoryMatchesActiveFilters() — the
+  // exact same check the on-screen category list uses, so a filtered
+  // download always matches exactly what's currently visible), ordered
+  // Gender → Age Category → Weight (ascending) so the result sheet reads
+  // sequentially instead of plain alphabetically (mirrors BRACKET's
+  // equivalent in bracket.js; see CATEGORY_LOGIC's *SortIndex/*SortKey
+  // helpers in category-logic.js). With no filters active (all 'all'),
+  // every completed category is included — unchanged from before. teamName
   // falls back to centerName the same way the rest of the app already does.
   async _collectAllCategoryMedalGroups() {
     const bracketsSnap = await dbGet(dbRef(database, 'expoBrackets'));
     const allBrackets = bracketsSnap.exists() ? bracketsSnap.val() : {};
+    const weightCategoriesConfig = await this._getWeightCategoriesConfig();
 
-    const categoryKeys = Object.keys(this.categories).sort((a, b) => {
-      const ca = this.categories[a], cb = this.categories[b];
-      return `${ca.gender} ${ca.ageCategory} ${ca.weightCategory}`
-        .localeCompare(`${cb.gender} ${cb.ageCategory} ${cb.weightCategory}`);
-    });
+    const categoryKeys = Object.keys(this.categories)
+      .filter(key => this._categoryMatchesActiveFilters(this.categories[key]))
+      .sort((a, b) => {
+        const ca = this.categories[a], cb = this.categories[b];
+        const genderDiff = CATEGORY_LOGIC.genderSortIndex(ca.gender) - CATEGORY_LOGIC.genderSortIndex(cb.gender);
+        if (genderDiff !== 0) return genderDiff;
+        const ageDiff = CATEGORY_LOGIC.ageCategorySortIndex(ca.ageCategory) - CATEGORY_LOGIC.ageCategorySortIndex(cb.ageCategory);
+        if (ageDiff !== 0) return ageDiff;
+        const weightDiff = CATEGORY_LOGIC.weightCategorySortKey(ca.gender, ca.ageCategory, ca.weightCategory, weightCategoriesConfig)
+          - CATEGORY_LOGIC.weightCategorySortKey(cb.gender, cb.ageCategory, cb.weightCategory, weightCategoriesConfig);
+        if (weightDiff !== 0) return weightDiff;
+        return ca.weightCategory.localeCompare(cb.weightCategory); // stable tie-break for unmatched labels
+      });
 
     const groups = [];
     categoryKeys.forEach(key => {
@@ -1439,7 +1526,15 @@ const EXPO_BRACKET = {
           teamName: r.teamName || r.centerName || '',
         }));
 
-      if (medalRows.length > 0) groups.push({ category: categoryLabel, rows: medalRows });
+      if (medalRows.length > 0) {
+        groups.push({
+          category: categoryLabel,
+          gender: cat.gender,
+          ageCategory: cat.ageCategory,
+          weightCategory: cat.weightCategory,
+          rows: medalRows,
+        });
+      }
     });
 
     return groups;
@@ -1466,60 +1561,83 @@ const EXPO_BRACKET = {
       return;
     }
 
+    const filterSummary = this._activeFilterSummary();
+
     if (groups.length === 0) {
-      if (typeof MODAL !== 'undefined') MODAL.warning('No completed Expo categories with medal results yet.');
+      if (typeof MODAL !== 'undefined') {
+        MODAL.warning(filterSummary
+          ? `No completed Expo categories match the selected filters (${filterSummary}).`
+          : 'No completed Expo categories with medal results yet.');
+      }
       return;
     }
 
     const champTitle = document.title.replace(' - Bracket Management', '').trim() || 'Tournament';
     const dateStr = new Date().toISOString().slice(0, 10);
+    // Only tag the filename/heading when a filter is actually active, so the
+    // unfiltered "download everything" output is unchanged from before.
+    const filterFileTag = filterSummary ? `_${filterSummary.replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')}` : '';
+    const filterHeadingTag = filterSummary ? ` — ${filterSummary}` : '';
 
     if (format === 'excel') {
-      this._writeAllResultsWorkbook(groups, `All_Expo_Category_Results_${dateStr}.xlsx`, 'All Expo Results');
+      this._writeAllResultsWorkbook(groups, `All_Expo_Category_Results${filterFileTag}_${dateStr}.xlsx`, 'Expo Results', 'Expo');
       return;
     }
 
-    this._writeAllResultsPDF(groups, champTitle, `All_Expo_Category_Results_${dateStr}.pdf`, 'All Expo Category Results');
+    this._writeAllResultsPDF(groups, champTitle, `All_Expo_Category_Results${filterFileTag}_${dateStr}.pdf`, `Expo Kyorugi Results${filterHeadingTag}`, 'Expo');
   },
 
-  // Excel: one sheet, categories stacked top-to-bottom — a bold category
-  // heading row, a table header (Player Name / Medal / Team Name / Remark),
-  // then one row per medal winner, then a blank spacer before the next
-  // category. Remark is left empty for the tournament desk to fill in by
-  // hand. Mirrors BRACKET._writeAllResultsWorkbook() in bracket.js — kept
-  // as a separate copy since the two systems are intentionally independent.
-  _writeAllResultsWorkbook(groups, fileName, sheetName) {
-    const NAVY = '17305E', WHITE = 'FFFFFF', LTGRAY = 'E8ECF0';
+  // Excel: ONE flat, filterable table (Match Type / Event / Gender /
+  // Category / Weight-Division / Player Name / Medal / Team Name / Remark)
+  // — every row repeats its group columns instead of merged category-
+  // heading rows, so Excel's built-in AutoFilter/sort actually works
+  // (merged cells + blank spacer rows break both). Rows stay in the exact
+  // Match Type → Event → Gender → Category → Weight → bracket order
+  // _collectAllCategoryMedalGroups() already sorted groups into; light
+  // alternating shading bands each category group so it still reads as
+  // "one category block after another" at a glance. Remark is left empty
+  // for the tournament desk to fill in by hand. Mirrors
+  // BRACKET._writeAllResultsWorkbook() in bracket.js — kept as a separate
+  // copy since the two systems are intentionally independent.
+  _writeAllResultsWorkbook(groups, fileName, sheetName, matchTypeLabel) {
+    const WHITE = 'FFFFFF', LTGRAY = 'EDEFF2', BAND = 'DCE6F5';
     const fgFill = (hex) => ({ patternType: 'solid', fgColor: { rgb: hex } });
-    const catStyle = { font: { bold: true, sz: 12, color: { rgb: WHITE } }, fill: fgFill(NAVY), alignment: { vertical: 'center' } };
     const hdrStyle = { font: { bold: true, sz: 9, color: { rgb: WHITE } }, fill: fgFill('2C4A7C'), alignment: { horizontal: 'center', vertical: 'center' } };
-    const cellStyle = { font: { sz: 9 }, fill: fgFill(LTGRAY), alignment: { vertical: 'center' } };
+    const cellStyle = (band) => ({ font: { sz: 9 }, fill: fgFill(band ? BAND : LTGRAY), alignment: { vertical: 'center' } });
 
     const ws = {};
-    const COLS = 4; // Player Name, Medal, Team Name, Remark
+    const HEADERS = ['Match Type', 'Event', 'Gender', 'Category', 'Weight / Division', 'Player Name', 'Medal', 'Team Name', 'Remark'];
+    const COLS = HEADERS.length;
     let r = 0;
     const enc = (row, col) => XLSX.utils.encode_cell({ r: row, c: col });
     const setCell = (row, col, v, s) => { ws[enc(row, col)] = { v: v ?? '', t: typeof v === 'number' ? 'n' : 's', s: s || {} }; };
-    ws['!merges'] = [];
 
-    groups.forEach(group => {
-      ws['!merges'].push({ s: { r, c: 0 }, e: { r, c: COLS - 1 } });
-      setCell(r, 0, group.category, catStyle);
-      r++;
-      ['Player Name', 'Medal', 'Team Name', 'Remark'].forEach((h, c) => setCell(r, c, h, hdrStyle));
-      r++;
+    HEADERS.forEach((h, c) => setCell(r, c, h, hdrStyle));
+    r++;
+    const dataStartRow = r;
+
+    groups.forEach((group, gi) => {
+      const band = gi % 2 === 1;
       group.rows.forEach(row => {
-        setCell(r, 0, row.playerName, cellStyle);
-        setCell(r, 1, row.medal, cellStyle);
-        setCell(r, 2, row.teamName, cellStyle);
-        setCell(r, 3, '', cellStyle); // Remark — left blank
+        setCell(r, 0, matchTypeLabel, cellStyle(band));
+        setCell(r, 1, 'Kyorugi', cellStyle(band));
+        setCell(r, 2, group.gender, cellStyle(band));
+        setCell(r, 3, group.ageCategory, cellStyle(band));
+        setCell(r, 4, group.weightCategory, cellStyle(band));
+        setCell(r, 5, row.playerName, cellStyle(band));
+        setCell(r, 6, row.medal, cellStyle(band));
+        setCell(r, 7, row.teamName, cellStyle(band));
+        setCell(r, 8, '', cellStyle(band)); // Remark — left blank
         r++;
       });
-      r++; // spacer row between categories
     });
 
-    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(r - 1, 0), c: COLS - 1 } });
-    ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 30 }, { wch: 24 }];
+    const lastRow = Math.max(r - 1, 0);
+    ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: COLS - 1 } });
+    ws['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 9 }, { wch: 14 }, { wch: 20 }, { wch: 28 }, { wch: 12 }, { wch: 28 }, { wch: 22 }];
+    if (lastRow >= dataStartRow) {
+      ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: lastRow, c: COLS - 1 } }) };
+    }
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -1529,12 +1647,14 @@ const EXPO_BRACKET = {
   // PDF: one bordered table per category (Player Name / Medal / Team Name /
   // Remark), stacked one after another; a category whose table won't fit in
   // the remaining page space starts on a fresh page instead of splitting.
-  // Long titles and long names/team names WRAP within their own width
-  // (title within the page, each cell within its column) rather than
-  // running off the page or overlapping the next column — text is never
-  // shrunk or truncated, rows just grow taller to fit.
-  // Mirrors BRACKET._writeAllResultsPDF() in bracket.js.
-  _writeAllResultsPDF(groups, champTitle, fileName, headingSuffix) {
+  // Each table's heading spells out Match Type • Event • Gender • Category •
+  // Weight/Division so a category can never be mistaken for an adjacent one
+  // while scanning the PDF. Long titles and long names/team names WRAP
+  // within their own width (title within the page, each cell within its
+  // column) rather than running off the page or overlapping the next
+  // column — text is never shrunk or truncated, rows just grow taller to
+  // fit. Mirrors BRACKET._writeAllResultsPDF() in bracket.js.
+  _writeAllResultsPDF(groups, champTitle, fileName, headingSuffix, matchTypeLabel) {
     const { jsPDF: JsPDFCtor } = window.jspdf || window;
     const doc = new JsPDFCtor({ orientation: 'portrait', unit: 'pt', format: 'a4' });
     const ML = 40, MR = 40, PAGE_W = 595, BOTTOM = 800;
@@ -1551,7 +1671,8 @@ const EXPO_BRACKET = {
     doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, ML, y);
     y += 26;
 
-    const drawTable = (categoryLabel, rows) => {
+    const drawTable = (group, rows) => {
+      const categoryLabel = `${matchTypeLabel} • Kyorugi • ${group.gender} • ${group.ageCategory} • ${group.weightCategory}`;
       // Pre-wrap every cell within its own column width so each row's
       // height (and the table's total height, needed for the page-break
       // check below) is known before anything is drawn.
@@ -1563,13 +1684,14 @@ const EXPO_BRACKET = {
         return { cellLines, rowH };
       });
       const tableH = HEADER_H + wrapped.reduce((sum, w) => sum + w.rowH, 0);
-      const neededH = 20 + tableH; // category heading + table
+      const headingLines = doc.splitTextToSize(categoryLabel, contentW);
+      const neededH = headingLines.length * 15 + 6 + tableH; // category heading + table
       if (y + neededH > BOTTOM && y > 44) { doc.addPage(); y = 44; }
 
       doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
-      doc.text(categoryLabel, ML, y);
-      y += 16;
+      headingLines.forEach(line => { doc.text(line, ML, y); y += 15; });
+      y += 1;
       const tableTop = y;
 
       // Header row
@@ -1611,7 +1733,7 @@ const EXPO_BRACKET = {
       y += 24; // gap before next category
     };
 
-    groups.forEach(group => drawTable(group.category, group.rows));
+    groups.forEach(group => drawTable(group, group.rows));
 
     doc.save(fileName);
   },

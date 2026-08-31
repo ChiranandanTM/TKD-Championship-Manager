@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organizer Dashboard - Taekwondo Championship</title>
+    <link rel="icon" type="image/jpeg" href="/assets/images/favicon.jpeg" sizes="any">
+    <link rel="apple-touch-icon" href="/assets/images/favicon.jpeg">
+    <meta name="theme-color" content="#FFD700">
+    <meta name="description" content="Organizer dashboard for medal distribution and ceremony tracking — Taekwondo Championship Manager.">
+    <link rel="preconnect" href="https://www.gstatic.com">
+    <link rel="preload" as="style" href="/assets/css/main.css">
+    <link rel="stylesheet" href="/assets/css/main.css">
+    <script defer src="/js/modal.js"></script>
+    <style>
+        /* ── Organizer Dashboard Styles ─────────────────────────────── */
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            background-attachment: fixed;
+        }
+
+        .org-header {
+            background: linear-gradient(135deg, #0a0a0a, #16213e);
+            border-bottom: 2px solid rgba(255, 215, 0, 0.5);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .org-header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .org-header-title {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: var(--border-gold);
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        }
+
+        .org-header-badge {
+            background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(0, 229, 255, 0.1));
+            border: 1px solid rgba(255, 215, 0, 0.4);
+            border-radius: 20px;
+            padding: 4px 14px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--border-gold);
+            letter-spacing: 1px;
+        }
+
+        .org-logout-btn {
+            background: rgba(255, 23, 68, 0.15);
+            border: 1px solid rgba(255, 23, 68, 0.4);
+            color: #ff6b8a;
+            padding: 8px 18px;
+            border-radius: 10px;
+            font-size: 0.88rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .org-logout-btn:hover {
+            background: rgba(255, 23, 68, 0.3);
+            border-color: #FF1744;
+            color: #fff;
+        }
+
+        /* ── Event Tabs ─────────────────────────────────────── */
+        .event-tabs {
+            display: flex;
+            gap: 0;
+            margin: 20px 24px 0;
+            border-bottom: 2px solid rgba(255, 215, 0, 0.2);
+        }
+
+        .event-tab {
+            flex: 1;
+            max-width: 300px;
+            padding: 16px 24px;
+            background: #16213e;
+            border: 2px solid rgba(255, 215, 0, 0.15);
+            border-bottom: none;
+            border-radius: 12px 12px 0 0;
+            color: var(--text-gray);
+            font-size: 1.1rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+            letter-spacing: 1px;
+            position: relative;
+        }
+
+        .event-tab:hover {
+            background: #1a2744;
+            color: #fff;
+        }
+
+        .event-tab.active-official {
+            background: linear-gradient(135deg, #2a2000, #1a1a00);
+            border-color: var(--border-gold);
+            color: var(--border-gold);
+            box-shadow: 0 -4px 20px rgba(255, 215, 0, 0.15);
+        }
+
+        .event-tab.active-expo {
+            background: linear-gradient(135deg, #002a2e, #001a20);
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+            box-shadow: 0 -4px 20px rgba(0, 229, 255, 0.15);
+        }
+
+        .event-tab .tab-icon {
+            font-size: 1.3rem;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        /* ── Stats Cards ────────────────────────────────────── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 14px;
+            padding: 20px 24px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #16213e, #1a1a2e);
+            border: 1px solid rgba(255, 215, 0, 0.15);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 215, 0, 0.35);
+            box-shadow: 0 6px 20px rgba(255, 215, 0, 0.1);
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 0.78rem;
+            color: var(--text-gray);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .stat-card.gold .stat-value { color: #FFD700; }
+        .stat-card.silver .stat-value { color: #C0C0C0; }
+        .stat-card.bronze .stat-value { color: #CD7F32; }
+        .stat-card.received .stat-value { color: var(--success-green); }
+        .stat-card.pending .stat-value { color: var(--warning-orange); }
+        .stat-card.total .stat-value { color: var(--border-gold); }
+        .stat-card.brackets .stat-value { color: var(--accent-cyan); }
+
+        /* ── Search & Filters ───────────────────────────────── */
+        .controls-bar {
+            display: flex;
+            gap: 12px;
+            padding: 0 24px 16px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 16px;
+            background: #0f1629;
+            border: 2px solid rgba(255, 215, 0, 0.2);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--border-gold);
+            box-shadow: 0 0 12px rgba(255, 215, 0, 0.15);
+        }
+
+        .filter-select {
+            padding: 10px 14px;
+            background: #0f1629;
+            border: 2px solid rgba(255, 215, 0, 0.2);
+            border-radius: 10px;
+            color: #fff;
+            font-size: 0.88rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 130px;
+        }
+
+        .filter-select:focus {
+            outline: none;
+            border-color: var(--border-gold);
+        }
+
+        .filter-select option {
+            background: #0f1629;
+            color: #fff;
+        }
+
+        /* ── Bracket Cards ──────────────────────────────────── */
+        .brackets-container {
+            padding: 0 24px 24px;
+        }
+
+        .bracket-card {
+            background: linear-gradient(135deg, #16213e, #1a1a2e);
+            border: 2px solid rgba(255, 215, 0, 0.12);
+            border-radius: 14px;
+            margin-bottom: 16px;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .bracket-card:hover {
+            border-color: rgba(255, 215, 0, 0.35);
+            box-shadow: 0 8px 28px rgba(255, 215, 0, 0.08);
+        }
+
+        .bracket-card.official-card {
+            border-left: 4px solid var(--border-gold);
+        }
+
+        .bracket-card.expo-card {
+            border-left: 4px solid var(--accent-cyan);
+        }
+
+        .bracket-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .bracket-card-header:hover {
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .bracket-category {
+            font-size: 1.05rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+
+        .official-card .bracket-category { color: var(--border-gold); }
+        .expo-card .bracket-category { color: var(--accent-cyan); }
+
+        .bracket-meta {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            font-size: 0.82rem;
+        }
+
+        .bracket-meta .received-count {
+            color: var(--success-green);
+            font-weight: 700;
+        }
+
+        .bracket-meta .pending-count {
+            color: var(--warning-orange);
+            font-weight: 700;
+        }
+
+        .bracket-expand-icon {
+            font-size: 1.2rem;
+            transition: transform 0.3s;
+            color: var(--text-gray);
+        }
+
+        .bracket-card.expanded .bracket-expand-icon {
+            transform: rotate(180deg);
+        }
+
+        /* ── Medal Rows ─────────────────────────────────────── */
+        .medal-rows {
+            padding: 0 20px 16px;
+            display: none;
+        }
+
+        .bracket-card.expanded .medal-rows {
+            display: block;
+        }
+
+        .medal-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #0f1629;
+            border-radius: 10px;
+            margin-top: 8px;
+            transition: all 0.25s;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .medal-row:hover {
+            background: #0a0f1e;
+        }
+
+        .medal-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .medal-icon {
+            font-size: 1.3rem;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .medal-icon.gold { background: rgba(255, 215, 0, 0.2); }
+        .medal-icon.silver { background: rgba(192, 192, 192, 0.2); }
+        .medal-icon.bronze { background: rgba(205, 127, 50, 0.2); }
+
+        .medal-details {
+            flex: 1;
+        }
+
+        .medal-type {
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .medal-type.gold { color: #FFD700; }
+        .medal-type.silver { color: #C0C0C0; }
+        .medal-type.bronze { color: #CD7F32; }
+
+        .medal-player {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .medal-team {
+            font-size: 0.82rem;
+            color: var(--text-gray);
+            opacity: 0.7;
+        }
+
+        /* ── Medal Received Toggle ──────────────────────────── */
+        .medal-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            user-select: none;
+            padding: 6px 14px;
+            border-radius: 8px;
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+
+        .medal-toggle:hover {
+            background: rgba(255, 215, 0, 0.05);
+        }
+
+        .medal-toggle input[type="checkbox"] {
+            display: none;
+        }
+
+        .medal-toggle .toggle-box {
+            width: 22px;
+            height: 22px;
+            border: 2px solid var(--warning-orange);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .medal-toggle.received .toggle-box {
+            background: var(--success-green);
+            border-color: var(--success-green);
+            color: #000;
+        }
+
+        .medal-toggle .toggle-label {
+            font-size: 0.85rem;
+            font-weight: 700;
+        }
+
+        .medal-toggle.pending .toggle-label { color: var(--warning-orange); }
+        .medal-toggle.received .toggle-label { color: var(--success-green); }
+
+        /* ── Empty / Loading States ─────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 60px 24px;
+            color: var(--text-gray);
+        }
+
+        .empty-state .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 16px;
+        }
+
+        .loading-spinner {
+            text-align: center;
+            padding: 40px;
+            color: var(--border-gold);
+            font-size: 1.1rem;
+        }
+
+        /* ── Responsive ─────────────────────────────────────── */
+        @media (max-width: 768px) {
+            .org-header {
+                padding: 12px 16px;
+            }
+
+            .org-header-title {
+                font-size: 1.1rem;
+            }
+
+            .event-tabs {
+                margin: 16px 16px 0;
+            }
+
+            .event-tab {
+                padding: 12px 16px;
+                font-size: 0.95rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                gap: 10px;
+                padding: 16px;
+            }
+
+            .stat-value {
+                font-size: 1.4rem;
+            }
+
+            .controls-bar {
+                padding: 0 16px 12px;
+            }
+
+            .brackets-container {
+                padding: 0 16px 16px;
+            }
+
+            .bracket-card-header {
+                padding: 12px 16px;
+            }
+
+            .medal-row {
+                padding: 10px 12px;
+            }
+
+            .medal-info {
+                min-width: 160px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .event-tab {
+                padding: 10px 8px;
+                font-size: 0.85rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .medal-row {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .medal-toggle {
+                width: 100%;
+                justify-content: flex-end;
+                padding: 8px 0 0;
+            }
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pulse-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+
+        .pulse-dot.green { background: var(--success-green); }
+        .pulse-dot.orange { background: var(--warning-orange); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="org-header">
+        <div class="org-header-left">
+            <span class="org-header-title">🏅 Organizer Portal</span>
+            <span class="org-header-badge" id="orgNameBadge">Loading...</span>
+        </div>
+        <button class="org-logout-btn" onclick="handleLogout()">🚪 Logout</button>
+    </header>
+
+    <!-- Event Tabs -->
+    <div class="event-tabs">
+        <div class="event-tab active-official" id="tabOfficial" onclick="switchTab('official')">
+            <span class="tab-icon">🏆</span>
+            OFFICIAL
+        </div>
+        <div class="event-tab" id="tabExpo" onclick="switchTab('expo')">
+            <span class="tab-icon">🥇</span>
+            EXPO
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="statsGrid">
+        <!-- Populated by JS -->
+    </div>
+
+    <!-- Search & Filters -->
+    <div class="controls-bar">
+        <input type="text" class="search-input" id="searchInput" placeholder="🔍 Search player, team, or category...">
+        <select class="filter-select" id="filterGender">
+            <option value="all">All Genders</option>
+        </select>
+        <select class="filter-select" id="filterCategory">
+            <option value="all">All Categories</option>
+        </select>
+        <select class="filter-select" id="filterWeight">
+            <option value="all">All Weights</option>
+        </select>
+        <select class="filter-select" id="filterMedal">
+            <option value="all">All Medals</option>
+            <option value="Gold">Gold</option>
+            <option value="Silver">Silver</option>
+            <option value="1st Bronze">1st Bronze</option>
+            <option value="2nd Bronze">2nd Bronze</option>
+        </select>
+        <select class="filter-select" id="filterStatus">
+            <option value="all">All Status</option>
+            <option value="received">✅ Received</option>
+            <option value="pending">⏳ Pending</option>
+        </select>
+    </div>
+
+    <!-- Bracket Cards -->
+    <div class="brackets-container" id="bracketsContainer">
+        <div class="loading-spinner">⏳ Loading completed brackets...</div>
+    </div>
+
+    <!-- Firebase modules -->
+    <script type="module" src="/js/firebase.js"></script>
+    <script type="module" src="/js/performance-cache.js"></script>
+    <script type="module" src="/js/auth.js"></script>
+    <script type="module" src="/js/ui.js"></script>
+    <script type="module" src="/js/category-logic.js"></script>
+
+    <script type="module">
+        // ════════════════════════════════════════════════════════════════
+        // ORGANIZER DASHBOARD LOGIC
+        // ════════════════════════════════════════════════════════════════
+
+        // ── State ────────────────────────────────────────────────────
+        let currentTab = 'official'; // 'official' | 'expo'
+        let officialData = [];       // [{ categoryKey, category, gender, ageCategory, weightCategory, medals: [...] }]
+        let expoData = [];
+        let medalDistribution = { official: {}, expo: {} }; // Firebase medal distribution status
+        let officialBracketsRaw = {}; // raw bracket data from Firebase
+        let expoBracketsRaw = {};
+        let officialPlayersRaw = [];
+        let expoPlayersRaw = [];
+        let expandedCards = new Set(); // Track which cards are expanded across re-renders
+        let listeners = [];          // active Firebase listeners to clean up
+
+        // ── Boot ─────────────────────────────────────────────────────
+        waitForModules();
+
+        function waitForModules() {
+            if (
+                typeof UI !== 'undefined' &&
+                typeof database !== 'undefined' &&
+                typeof dbGet === 'function' &&
+                typeof dbRef === 'function' &&
+                typeof dbOnValue === 'function' &&
+                typeof CATEGORY_LOGIC !== 'undefined'
+            ) {
+                UI.initPageProtection(['organizer']);
+                initDashboard();
+            } else {
+                setTimeout(waitForModules, 80);
+            }
+        }
+
+        async function initDashboard() {
+            // Set organizer name badge
+            const orgName = sessionStorage.getItem('orgName') || sessionStorage.getItem('orgId') || 'Organizer';
+            document.getElementById('orgNameBadge').textContent = orgName;
+
+            // Set up search & filter listeners
+            document.getElementById('searchInput').addEventListener('input', debounce(renderCurrentTab, 300));
+            ['filterGender', 'filterCategory', 'filterWeight', 'filterMedal', 'filterStatus'].forEach(id => {
+                document.getElementById(id).addEventListener('change', renderCurrentTab);
+            });
+
+            // Load data
+            await loadAllData();
+
+            // Set up real-time listeners for medal distribution
+            setupMedalListeners();
+        }
+
+        // ── Data Loading ─────────────────────────────────────────────
+
+        async function loadAllData() {
+            try {
+                // Load brackets, players, and medal distribution in parallel
+                const [bracketsSnap, expoBracketsSnap, playersSnap, expoPlayersSnap, medalSnap] = await Promise.all([
+                    dbGet(dbRef(database, 'brackets')),
+                    dbGet(dbRef(database, 'expoBrackets')),
+                    dbGet(dbRef(database, 'players')),
+                    dbGet(dbRef(database, 'expoPlayers')),
+                    dbGet(dbRef(database, 'medalDistribution'))
+                ]);
+
+                officialBracketsRaw = bracketsSnap.exists() ? bracketsSnap.val() : {};
+                expoBracketsRaw = expoBracketsSnap.exists() ? expoBracketsSnap.val() : {};
+
+                officialPlayersRaw = [];
+                if (playersSnap.exists()) {
+                    playersSnap.forEach(child => {
+                        officialPlayersRaw.push({ id: child.key, ...child.val() });
+                    });
+                }
+
+                expoPlayersRaw = [];
+                if (expoPlayersSnap.exists()) {
+                    expoPlayersSnap.forEach(child => {
+                        expoPlayersRaw.push({ id: child.key, ...child.val() });
+                    });
+                }
+
+                if (medalSnap.exists()) {
+                    const md = medalSnap.val();
+                    medalDistribution.official = md.official || {};
+                    medalDistribution.expo = md.expo || {};
+                }
+
+                // Process brackets into medal groups
+                processOfficialBrackets();
+                processExpoBrackets();
+
+                // Populate filters
+                populateFilters();
+
+                // Render current tab
+                renderCurrentTab();
+            } catch (err) {
+                console.error('❌ Error loading organizer data:', err);
+                document.getElementById('bracketsContainer').innerHTML =
+                    '<div class="empty-state"><div class="empty-icon">❌</div><p>Error loading data: ' + escHtml(err.message) + '</p></div>';
+            }
+        }
+
+        // ── Process Official Brackets ────────────────────────────────
+
+        function processOfficialBrackets() {
+            officialData = [];
+
+            // Build player categories map for metadata
+            const playerCategories = {};
+            officialPlayersRaw.forEach(p => {
+                const ageCategory = p.ageCategory || (p.categories && p.categories[0]);
+                if (ageCategory && p.gender && p.weightCategory) {
+                    const key = `${p.gender}-${ageCategory}-${p.weightCategory}`;
+                    if (!playerCategories[key]) {
+                        playerCategories[key] = { gender: p.gender, ageCategory, weightCategory: p.weightCategory };
+                    }
+                }
+            });
+
+            Object.keys(officialBracketsRaw).forEach(categoryKey => {
+                const bracket = officialBracketsRaw[categoryKey];
+                if (!bracket || bracket.status !== 'complete') return;
+
+                const normalized = normalizeBracketRounds(bracket);
+                const rankings = buildOfficialRankings(normalized);
+                const medalWinners = rankings.filter(r => r.medal && r.player);
+
+                if (medalWinners.length === 0) return;
+
+                // Parse category key
+                const parts = categoryKey.split('-');
+                const gender = parts[0] || '';
+                const ageCategory = parts[1] || '';
+                const weightCategory = parts.slice(2).join('-') || '';
+
+                const medals = medalWinners.map(r => {
+                    const medalKey = medalTypeToKey(r.medal);
+                    const dist = (medalDistribution.official[categoryKey] || {})[medalKey] || {};
+                    return {
+                        medal: r.medal,
+                        medalKey,
+                        playerName: r.player.playerName || 'Unknown',
+                        playerId: r.player.id || '',
+                        teamName: r.player.teamName || r.player.centerName || '',
+                        teamId: r.player.teamId || '',
+                        received: dist.received === true
+                    };
+                });
+
+                officialData.push({
+                    categoryKey,
+                    category: `${gender} ${ageCategory} — ${weightCategory}`,
+                    gender,
+                    ageCategory,
+                    weightCategory,
+                    medals
+                });
+            });
+
+            // Sort: Gender → AgeCategory → Weight
+            officialData.sort((a, b) => {
+                const gDiff = genderSort(a.gender) - genderSort(b.gender);
+                if (gDiff !== 0) return gDiff;
+                const aDiff = a.ageCategory.localeCompare(b.ageCategory);
+                if (aDiff !== 0) return aDiff;
+                return a.weightCategory.localeCompare(b.weightCategory);
+            });
+        }
+
+        // ── Process Expo Brackets ────────────────────────────────────
+
+        function processExpoBrackets() {
+            expoData = [];
+
+            Object.keys(expoBracketsRaw).forEach(categoryKey => {
+                const bracket = expoBracketsRaw[categoryKey];
+                if (!bracket || bracket.status !== 'complete') return;
+
+                const rankings = buildExpoRankings(bracket);
+                const medalWinners = rankings.filter(r => r.medal);
+
+                if (medalWinners.length === 0) return;
+
+                const parts = categoryKey.split('-');
+                const gender = parts[0] || '';
+                const ageCategory = parts[1] || '';
+                const weightCategory = parts.slice(2).join('-') || '';
+
+                const medals = medalWinners.map(r => {
+                    const medalKey = medalTypeToKey(r.medal) + (r.matchNumber ? '_m' + r.matchNumber : '');
+                    const dist = (medalDistribution.expo[categoryKey] || {})[medalKey] || {};
+                    return {
+                        medal: r.medal,
+                        medalKey,
+                        playerName: r.playerName || 'Unknown',
+                        playerId: r.id || '',
+                        teamName: r.teamName || r.centerName || '',
+                        teamId: r.teamId || '',
+                        received: dist.received === true
+                    };
+                });
+
+                expoData.push({
+                    categoryKey,
+                    category: `${gender} ${ageCategory} — ${weightCategory}`,
+                    gender,
+                    ageCategory,
+                    weightCategory,
+                    medals
+                });
+            });
+
+            expoData.sort((a, b) => {
+                const gDiff = genderSort(a.gender) - genderSort(b.gender);
+                if (gDiff !== 0) return gDiff;
+                const aDiff = a.ageCategory.localeCompare(b.ageCategory);
+                if (aDiff !== 0) return aDiff;
+                return a.weightCategory.localeCompare(b.weightCategory);
+            });
+        }
+
+        // ── Ranking Builders (mirrors bracket.js / expoBracket.js) ───
+
+        function normalizeBracketRounds(bracketData) {
+            const toArray = (obj) => Array.isArray(obj)
+                ? obj
+                : Object.keys(obj || {}).sort((a, b) => Number(a) - Number(b)).map(k => obj[k]);
+            const rounds = toArray(bracketData.rounds || []).map(round => toArray(round || []));
+            return { ...bracketData, rounds };
+        }
+
+        function buildOfficialRankings(bracket) {
+            const rounds = (bracket && bracket.rounds) || [];
+            const totalRounds = rounds.length;
+            const rankings = [];
+
+            const finalRound = rounds[totalRounds - 1];
+            if (!finalRound || finalRound.length === 0) {
+                const byePlayers = (bracket && bracket.byePlayers) || {};
+                const byePlayer = byePlayers['0'];
+                if (byePlayer) {
+                    rankings.push({ rank: 1, medal: 'Gold', player: byePlayer });
+                }
+                return rankings;
+            }
+
+            const finalMatch = finalRound[0];
+            if (!finalMatch || !finalMatch.winner) return rankings;
+
+            const champion = finalMatch.player1.id === finalMatch.winner ? finalMatch.player1 : finalMatch.player2;
+            const runnerUp = finalMatch.player1.id === finalMatch.winner ? finalMatch.player2 : finalMatch.player1;
+
+            rankings.push({ rank: 1, medal: 'Gold', player: champion });
+            rankings.push({ rank: 2, medal: 'Silver', player: runnerUp });
+
+            if (totalRounds >= 2) {
+                const semiRound = rounds[totalRounds - 2];
+                semiRound.forEach((match, index) => {
+                    if (match.player1 && match.player2 && match.winner && match.eliminated) {
+                        const loser = match.player1.id === match.eliminated ? match.player1 : match.player2;
+                        rankings.push({ rank: 3, medal: index === 0 ? '1st Bronze' : '2nd Bronze', player: loser });
+                    }
+                });
+            }
+
+            return rankings;
+        }
+
+        function buildExpoRankings(bracket) {
+            if (!bracket) return [];
+            const rankings = [];
+            const matches = Array.isArray(bracket.matches) ? bracket.matches
+                : Object.keys(bracket.matches || {}).sort((a, b) => Number(a) - Number(b)).map(k => bracket.matches[k]);
+
+            matches.forEach((m, idx) => {
+                if (m.status !== 'completed' || !m.winner) return;
+                const winner = m.winner === m.player1.id ? m.player1 : m.player2;
+                const loser = m.winner === m.player1.id ? m.player2 : m.player1;
+                rankings.push({ ...winner, medal: 'Gold', matchNumber: idx + 1 });
+                rankings.push({ ...loser, medal: 'Silver', matchNumber: idx + 1 });
+            });
+
+            const byes = Array.isArray(bracket.byes) ? bracket.byes
+                : Object.keys(bracket.byes || {}).map(k => bracket.byes[k]);
+            byes.forEach(p => {
+                rankings.push({ ...p, medal: 'Gold', note: 'Walkover' });
+            });
+
+            return rankings;
+        }
+
+        // ── Helpers ──────────────────────────────────────────────────
+
+        function medalTypeToKey(medal) {
+            const map = { 'Gold': 'gold', 'Silver': 'silver', '1st Bronze': 'bronze1', '2nd Bronze': 'bronze2' };
+            return map[medal] || medal.toLowerCase().replace(/\s+/g, '_');
+        }
+
+        function genderSort(gender) {
+            const g = (gender || '').toLowerCase();
+            if (g === 'male') return 0;
+            if (g === 'female') return 1;
+            return 2;
+        }
+
+        function escHtml(s) {
+            return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function debounce(fn, delay) {
+            let timer;
+            return function(...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        // ── Tab Switching ────────────────────────────────────────────
+
+        window.switchTab = function(tab) {
+            currentTab = tab;
+            const tabOfficial = document.getElementById('tabOfficial');
+            const tabExpo = document.getElementById('tabExpo');
+
+            tabOfficial.className = 'event-tab' + (tab === 'official' ? ' active-official' : '');
+            tabExpo.className = 'event-tab' + (tab === 'expo' ? ' active-expo' : '');
+
+            renderCurrentTab();
+        };
+
+        // ── Populate Filters ─────────────────────────────────────────
+
+        function populateFilters() {
+            const allData = [...officialData, ...expoData];
+
+            const genders = [...new Set(allData.map(d => d.gender))].filter(Boolean).sort();
+            const categories = [...new Set(allData.map(d => d.ageCategory))].filter(Boolean).sort();
+            const weights = [...new Set(allData.map(d => d.weightCategory))].filter(Boolean).sort();
+
+            populateSelect('filterGender', genders, 'All Genders');
+            populateSelect('filterCategory', categories, 'All Categories');
+            populateSelect('filterWeight', weights, 'All Weights');
+        }
+
+        function populateSelect(id, values, defaultLabel) {
+            const select = document.getElementById(id);
+            const current = select.value;
+            select.innerHTML = `<option value="all">${defaultLabel}</option>` +
+                values.map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`).join('');
+            if (current && values.includes(current)) select.value = current;
+        }
+
+        // ── Render ───────────────────────────────────────────────────
+
+        function renderCurrentTab() {
+            const data = currentTab === 'official' ? officialData : expoData;
+            const cardClass = currentTab === 'official' ? 'official-card' : 'expo-card';
+            const eventType = currentTab;
+
+            // Apply filters
+            const filtered = applyFilters(data);
+
+            // Render stats
+            renderStats(filtered, eventType);
+
+            // Render bracket cards
+            const container = document.getElementById('bracketsContainer');
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">${currentTab === 'official' ? '🏆' : '🥇'}</div>
+                        <p>No completed ${currentTab === 'official' ? 'Official' : 'Expo'} brackets found matching your filters.</p>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(group => {
+                const receivedCount = group.medals.filter(m => m.received).length;
+                const pendingCount = group.medals.length - receivedCount;
+
+                const isExpanded = expandedCards.has(group.categoryKey);
+                return `
+                <div class="bracket-card ${cardClass}${isExpanded ? ' expanded' : ''}" id="card-${escHtml(group.categoryKey)}">
+                    <div class="bracket-card-header" onclick="toggleCard('${escHtml(group.categoryKey)}')">
+                        <div>
+                            <div class="bracket-category">${escHtml(group.category)}</div>
+                            <div style="font-size:0.8rem;color:var(--text-gray);margin-top:4px;">
+                                ${group.medals.length} medal${group.medals.length !== 1 ? 's' : ''}
+                            </div>
+                        </div>
+                        <div class="bracket-meta">
+                            ${receivedCount > 0 ? `<span class="received-count"><span class="pulse-dot green"></span>${receivedCount} Received</span>` : ''}
+                            ${pendingCount > 0 ? `<span class="pending-count"><span class="pulse-dot orange"></span>${pendingCount} Pending</span>` : ''}
+                            <span class="bracket-expand-icon">▼</span>
+                        </div>
+                    </div>
+                    <div class="medal-rows">
+                        ${group.medals.map(m => renderMedalRow(m, group.categoryKey, eventType)).join('')}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function renderMedalRow(medal, categoryKey, eventType) {
+            const medalIcons = { 'Gold': '🥇', 'Silver': '🥈', '1st Bronze': '🥉', '2nd Bronze': '🥉' };
+            const medalClasses = { 'Gold': 'gold', 'Silver': 'silver', '1st Bronze': 'bronze', '2nd Bronze': 'bronze' };
+            const statusClass = medal.received ? 'received' : 'pending';
+            const statusText = medal.received ? '✅ Received' : '⏳ Pending';
+
+            return `
+            <div class="medal-row">
+                <div class="medal-info">
+                    <div class="medal-icon ${medalClasses[medal.medal] || 'bronze'}">
+                        ${medalIcons[medal.medal] || '🏅'}
+                    </div>
+                    <div class="medal-details">
+                        <div class="medal-type ${medalClasses[medal.medal] || 'bronze'}">${escHtml(medal.medal)}</div>
+                        <div class="medal-player">${escHtml(medal.playerName)}</div>
+                        <div class="medal-team">${escHtml(medal.teamName)}</div>
+                    </div>
+                </div>
+                <label class="medal-toggle ${statusClass}">
+                    <input type="checkbox" ${medal.received ? 'checked' : ''}
+                        onchange="toggleMedalReceived('${eventType}', '${escHtml(categoryKey)}', '${escHtml(medal.medalKey)}', this.checked, '${escHtml(medal.playerName)}', '${escHtml(medal.teamName)}', '${escHtml(medal.playerId)}', '${escHtml(medal.teamId)}', '${escHtml(medal.medal)}')">
+                    <span class="toggle-box">${medal.received ? '✓' : ''}</span>
+                    <span class="toggle-label">${statusText}</span>
+                </label>
+            </div>`;
+        }
+
+        // ── Stats ────────────────────────────────────────────────────
+
+        function renderStats(data, eventType) {
+            const allMedals = data.flatMap(d => d.medals);
+            const total = allMedals.length;
+            const received = allMedals.filter(m => m.received).length;
+            const pending = total - received;
+
+            const goldTotal = allMedals.filter(m => m.medal === 'Gold').length;
+            const goldReceived = allMedals.filter(m => m.medal === 'Gold' && m.received).length;
+            const silverTotal = allMedals.filter(m => m.medal === 'Silver').length;
+            const silverReceived = allMedals.filter(m => m.medal === 'Silver' && m.received).length;
+            const bronzeTotal = allMedals.filter(m => m.medal === '1st Bronze' || m.medal === '2nd Bronze').length;
+            const bronzeReceived = allMedals.filter(m => (m.medal === '1st Bronze' || m.medal === '2nd Bronze') && m.received).length;
+
+            const statsGrid = document.getElementById('statsGrid');
+            statsGrid.innerHTML = `
+                <div class="stat-card brackets">
+                    <div class="stat-value">${data.length}</div>
+                    <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat-card total">
+                    <div class="stat-value">${total}</div>
+                    <div class="stat-label">Total Medals</div>
+                </div>
+                <div class="stat-card received">
+                    <div class="stat-value">${received}</div>
+                    <div class="stat-label">Received</div>
+                </div>
+                <div class="stat-card pending">
+                    <div class="stat-value">${pending}</div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card gold">
+                    <div class="stat-value">${goldReceived}/${goldTotal}</div>
+                    <div class="stat-label">Gold</div>
+                </div>
+                <div class="stat-card silver">
+                    <div class="stat-value">${silverReceived}/${silverTotal}</div>
+                    <div class="stat-label">Silver</div>
+                </div>
+                <div class="stat-card bronze">
+                    <div class="stat-value">${bronzeReceived}/${bronzeTotal}</div>
+                    <div class="stat-label">Bronze</div>
+                </div>
+            `;
+        }
+
+        // ── Filters ──────────────────────────────────────────────────
+
+        function applyFilters(data) {
+            const search = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+            const gender = document.getElementById('filterGender').value;
+            const category = document.getElementById('filterCategory').value;
+            const weight = document.getElementById('filterWeight').value;
+            const medalType = document.getElementById('filterMedal').value;
+            const status = document.getElementById('filterStatus').value;
+
+            return data.filter(group => {
+                // Gender filter
+                if (gender !== 'all' && group.gender !== gender) return false;
+                // Category filter
+                if (category !== 'all' && group.ageCategory !== category) return false;
+                // Weight filter
+                if (weight !== 'all' && group.weightCategory !== weight) return false;
+
+                // Medal type filter — at least one medal must match
+                let medals = group.medals;
+                if (medalType !== 'all') {
+                    medals = medals.filter(m => m.medal === medalType);
+                    if (medals.length === 0) return false;
+                }
+
+                // Status filter — at least one medal must match
+                if (status !== 'all') {
+                    const statusMatch = status === 'received'
+                        ? medals.some(m => m.received)
+                        : medals.some(m => !m.received);
+                    if (!statusMatch) return false;
+                }
+
+                // Search filter
+                if (search) {
+                    const haystack = [
+                        group.category,
+                        group.gender,
+                        group.ageCategory,
+                        group.weightCategory,
+                        ...group.medals.map(m => m.playerName),
+                        ...group.medals.map(m => m.teamName)
+                    ].join(' ').toLowerCase();
+                    if (!haystack.includes(search)) return false;
+                }
+
+                return true;
+            });
+        }
+
+        // ── Toggle Medal Received ────────────────────────────────────
+
+        window.toggleMedalReceived = async function(eventType, categoryKey, medalKey, isReceived, playerName, teamName, playerId, teamId, medal) {
+            try {
+                const path = `medalDistribution/${eventType}/${categoryKey}/${medalKey}`;
+                const orgId = sessionStorage.getItem('orgId') || 'unknown';
+
+                await dbSet(dbRef(database, path), {
+                    playerId: playerId,
+                    playerName: playerName,
+                    teamName: teamName,
+                    teamId: teamId,
+                    medal: medal,
+                    received: isReceived,
+                    updatedAt: new Date().toISOString(),
+                    updatedBy: orgId
+                });
+
+                console.log(`✅ Medal ${isReceived ? 'received' : 'pending'}: ${eventType}/${categoryKey}/${medalKey}`);
+            } catch (err) {
+                console.error('❌ Error updating medal status:', err);
+                if (typeof MODAL !== 'undefined') {
+                    MODAL.error('Failed to update medal status: ' + err.message);
+                }
+            }
+        };
+
+        // ── Card Expand/Collapse ─────────────────────────────────────
+
+        window.toggleCard = function(categoryKey) {
+            const card = document.getElementById('card-' + categoryKey);
+            if (card) {
+                card.classList.toggle('expanded');
+                if (card.classList.contains('expanded')) {
+                    expandedCards.add(categoryKey);
+                } else {
+                    expandedCards.delete(categoryKey);
+                }
+            }
+        };
+
+        // ── Real-time Medal Distribution Listener ────────────────────
+
+        function setupMedalListeners() {
+            // Listen to medal distribution changes for real-time sync
+            const medalRef = dbRef(database, 'medalDistribution');
+            const unsubscribe = dbOnValue(medalRef, (snap) => {
+                if (snap.exists()) {
+                    const md = snap.val();
+                    medalDistribution.official = md.official || {};
+                    medalDistribution.expo = md.expo || {};
+                } else {
+                    medalDistribution.official = {};
+                    medalDistribution.expo = {};
+                }
+
+                // Re-process to update received statuses
+                processOfficialBrackets();
+                processExpoBrackets();
+                renderCurrentTab();
+            });
+            listeners.push(unsubscribe);
+
+            // Also listen to bracket changes (in case admin corrects a result)
+            const bracketsRef = dbRef(database, 'brackets');
+            const unsubBrackets = dbOnValue(bracketsRef, (snap) => {
+                officialBracketsRaw = snap.exists() ? snap.val() : {};
+                processOfficialBrackets();
+                populateFilters();
+                if (currentTab === 'official') renderCurrentTab();
+            });
+            listeners.push(unsubBrackets);
+
+            const expoBracketsRef = dbRef(database, 'expoBrackets');
+            const unsubExpo = dbOnValue(expoBracketsRef, (snap) => {
+                expoBracketsRaw = snap.exists() ? snap.val() : {};
+                processExpoBrackets();
+                populateFilters();
+                if (currentTab === 'expo') renderCurrentTab();
+            });
+            listeners.push(unsubExpo);
+        }
+
+        // ── Logout ───────────────────────────────────────────────────
+
+        window.handleLogout = function() {
+            // Clean up listeners
+            listeners.forEach(unsub => { if (typeof unsub === 'function') unsub(); });
+            listeners = [];
+
+            sessionStorage.clear();
+            window.location.href = window.location.origin + '/organizer-login.html';
+        };
+    </script>
+</body>
+
+</html>
